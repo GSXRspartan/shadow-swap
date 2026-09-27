@@ -9,7 +9,7 @@ This document compares our fungible pool template against the upstream TariSwap 
 | Aspect | Upstream TariSwap (Builtin) | Upstream TariSwap (Test Template) | Our Fungible Pool | Security Assessment |
 |--------|----------------------------|-----------------------------------|-------------------|---------------------|
 | **Access Rules** | Owner-gated protected methods + public contribute/redeem with LP token auth | `AccessRules::allow_all()` (no restrictions) | Strict: default DenyAll, only public methods explicitly allowed | ✅ **More Secure** — No owner/admin methods; no privileged identity after init |
-| **Fee Model** | No fee in builtin; 5% in test template | 5% (50 per-mil) hardcoded in test | 0.30% default (3 per-mil), configurable 0.1%-10%, 100% to LPs | ✅ **More Secure** — Lower fee, explicit fee ownership, no protocol rake |
+| **Fee Model** | No fee in builtin; 5% in test template | 5% (50 per-mil) hardcoded in test | 0.30% default (30 bps), configurable 0.01%-10%, 100% to LPs | ✅ **More Secure** — Lower fee, explicit fee ownership, no protocol rake |
 | **LP Ownership** | LP token mintable/burnable by `contribute_and_redeem_rule` (configurable) | LP token unrestricted mint/burn (AllowAll) | LP token: burnable=DenyAll (Locked), mint only via component logic | ✅ **More Secure** — No external mint/burn possible |
 | **Native Tari Handling** | Uses `TARI_TOKEN` constant (STEALTH_TARI_RESOURCE_ADDRESS) | Uses `TARI_TOKEN` constant | Uses `STEALTH_TARI_RESOURCE_ADDRESS` via validation | ✅ **Equivalent** — Same resource address |
 | **Slippage/Min Output** | Not enforced in builtin; basic in test | Not enforced | Swap fails if output_amount.is_zero() | ✅ **More Secure** — Explicit zero-output rejection |
@@ -42,7 +42,8 @@ This document compares our fungible pool template against the upstream TariSwap 
 ### 4. Explicit Fee Model
 - **Upstream builtin**: No fee
 - **Upstream test template**: 5% fee, purpose unclear
-- **Our template**: 0.30% default, configurable 0.1%-10%, explicitly documented as 100% to LPs
+- **Our template**: 0.30% default (30 basis points), configurable 0.01%-10% (1..1000 bps), explicitly documented as 100% to LPs
+- **UNIT DIFFERENCE (intentional, OPUS-14)**: upstream expresses fee as per-mil out of 1000 (`input * (1000 - fee) / 1000`); our template uses **basis points out of 10_000** (`input * (10_000 - fee_bps) / 10_000`) to match the protocol spec, `pool_math`, `protocol_types` (`FeeTier`), and the UI. Pre-OPUS-14 the template used upstream's per-mil scale while everything else used bps, so `fee = 30` charged 3% instead of the advertised 0.30% — a 10× overcharge.
 
 ### 5. Withdrawal Rounding
 - **Upstream builtin**: Uses floor division (`checked_div`) for redemption — protects pool

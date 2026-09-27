@@ -1,0 +1,25 @@
+# Multi-hop residual risks — XTM → FAST_XTM_TARI → TARI → AMM
+
+Companion to `CROSS_LAYER_RESIDUAL_RISKS.md`. The cross-layer risks still apply; this file
+adds only what is specific to COMPOSITION. Nothing here is an open CRITICAL/HIGH code defect.
+
+| # | Risk | Class | Why it is still open | What retires it |
+|---|---|---|---|---|
+| MHR-1 | **No live composed execution.** The L2 `ScriptPath` leg has no concrete provider, so the whole route is exercised only against injectable doubles. | BLOCKED_EXTERNAL | Upstream `tari_l1_wasm`/wallet work is a prerequisite (cross-layer RR-4, RR-5). | A real Ootle ScriptPath provider plus funded accounts on Esmeralda. |
+| **MHR-2** | **The settlement proof is an in-process capability, not a signed artifact.** The symbol brand and fingerprint detect accidental/forged-object mistakes and post-mint mutation; they are not a cryptographic signature. A same-process attacker who can call the mint function with fabricated evidence would succeed. | EXTERNAL_RISK (MEDIUM) | Evidence validation lives inside the mint function; a hostile *in-process* caller could bypass it entirely. | Keep the mint function behind the evidence-gathering boundary (only the coordinator holds the authoritative readers), or add a signature over the fact fields. |
+| MHR-3 | **The proof's trust model inherits the cross-layer amount-authority gap.** `l1Verification.amountAuthoritative` must be true, so a counterparty-funded leg still cannot settle. | BLOCKED_EXTERNAL | Same as cross-layer RR-1. | The upstream wallet/WASM amount-proof operation. |
+| MHR-4 | **Cross-process duplicate execution is not prevented.** `proofConsumedByHop2` and the route state live in an in-memory record; a second process could consume the same proof. | EXTERNAL_RISK (MEDIUM) | Same class as cross-layer RR-10. | A durable route store with compare-and-swap on `proofConsumedByHop2`. |
+| MHR-5 | **"Canonical TARI" is a configured address.** The composition layer enforces exact identity against the asset the caller declares canonical. A deployment that mis-configures it would compose through the wrong resource. | Accepted risk (documented) | There is no on-chain proof of "canonical" available to this layer. | Pin the canonical address in a signed configuration and add a startup assertion against the known constant. |
+| MHR-6 | **Fee acceptance is recorded, not yet enforced per hop.** `maxNetworkFeesRaw` and `maxProviderSpreadBps` are part of the acceptance record, but the AMM hop build does not yet compare actual fees against them. | Accepted risk (documented) | Fee data only becomes available at build/submit time. | Wire the actual fee estimate into `buildAmmSwapHop` and refuse above the accepted bounds (matrix MH-59). |
+| MHR-7 | **Route-level price drift is bounded only by the accepted minimum.** `maxRoutePriceDriftBps` is carried in the policy but the current check uses the refreshed `minOutput` against the accepted floor, which is the stronger guarantee. | Accepted risk (documented) | The floor check subsumes the drift check for the user's protection. | Use the drift bound for the "requires re-approval" signal distinct from the hard floor. |
+| MHR-8 | **Value conservation is argued, not proven end-to-end.** Tests bound each hop's output by its own quote and the settled amount by the accepted quote; no live two-hop execution has reconciled balances. | BLOCKED_EXTERNAL | No live execution. | Live execution with balance reconciliation (follows MHR-1). |
+| MHR-9 | **Market-data emission is an in-memory sink.** No indexing, persistence, or aggregation exists; the event payload is validated but nothing consumes it yet. | Accepted risk (documented) | Aggregation is explicitly the next phase. | The trade-indexing phase (next exact phase). |
+| MHR-10 | **`RouteResult.composable: false` is a compile-time guard, not a runtime policy.** A future implementer could change the type. | Accepted risk (documented) | Typed literal so the compiler rejects an enabled value today. | Enabling composition only with a terminal chain-proven settlement proof plus the multi-hop hostile suite re-run. |
+| MHR-11 | **Reverse routes are refused, not implemented.** `X → TARI → XTM` returns `BLOCKED_EXTERNAL` with the exact prerequisite. | BLOCKED_EXTERNAL | Depends on MHR-3. | The same upstream amount-proof operation. |
+| MHR-12 | **The proof is validated but its evidence is not re-read at consumption time.** `verify` re-checks facts, age, and fingerprint, but does not re-query the chain. A settlement could be reorged after minting within `maxAgeMs`. | EXTERNAL_RISK (MEDIUM) | Deliberate: re-reading would require the wallet at composition time. | A short `maxAgeMs` (already 120s) plus a post-hop-2 confirmation requirement, or a re-read inside the hop build. |
+
+## Explicitly NOT claimed
+
+- Not unhackable, not fully secure, not mainnet-ready, not production-ready.
+- The route is EXPERIMENTAL/TESTNET. Real submission is OFF by default; mainnet is refused.
+- No live Esmeralda composed execution has occurred; no txid in this phase was fabricated.

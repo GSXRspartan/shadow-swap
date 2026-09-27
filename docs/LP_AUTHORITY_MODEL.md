@@ -139,7 +139,8 @@ There are NO methods for:
 | `get_pool_balance` | `AllowAll` | Read-only |
 | `lp_resource` | `AllowAll` | Read-only |
 | `lp_total_supply` | `AllowAll` | Read-only |
-| `fee` | `AllowAll` | Read-only |
+| `locked_lp_supply` | `AllowAll` | Read-only |
+| `fee_bps` | `AllowAll` | Read-only (basis points; 30 = 0.30%) |
 | Default (all other methods) | `DenyAll` | No other methods exposed |
 
 ## Security Guarantees

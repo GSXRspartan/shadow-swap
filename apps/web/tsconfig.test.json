@@ -1,0 +1,46 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "noEmit": false,
+    "declaration": false,
+    "outDir": "build-test",
+    "rootDir": "src",
+    "sourceMap": false,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "jsx": "react-jsx",
+    "allowImportingTsExtensions": false,
+    "types": ["react", "react-dom"],
+    "paths": {
+      "lightweight-charts": ["../test/stubs/lightweight-charts.ts"],
+      "@tari-ootle/protocol-client": ["../../packages/protocol-client/dist/index.d.ts"],
+      "@tari-ootle/protocol-client/crosschain": ["../../packages/protocol-client/dist/crosschain/index.d.ts"],
+      "@tari-ootle/wallet-adapter": ["../../packages/wallet-adapter/dist/index.d.ts"]
+    }
+  },
+  "include": [
+    "src/lib/**/*.ts",
+    "src/services/**/*.ts",
+    "src/components/primitives.tsx",
+    "src/components/RecentTrades.tsx",
+    "src/components/PoolActivityList.tsx",
+    "src/components/MarketHeader.tsx",
+    "src/components/SwapCard.tsx",
+    "src/components/RoutePanel.tsx",
+    "src/components/CandleChart.tsx",
+    "src/components/LiquidityPanel.tsx",
+    "src/components/NftCard.tsx",
+    "src/components/CollectionPanel.tsx",
+    "src/state/AppContext.tsx",
+    "src/pages/PoolsPage.tsx",
+    "src/pages/PoolPage.tsx",
+    "src/pages/ActivityPage.tsx",
+    "src/pages/NftMarketplacePage.tsx",
+    "src/components/AppShell.tsx",
+    "src/components/ProtocolMark.tsx"
+  ],
+  "exclude": ["src/services/envSource.ts"]
+}
+

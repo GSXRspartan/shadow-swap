@@ -2,26 +2,36 @@
   "name": "@tari-ootle/wallet-adapter",
   "version": "0.1.0",
   "description": "Wallet adapter interface and implementations for Tari Ootle",
+  "type": "commonjs",
   "main": "dist/index.js",
+  "module": "dist/esm/index.js",
   "types": "dist/index.d.ts",
+  "sideEffects": false,
   "exports": {
     ".": {
-      "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
-    }
+      "types": "./dist/index.d.ts",
+      "import": "./dist/esm/index.js",
+      "require": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./dist/*": "./dist/*",
+    "./package.json": "./package.json"
   },
   "files": ["dist"],
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && tsc -p tsconfig.esm.json && node ./scripts/write-esm-marker.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "echo 'No lint configured'",
-    "test": "echo 'No tests configured'"
+    "test": "npm run build && node --test test/marketplace.test.cjs test/amm.test.cjs test/adapter_honesty.test.cjs",
+    "test:packaging": "npm run build && node --test test/packaging.test.cjs"
   },
   "dependencies": {
-    "@chironbuilder/ootle-sdk": "^0.1.11"
+    "@tari-ootle/protocol-client": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.7.0"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "//": "@chironbuilder/ootle-sdk was removed: its published releases declare relative file: deps (file:./vendor/ootle-patched, file:./vendor/ootle-wasm-patched) that npm resolves inside the tarball but pnpm resolves against the depending project (ERR_PNPM_LINKED_PKG_DIR_NOT_FOUND). No source in this workspace imports the SDK; when a browser provider needs it, depend on @tari-project/ootle-* upstream packages directly (docs/TARI_BROWSER_ATOMIC_SWAP_PROVIDER_GAP.md).",
+  "//exports": "Dual CJS + ESM build. The previous exports map listed only `import`, so a CommonJS `require('@tari-ootle/wallet-adapter')` failed outright even though the build output is CommonJS."
 }

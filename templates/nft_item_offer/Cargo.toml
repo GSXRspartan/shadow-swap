@@ -1,0 +1,17 @@
+[package]
+name = "nft_item_offer"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+# Pinned to the marketplace and engine-test revision.
+tari_template_abi = { git = "https://github.com/tari-project/tari-ootle.git", rev = "4732f65ec17a96547050989d78fd70a4e3d94113" }
+tari_template_lib = { git = "https://github.com/tari-project/tari-ootle.git", rev = "4732f65ec17a96547050989d78fd70a4e3d94113" }
+
+[profile.release]
+opt-level = "z"
+lto = true
+panic = "abort"

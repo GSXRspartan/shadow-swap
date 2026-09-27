@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none" role="img" aria-label="Ootle Liquidity">
+  <rect width="24" height="24" rx="6" fill="#080a0e"/>
+  <rect x="1.25" y="1.25" width="21.5" height="21.5" rx="6" stroke="#3a4356" stroke-width="1.5"/>
+  <path d="M6 15.5c2.2 0 2.2-7 4.4-7s2.2 7 4.4 7 2.2-4 3.2-4" stroke="#f0b429" stroke-width="1.75" stroke-linecap="round"/>
+  <circle cx="6" cy="15.5" r="1.6" fill="#f0b429"/>
+  <circle cx="18" cy="11.5" r="1.6" fill="#8b96a8"/>
+</svg>

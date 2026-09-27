@@ -4,6 +4,7 @@
   "private": true,
   "license": "MIT",
   "description": "Non-custodial liquidity protocol for Tari Ootle",
+  "packageManager": "pnpm@9.15.9",
   "workspaces": [
     "packages/*",
     "apps/*"
@@ -22,6 +23,7 @@
   },
   "engines": {
     "node": ">=20.0.0",
-    "pnpm": ">=9.0.0"
-  }
+    "pnpm": ">=9.0.0 <10.0.0"
+  },
+  "//engines": "pnpm is pinned to major 9 because CI uses pnpm/action-setup version 9 and pnpm-lock.yaml is lockfileVersion 9.0. A pnpm 10/11 lockfile cannot be consumed by a pnpm 9 install, so the major is constrained rather than left open."
 }

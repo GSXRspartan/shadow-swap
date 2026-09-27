@@ -299,6 +299,58 @@ mod tests {
         assert_eq!(amount_in_with_fee(1000, 30).unwrap(), 997);
     }
 
+    /// OPUS-14 fee-unit regression: the protocol fee tier is BASIS POINTS out of 10_000
+    /// (30 bps = 0.30%), never per-mil. The pool template caps tiers at 1000 bps (10%).
+    #[test]
+    fn fee_tier_policy_bps_scale() {
+        assert_eq!(amount_in_with_fee(1_000_000, 0).unwrap(), 1_000_000);
+        assert_eq!(amount_in_with_fee(1_000_000, 1).unwrap(), 999_900);
+        assert_eq!(amount_in_with_fee(1_000_000, 30).unwrap(), 997_000);
+        assert_eq!(amount_in_with_fee(1_000_000, 100).unwrap(), 990_000);
+        assert_eq!(amount_in_with_fee(1_000_000, 1_000).unwrap(), 900_000);
+        // effective/input ratio at the default 30 bps is exactly 0.997 (integer-safe: 997/1000)
+        assert_eq!(amount_in_with_fee(10_000, 30).unwrap(), 9_970);
+    }
+
+    /// 9_999 bps is math-valid but the pool constructor rejects it (max 1000 bps); document
+    /// that it floors nearly all input to zero, which is why the pool must never accept it.
+    #[test]
+    fn fee_9999_bps_floors_to_near_zero() {
+        assert_eq!(amount_in_with_fee(1_000_000, 9_999).unwrap(), 100);
+    }
+
+    /// fee_bps >= 10_000 (fee >= 100%) must be rejected outright.
+    #[test]
+    fn fee_10000_bps_rejected() {
+        assert_eq!(
+            amount_in_with_fee(1_000, 10_000),
+            Err(PoolMathError::InvalidFee { fee: 10_000 })
+        );
+        assert!(compute_fee_amount(1_000, 10_001).is_err());
+    }
+
+    /// Pure-math twin of the engine test e03 (30 bps, reserves 1e9/1e9, input 1e8):
+    /// effective input 99_700_000, output 90_661_089 (floor). A per-mil interpretation of
+    /// fee=30 (the OPUS-14 bug) would instead produce 88_422_971.
+    #[test]
+    fn swap_output_30bps_default_tier() {
+        let out = swap_output_amount(1_000_000_000, 1_000_000_000, 100_000_000, 30).unwrap();
+        assert_eq!(out, 90_661_089);
+        // the per-mil misreading must NOT be what the math produces
+        assert_ne!(out, 88_422_971);
+        // reserves after the swap: full input in, output out; k strictly grows
+        let (new_in, new_out) =
+            new_reserves_after_swap(1_000_000_000, 1_000_000_000, 100_000_000, 30).unwrap();
+        assert_eq!(new_in, 1_100_000_000);
+        assert_eq!(new_out, 909_338_911);
+        assert!(verify_swap_invariant(
+            1_000_000_000,
+            1_000_000_000,
+            new_in,
+            new_out
+        ));
+    }
+
     #[test]
     fn amount_in_with_fee_rounds_down() {
         // 7 * 9970 / 10000 = 6979 / 10000 = 0 (integer division rounds down)

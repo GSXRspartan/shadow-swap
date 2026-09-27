@@ -1,0 +1,9 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "ootle-liquidity-testnet",
+  "compatibility_date": "2026-09-26",
+  "pages_build_output_dir": "apps/web/dist",
+  "observability": {
+    "enabled": false
+  }
+}

@@ -1,0 +1,104 @@
+/*
+ * Design tokens.
+ *
+ * Dark-first, restrained, high information density without clutter. Numeric
+ * values use tabular figures so columns of amounts and prices align.
+ *
+ * Status colour is never the only signal: every severity token is paired with a
+ * text label and a glyph in the components that use it.
+ */
+
+:root {
+  color-scheme: dark;
+
+  /* Surfaces — near-black with a faint cool cast, never pure #000. */
+  --surface-0: #080a0e;
+  --surface-1: #0d1016;
+  --surface-2: #12161e;
+  --surface-3: #181d27;
+  --surface-raised: #1b2029;
+  --surface-input: #0a0d12;
+
+  /* Hairlines and borders. */
+  --line-1: #1e2430;
+  --line-2: #29313f;
+  --line-strong: #3a4557;
+
+  /* Text. */
+  --text-1: #e8ecf3;
+  --text-2: #a4aebf;
+  --text-3: #6f7b8f;
+  --text-inverse: #0a0d12;
+
+  /* Accent — Tari-inspired acid lime, used sparingly and never as a surface.
+     It marks the active route, the selected control, the primary action and the
+     current-price line; everything else stays a dark neutral. */
+  --accent: #b7f04a;
+  --accent-dim: #6f9426;
+  --accent-wash: rgba(183, 240, 74, 0.13);
+  --accent-line: rgba(183, 240, 74, 0.36);
+
+  /* Status. `--up` is deliberately a cooler emerald than the brand accent so a
+     price direction can never be confused with a brand/interaction highlight. */
+  --up: #35d69a;
+  --up-wash: rgba(53, 214, 154, 0.12);
+  --down: #fb7185;
+  --down-wash: rgba(251, 113, 133, 0.12);
+  --warn: #fbbf24;
+  --warn-wash: rgba(251, 191, 36, 0.12);
+  --info: #7dd3fc;
+  --info-wash: rgba(125, 211, 252, 0.12);
+  --muted-wash: rgba(148, 163, 184, 0.1);
+
+  /* Type scale. */
+  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+  --text-xs: 0.6875rem;
+  --text-sm: 0.75rem;
+  --text-md: 0.8125rem;
+  --text-base: 0.875rem;
+  --text-lg: 1rem;
+  --text-xl: 1.25rem;
+  --text-2xl: 1.5rem;
+  --text-3xl: 1.875rem;
+
+  /* Spacing scale. */
+  --s-1: 0.25rem;
+  --s-2: 0.5rem;
+  --s-3: 0.75rem;
+  --s-4: 1rem;
+  --s-5: 1.25rem;
+  --s-6: 1.5rem;
+  --s-8: 2rem;
+  --s-10: 2.5rem;
+  --s-12: 3rem;
+
+  /* Radii — rounded, but never cartoonish. */
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-lg: 14px;
+  --r-xl: 18px;
+  --r-full: 999px;
+
+  /* Elevation — subtle, never heavy shadow. */
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-2: 0 6px 20px -8px rgba(0, 0, 0, 0.6);
+  --shadow-3: 0 18px 48px -16px rgba(0, 0, 0, 0.7);
+
+  /* Layout. */
+  --shell-max: 1560px;
+  --nav-h: 56px;
+  --focus-ring: 0 0 0 2px var(--surface-0), 0 0 0 4px var(--accent);
+
+  /* Motion — restrained, and fully disabled when the user asks for less. */
+  --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+  --dur-fast: 110ms;
+  --dur: 190ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-fast: 0ms;
+    --dur: 0ms;
+  }
+}

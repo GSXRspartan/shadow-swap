@@ -1,14 +1,46 @@
 # UPSTREAM BASELINE
 
-Inspected on: 2026-09-22
+Inspected on: 2026-09-22 (L2 entries); 2026-09-25 (L1 Minotari pin and SHA trace)
+
+## Minotari L1 (`tari-project/tari`) — SOURCE OF TRUTH FOR THE SHA ATOMIC SWAP
+- Repository: https://github.com/tari-project/tari
+- Local checkout: `C:\tmp-tari-l1` (pinned, used for all SHA swap tracing)
+- Tag: `v6.0.0` (workspace version 6.0.0)
+- Commit: `97aa59ecfaf70d8334f14e71d8f7afd6bd40e5e3` — "chore: v6.0.0 release"
+- Wallet inspected: `minotari_console_wallet` (gRPC + automation commands)
+- Network targeted: Esmeralda (testnet only; mainnet refused in our provider)
+- Why we use: the ONLY real L1 SHA atomic-swap primitive available
+  (`TransactionService::send_sha_atomic_swap_transaction`,
+  `OutputManagerService::create_claim_sha_atomic_swap_transaction`,
+  `create_htlc_refund_transaction`) and the base-node wallet RPC used for authoritative
+  readback
+- Key traced facts (full detail in `docs/MINOTARI_ATOMIC_SWAP_API.md`):
+  wallet generates `S` = 32-byte compressed Ristretto point, `H = SHA256(S)` with no
+  domain separation, script
+  `HashSha256 PushHash(H) Equal IfThen PushPubKey(claimant) Else CheckHeightVerify(tip+720) PushPubKey(sender) EndIf`,
+  refund key is the funding wallet's own spend key, refund height hardcoded to tip+720,
+  amounts are u64 microMinotari, the value lives in a blinded commitment
+- Risks/limitations:
+  - No caller control over `S`/`H`/refund key/refund height — the wallet API cannot express
+    our coordinator's intent, so those intent fields are expectations verified by readback
+  - The funded amount is not independently provable from base-node evidence (blinded
+    commitment); our provider reports `amountAuthoritative: false` rather than guessing
+  - Claim requires the preimage to be a canonical valid Ristretto point encoding
+  - WASM bindings (`tari_l1_wasm`) do NOT expose the SHA swap; only the console wallet does
+    → browser path is blocked upstream (see `docs/TARI_BROWSER_SHA_SWAP_UPSTREAM_PLAN.md`)
 
 ## tari-ootle (core L2 protocol)
 - Repository: https://github.com/tari-project/tari-ootle
+- Local checkout: `C:\tmp-tari` (pinned, used for SHA256 interop verification)
 - Branch: development
-- Latest inspected commit: 2+ commits on development branch (shallow clone)
-- Date inspected: 2026-09-22
+- Latest inspected commit: `2d6083e6cc7c98cde93dacebe2fb76b17703f588` (workspace 0.41.1)
+- Date inspected: 2026-09-25
 - License: BSD-3-Clause
-- Why we use: Source of TariSwap template, engine tests, template ABI/lib definitions
+- Why we use: Source of the stealth hashlock semantics our L2 HTLC leg relies on
+  (`crates/engine_types/src/stealth/hashlock.rs` — plain SHA-256, deliberately
+  domain-separation-free for cross-chain interop, NIST "abc" vector tested), the
+  `PayTo::Conditions` two-leaf (hashlock + AfterEpoch) condition trees, and the WASM
+  `build_script_path_witness` input builder
 - Risks/limitations: Heavy development; TariSwap is in engine test templates, not production-grade library; access rules are `.with_access_rules(AccessRules::allow_all())` in the test template
 
 ## ootle-sdk-ts / @chironbuilder/ootle-sdk

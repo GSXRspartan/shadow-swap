@@ -1,9 +1,35 @@
 name: Deploy to GitHub Pages
 
+# NOT A SUPPORTED PRODUCTION TARGET.
+#
+# The supported host is Cloudflare Pages (`wrangler.jsonc` plus the generated
+# `dist/_headers`), because GitHub Pages cannot serve custom response headers at
+# all. Deploying this app to Pages therefore publishes it WITHOUT:
+#
+#   - Content-Security-Policy (including `frame-ancestors`, the clickjacking
+#     control that also encodes the Tari Universe dApp framing allowlist)
+#   - Cross-Origin-Opener-Policy / Cross-Origin-Resource-Policy
+#   - X-Content-Type-Options: nosniff
+#   - Referrer-Policy: no-referrer
+#   - Permissions-Policy
+#
+# `dist/_headers` is still copied into the artifact and then ignored. Because the
+# application builds and signs financial transactions, an unprotected deployment
+# is exactly the kind of silent downgrade this project refuses to ship by
+# accident: publishing requires an explicit acknowledgement, and nothing is ever
+# published by an ordinary push.
+#
+# The header policy itself is generated at build time by
+# `apps/web/scripts/write-deployment-headers.mjs` from
+# `apps/web/src/lib/deploymentHeaders.ts`.
+
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
+    inputs:
+      acknowledge_no_security_headers:
+        description: 'I understand this publishes the app with NO CSP, nosniff, or frame-ancestors'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -17,26 +43,75 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    outputs:
+      publish: ${{ steps.gate.outputs.publish }}
     steps:
+      # Fail-closed, not fail-red.
+      #
+      # The security property is "nothing is ever published without an explicit
+      # acknowledgement", not "every push shows a red check". GitHub resolves a
+      # workflow's triggers from the default branch, so this workflow still
+      # produces a run on pushes to this branch; that run must succeed while
+      # publishing nothing, or the branch carries a permanent misleading failure.
+      - name: Decide whether the acknowledged downgrade applies
+        id: gate
+        env:
+          ACKNOWLEDGED: ${{ inputs.acknowledge_no_security_headers }}
+        run: |
+          if [ "$ACKNOWLEDGED" = "true" ]; then
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+            echo "::warning::Acknowledged: deploying to GitHub Pages with no CSP, no nosniff and no frame-ancestors. R-1 can never be closed from this host."
+            {
+              echo "### Security headers will NOT be served"
+              echo ""
+              echo "GitHub Pages ignores dist/_headers. This deployment has no Content-Security-Policy,"
+              echo "no frame-ancestors, no nosniff, and no COOP/CORP. It is a diagnostic host only."
+            } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Checkout
+        if: steps.gate.outputs.publish == 'true'
         uses: actions/checkout@v4
+      # pnpm MUST be installed before setup-node so any pnpm-aware step can find it. (Previously
+      # setup-node ran with `cache: 'pnpm'` before pnpm existed → "Unable to locate executable
+      # file: pnpm".)
+      #
+      # The pnpm major is pinned to 9 and MUST match the committed lockfile. pnpm-lock.yaml is
+      # lockfileVersion 9.0; a pnpm 10/11 install cannot consume it, so a silent major bump
+      # would fail the build rather than quietly re-resolving the dependency tree.
+      - name: Install pnpm
+        if: steps.gate.outputs.publish == 'true'
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
       - name: Setup Node
+        if: steps.gate.outputs.publish == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: 'pnpm'
-      - name: Install pnpm
-        run: npm install -g pnpm
+      # `--frozen-lockfile` makes the install fail if package.json and pnpm-lock.yaml disagree.
+      # For a financial client that builds transaction-construction code, an unreviewed
+      # dependency bump reaching a deployment is a security event, not a convenience.
       - name: Install dependencies
+        if: steps.gate.outputs.publish == 'true'
         run: pnpm install --frozen-lockfile
       - name: Build static web app
+        if: steps.gate.outputs.publish == 'true'
         run: pnpm --filter @tari-ootle/web build
+      - name: Verify the deployment headers were emitted
+        if: steps.gate.outputs.publish == 'true'
+        run: |
+          test -f apps/web/dist/_headers || { echo "dist/_headers is missing: the clickjacking and CSP headers would not be served"; exit 1; }
+          grep -q 'frame-ancestors' apps/web/dist/_headers || { echo "frame-ancestors missing from the response policy"; exit 1; }
       - name: Upload artifact
+        if: steps.gate.outputs.publish == 'true'
         uses: actions/upload-pages-artifact@v3
         with:
           path: apps/web/dist
 
   deploy:
+    # Never reached on an ordinary push: the gate leaves `publish` unset/false.
+    if: needs.build.outputs.publish == 'true'
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

@@ -5,19 +5,28 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "npm run build:test && vite build && node ./scripts/write-deployment-headers.mjs",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "lint": "echo 'No lint'",
-    "test": "echo 'No tests'"
+    "build:test": "tsc -p tsconfig.test.json && node ./test/write-cjs-marker.mjs",
+    "test": "npm run build:test && node --test test/*.test.cjs",
+    "test:e2e": "npm run build && playwright test --project=chromium-desktop --project=chromium-mobile",
+    "test:e2e:all": "npm run build && playwright test",
+    "test:e2e:install": "playwright install --with-deps chromium firefox",
+    "screenshots": "npm run build && node ./scripts/capture-readme-screenshots.cjs"
   },
   "dependencies": {
-    "@tari-ootle/wallet-adapter": "^0.1.0",
+    "@tari-ootle/protocol-client": "workspace:*",
+    "@tari-ootle/wallet-adapter": "workspace:*",
+    "lightweight-charts": "5.2.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-router-dom": "^7.0.0"
   },
   "devDependencies": {
+    "@playwright/test": "1.56.1",
+    "@types/node": "22.10.5",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.3.0",

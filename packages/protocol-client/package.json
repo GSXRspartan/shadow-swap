@@ -2,18 +2,39 @@
   "name": "@tari-ootle/protocol-client",
   "version": "0.1.0",
   "description": "Protocol client for Tari Ootle liquidity protocol",
+  "type": "commonjs",
   "main": "dist/index.js",
+  "module": "dist/esm/index.js",
   "types": "dist/index.d.ts",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/esm/index.js",
+      "require": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./crosschain": {
+      "types": "./dist/crosschain/index.d.ts",
+      "import": "./dist/esm/crosschain/index.js",
+      "require": "./dist/crosschain/index.js",
+      "default": "./dist/crosschain/index.js"
+    },
+    "./dist/*": "./dist/*",
+    "./package.json": "./package.json"
+  },
   "files": ["dist"],
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && tsc -p tsconfig.esm.json && node ./scripts/write-esm-marker.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "echo 'No lint'",
-    "test": "echo 'No tests'"
+    "test": "npm run build && node --test test/marketplace.test.cjs test/amm.test.cjs test/amm_parity.test.cjs test/history.test.cjs test/crosschain.test.cjs test/minotari.test.cjs test/hostile_crosschain.test.cjs test/hostile_fuzz.test.cjs test/multihop_hostile.test.cjs test/multihop_fuzz.test.cjs test/marketdata_hostile.test.cjs test/marketdata_fuzz.test.cjs test/route_immutability.test.cjs test/packaging.test.cjs",
+    "test:packaging": "npm run build && node --test test/packaging.test.cjs"
   },
   "dependencies": {},
   "devDependencies": {
     "typescript": "^5.7.0"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "//exports": "Dual CJS (dist/*.js) + ESM (dist/esm/*.js) build. The `./dist/*` subpath is preserved because wallet-adapter imports deep module paths. A single published format is mandatory for the module-private settlement-proof brand in multihop/proof.ts: two module instances would reject each other's proofs."
 }

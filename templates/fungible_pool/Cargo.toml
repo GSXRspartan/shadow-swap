@@ -7,9 +7,15 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
-# Pinned to development HEAD (2d6083e6cc7c98cde93dacebe2fb76b17703f588) for compatibility with local C:\tmp-tari checkout
-tari_template_abi = { git = "https://github.com/tari-project/tari-ootle.git", rev = "2d6083e6cc7c98cde93dacebe2fb76b17703f588" }
-tari_template_lib = { git = "https://github.com/tari-project/tari-ootle.git", rev = "2d6083e6cc7c98cde93dacebe2fb76b17703f588" }
+# Pinned to v0.41.1 (tag ba8e20469aadeee065f05566587eb93d5fe4d282, commit 4732f65) for Esmeralda compatibility.
+tari_template_abi = { git = "https://github.com/tari-project/tari-ootle.git", rev = "4732f65ec17a96547050989d78fd70a4e3d94113" }
+# `precision` (192-bit intermediate math) and `extra-arith` (checked_sqrt) are required by the
+# overflow-safe LP/AMM math in lib.rs; both pass through to tari_template_lib_types and are WASM-safe.
+tari_template_lib = { git = "https://github.com/tari-project/tari-ootle.git", rev = "4732f65ec17a96547050989d78fd70a4e3d94113", features = ["precision", "extra-arith"] }
+
+# NOTE: Real engine tests live in the standalone host crate `audit_engine_tests/`, which points
+# tari_template_test_tooling at this template directory and compiles it to WASM. They are kept out
+# of this cdylib package because a `wasm32` cdylib cannot also build host-side integration tests.
 
 [profile.release]
 opt-level = "z"

@@ -26,8 +26,8 @@ Based on upstream TariSwap (`C:\tmp-tari\crates\engine\tests\templates\tariswap\
 |---------|--------------------------|-------------------|
 | Access rules | `AccessRules::allow_all()` (placeholder, UNSAFE) | Strict method-level rules; no admin access |
 | Admin withdrawal | Not present in upstream either | Explicitly absent; no `adminWithdraw` method exists |
-| Fee scale | Per-mil out of 1000 (`fee / 1000`) | Same scale (`fee / 1000`); default 3 = 0.30% |
-| Fee immutability | Stored as `fee: u16`, no setter after new | Same — no `set_fee` method |
+| Fee scale | Per-mil out of 1000 (`fee / 1000`) | **Basis points out of 10_000** (`fee_bps / 10_000`); default 30 bps = 0.30% (OPUS-14: differs intentionally from upstream's per-mil) |
+| Fee immutability | Stored as `fee: u16`, no setter after new | Same — `fee_bps: u16`, no `set_fee` method |
 | LP mint | `ResourceManager::get(lp_resource).mint_fungible(...)` | Same mechanism; only component can mint via access rules |
 | Resource validation | `check_resource_is_fungible` accepts Fungible/Confidential/Stealth | Same validation; rejects non-fungible |
 | First deposit protection | None in TariSwap | Basic protection: initial share calculation uses large base factor (1_000_000) to prevent extreme ratio manipulation; minimum liquidity lock recommended for production |
@@ -79,7 +79,7 @@ This requires either a faucet template or an existing token resource. For the ve
 ### 4. Instantiate pool component
 ```
 # Transaction manifest must include:
-# - Call `Pool::new(resource_a, resource_b, 3)` (fee = 3 => 0.30%)
+# - Call `Pool::new(resource_a, resource_b, 30)` (fee_bps = 30 => 0.30%)
 # - Use exact resource addresses for native Tari and test token
 # - Submit via wallet daemon with proper account proof
 ```

@@ -48,9 +48,9 @@ amount_b = ceil(lp_ratio * balance_b / 1_000_000)
 Note: `.div_ceil()` introduces upward rounding; over many cycles this could extract slightly more than entitlement. Must use safe integer division with documented rounding direction.
 
 ## Fee behavior
-- Fee is immutable after creation (`fee: u16` stored in component)
-- 100% of fee remains in pool reserves (no separate fee vault)
-- Initial default should match upstream practice (0.30% = 3 per-mil if using same scale, but TariSwap uses 0..100 = 0%..10%). Our protocol uses 30 basis points = 0.30% independently.
+- Upstream fee is immutable after creation (`fee: u16` stored in component), expressed as **per-mil out of 1000** (e.g. 50 = 5%; range 0..100 = 0%..10%).
+- 100% of fee remains in pool reserves (no separate fee vault).
+- **Our protocol uses BASIS POINTS instead (OPUS-14)**: `fee_bps: u16`, `fee_bps / 10_000` (range 1..1000 bps = 0.01%..10%), default 30 bps = 0.30%. This intentionally differs from upstream's per-mil scale so the on-chain math matches `pool_math`, `protocol_types::FeeTier`, the route matrix, and the UI display.
 
 ## Native Tari
 Native Tari is `STEALTH_TARI_RESOURCE_ADDRESS` (upstream: `crates/template_lib_types/src/constants.rs` line 63):`

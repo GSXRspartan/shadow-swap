@@ -1,0 +1,189 @@
+name: Node Tests
+
+# Runs the TypeScript package builds and test suites (protocol-client, wallet-adapter)
+# plus the browser frontend suite.
+# This is the validation channel for packages whose local environment may be offline.
+#
+# This workspace uses PNPM (pnpm-workspace.yaml, workspace:* deps). The pnpm major is
+# pinned to 9 in root package.json (`packageManager` + a constrained `engines.pnpm`) and
+# MUST match the committed pnpm-lock.yaml (lockfileVersion 9.0). `--frozen-lockfile`
+# fails the build if the manifest and the lockfile disagree, so an unreviewed dependency
+# bump cannot reach a deployment.
+#
+# WHY ONE JOB PER PACKAGE
+#
+# These were a single sequential job with one 35-minute budget, so a slow package
+# silently skipped every package after it, and the browser job's 25-minute budget
+# covered three Playwright projects. Measured on a 4-core developer machine, the
+# protocol-client suite alone takes ~23 minutes because four of its suites each run
+# 50k-100k randomised iterations; on a 2-vCPU runner that exceeds a shared 35-minute
+# budget. The suites are NOT to be weakened to fit a timeout, so each job now carries
+# its own budget and a failure can no longer hide the packages that follow it.
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - "feat/**"
+      - "security/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  protocol-client:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Includes the AMM, marketplace, cross-layer, Minotari, multi-hop, market-data,
+      # route-immutability and packaging suites, plus the hostile and fuzz suites.
+      - name: protocol-client typecheck + tests
+        run: pnpm --filter @tari-ootle/protocol-client run typecheck && pnpm --filter @tari-ootle/protocol-client run test
+
+  wallet-adapter:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+
+      # wallet-adapter typechecks and tests against protocol-client's BUILT output
+      # (dist/ is not committed), so the dependency must be built first. In the
+      # previous single-job layout this happened implicitly through job ordering;
+      # as a standalone job it must be explicit.
+      - name: Build protocol-client (workspace dependency)
+        run: pnpm --filter @tari-ootle/protocol-client run build
+
+      - name: wallet-adapter typecheck + tests
+        run: pnpm --filter @tari-ootle/wallet-adapter run typecheck && pnpm --filter @tari-ootle/wallet-adapter run test
+
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+
+      # The web app typechecks, tests, and builds against both workspace packages'
+      # BUILT output (dist/ is not committed), so both must be built first.
+      - name: Build workspace packages
+        run: |
+          pnpm --filter @tari-ootle/protocol-client run build
+          pnpm --filter @tari-ootle/wallet-adapter run build
+
+      - name: web typecheck
+        run: pnpm --filter @tari-ootle/web run typecheck
+
+      # Several node suites assert the PRODUCTION artifacts (dist/_headers, the
+      # source-map policy, the shipped bundle's import surface), so the build
+      # must exist before the tests run — in the previous single-job layout the
+      # same ordering constraint was invisible because dist/ already existed on
+      # the developer machine.
+      - name: web production build
+        run: pnpm --filter @tari-ootle/web run build
+
+      - name: web tests
+        run: pnpm --filter @tari-ootle/web run test
+
+      # A build-time existence check is not a delivery guarantee: it proves the file was
+      # emitted, not that a host served it. R-1 stays open until the deployed origin is
+      # observed (see docs/TESTNET_HOSTING.md).
+      - name: Verify the deployment headers were emitted
+        run: |
+          test -f apps/web/dist/_headers || { echo "dist/_headers is missing"; exit 1; }
+          grep -q 'frame-ancestors' apps/web/dist/_headers || { echo "frame-ancestors missing"; exit 1; }
+
+  browser-security:
+    # Real-browser security flows, in three projects: Chromium desktop, Chromium mobile
+    # and Firefox. Firefox is included deliberately -- it is the only place cross-engine
+    # coverage can be claimed, since a developer machine cannot run it reliably here.
+    # The budget covers three full projects plus a browser install on a 2-vCPU runner.
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+
+      # The e2e build resolves both workspace packages' built output.
+      - name: Build workspace packages
+        run: |
+          pnpm --filter @tari-ootle/protocol-client run build
+          pnpm --filter @tari-ootle/wallet-adapter run build
+
+      - name: Install Playwright browsers
+        run: pnpm --filter @tari-ootle/web exec playwright install --with-deps chromium firefox
+
+      # `test:e2e:all` includes Firefox, which the local script omits: the
+      # Playwright Firefox build is not present on every developer machine.
+      # This runner has it, so cross-engine coverage is gated here.
+      - name: Browser security flows
+        run: pnpm --filter @tari-ootle/web run test:e2e:all
+
+      - name: Upload failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-artifacts
+          path: apps/web/test-results/
+          retention-days: 7

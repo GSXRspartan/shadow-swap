@@ -1,131 +1,455 @@
 # Tari Ootle Liquidity Protocol
 
-A public, permissionless, non-custodial liquidity protocol for Tari Ootle.
+[![Node Tests](https://github.com/GSXRspartan/tari-ootle-liquidity-protocol/actions/workflows/node-tests.yml/badge.svg)](https://github.com/GSXRspartan/tari-ootle-liquidity-protocol/actions/workflows/node-tests.yml)
+[![Security Engine Tests](https://github.com/GSXRspartan/tari-ootle-liquidity-protocol/actions/workflows/security-engine-tests.yml/badge.svg)](https://github.com/GSXRspartan/tari-ootle-liquidity-protocol/actions/workflows/security-engine-tests.yml)
+
+A non-custodial trading and liquidity protocol built primarily around **Tari Ootle L2**, with an
+experimental **Minotari L1 ↔ Ootle L2** atomic-swap route. It combines a permissionless constant-product
+AMM, an NFT marketplace, a browser trading frontend, an informational market-data pipeline, and a
+cross-layer coordination layer that treats chain rereads — never discovery data — as settlement
+authority.
+
+> **TESTNET / EXPERIMENTAL.** Mainnet is intentionally disabled in every layer of this build.
+> Do not use funds you cannot afford to lose. Nothing in this repository is an audit, a
+> guarantee, or production readiness. See [Status](#current-status) and
+> [Security](#security) for what has and has not been verified.
 
 ## What this is
-- Non-custodial AMM for fungible Ootle assets.
-- Native Tari support (P0 Experimental).
-- Permissionless pool factory (no admin withdrawal, no upgrade keys).
-- Static web frontend deployable to GitHub Pages.
-- Wallet adapter interface supporting browser extension, embedded mobile, walletd, and Sapient (adapter interface only).
 
-## What this is NOT
-- Not a centralized exchange.
-- Not a custody service.
-- Not an audited mainnet product.
-- Not a guaranteed legal safe harbor.
-- Not a private/confidential AMM (pool reserves are public by design).
+- **Public fungible AMM** on Ootle — constant-product pools with LP shares, LP trading fees,
+  and strict on-chain access rules (no admin withdrawal, no upgrade keys, no owner).
+- **NFT marketplace** — fixed-price listings, item-specific offers, collection-wide bids, and
+  Sell Now, all settled against an exact `(ResourceAddress, NonFungibleId)` identity with an
+  authoritative reread before anything is signed.
+- **Market data** — canonical trade/activity records, exact rational prices, OHLCV candles,
+  pool metrics, and an honest outage/degraded model. Strictly informational.
+- **Browser trading frontend** — pool discovery, market pages with candlestick/volume charts,
+  swap, add/remove liquidity, NFT marketplace, activity history with reconciliation, wallet
+  state, and mobile-responsive layout.
+- **Experimental cross-layer route** — `XTM → TARI → AMM` composed through the
+  `FAST_XTM_TARI` coordinator: a Minotari L1 SHA-256 HTLC leg, an Ootle L2 hashlock leg, a
+  terminal settlement proof, and a state machine that fails closed at every irreversible step.
+- **Durable operation history** — persisted display state that can never satisfy an
+  authoritative reread, with `UNKNOWN` treated as a reconciliation state, never as failure.
+
+## What this is not
+
+- Not a custody service, an exchange, or a yield product. Keys stay with the user.
+- Not a private or confidential AMM. Pool reserves and trade amounts are public by design;
+  stealth/confidential assets are out of scope for the public pools (see
+  [docs/ROUTE_MATRIX.md](docs/ROUTE_MATRIX.md)).
+- Not audited, not production ready, not mainnet ready, and not a guaranteed legal safe harbour.
+- Not a repository that will ever claim those things without evidence.
+
+## Screenshots
+
+Sampled from the shipped production bundle running against the same deterministic indexer
+fixtures the browser security suite uses. They show the interface, **not** live market state —
+the disconnected state is exactly what renders (no wallet, no synthetic balances).
+
+| Pool market page (desktop) | NFT collection (desktop) | Mobile pool page |
+| --- | --- | --- |
+| ![Pool market page](docs/screenshots/pool-market.png) | ![NFT marketplace](docs/screenshots/nft-marketplace.png) | ![Mobile pool page](docs/screenshots/mobile-pool.png) |
+
+Reproduce with `pnpm --filter @tari-ootle/web run screenshots`.
 
 ## Current status
 
-| Priority | Route | Status |
-|----------|-------|--------|
-| P0 | Public Fungible / Tari Native | Experimental |
-| P1 | Public Fungible / Public Fungible | Experimental |
-| P2 | Stealth / Tari Native | Blocked (privacy disclosure required) |
-| P2 | Stealth / Public Fungible | Blocked |
-| P3 | Wrapped Stablecoin / Tari | Blocked (upstream admin controls must be excluded) |
-| P3 | Private Stablecoin Direct / Public | Blocked |
-| P4 | NFT Collection / Tari Native | Blocked (separate non-fungible design needed) |
+Feature status as of the current branch. `IMPLEMENTED` means the code path exists, is exercised
+by the repository's own suites, and has no known fund-loss path under the tested model — it does
+**not** mean it has been exercised against a live chain (see
+[Testnet status](#testnet-status)).
+
+| Feature | Status |
+| --- | --- |
+| Public fungible AMM (constant product) | IMPLEMENTED |
+| Add / remove liquidity with LP accounting | IMPLEMENTED |
+| LP trading fees (30 bps default, 100% to LPs) | IMPLEMENTED |
+| TARI / public-token markets | IMPLEMENTED |
+| wSTABLE (issuer-controlled quote asset) markets | IMPLEMENTED, with explicit issuer-risk disclosure |
+| NFT fixed-price listings | IMPLEMENTED |
+| NFT item offers | IMPLEMENTED |
+| NFT collection bids (partial fills) | IMPLEMENTED |
+| Sell Now (fill a collection bid) | IMPLEMENTED |
+| Durable operation history | IMPLEMENTED |
+| UNKNOWN reconciliation (no blind resubmit) | IMPLEMENTED |
+| Market data (trades, OHLCV, pool metrics) | IMPLEMENTED (informational only) |
+| Browser frontend (React 19 + Vite 6) | IMPLEMENTED |
+| Browser wallet abstraction + shown == signed gate | IMPLEMENTED |
+| `FAST_XTM_TARI` cross-layer coordinator | EXPERIMENTAL — protocol complete, real submit gated OFF |
+| `XTM → TARI → AMM` route composition | IMPLEMENTED, EXTERNALLY GATED behind hop-1 proof |
+| Browser L1 SHA atomic-swap primitives | BLOCKED_EXTERNAL (upstream wallet capability) |
+| Reverse route (`TARI → XTM`) | BLOCKED_EXTERNAL (no L1 amount-authority API) |
+| Cloudflare Pages deployment (security headers) | CONFIGURED, NOT LIVE — R-1 open |
+| GitHub Pages deployment | Intentionally NOT a supported interactive target (cannot serve the security policy) |
+| Mainnet | DISABLED at every layer |
 
 ## Architecture
-- `crates/pool_math`: integer constant-product AMM math (no floats).
-- `crates/protocol_types`: resource identifiers, fee tiers, route matrix.
-- `packages/wallet-adapter`: adapter interface + implementations.
-- `packages/protocol-client`: indexer/network abstraction.
-- `packages/ootle-wallet-core`: SDK wrapper (scaffold).
-- `packages/ui-components`: shared React components (scaffold).
-- `apps/web`: static React/Vite frontend.
-- `apps/extension`: browser extension signer scaffold.
-- `apps/mobile`: Capacitor mobile scaffold.
-- `docs/`: design, security, upstream reference, audit checklist.
 
-## Build and test
+```mermaid
+flowchart TB
+    subgraph Browser["Browser"]
+        UI["Frontend (React/Vite)<br/>discovery · market pages · swap · NFTs · history"]
+        PC["Protocol client<br/>AMM resolvers · marketplace resolvers<br/>multi-hop router · FAST_XTM_TARI coordinator"]
+        WA["Wallet adapter<br/>review → shown == signed → sign"]
+        UI --> PC --> WA
+    end
+    WA -->|hashlock funding / claim / swap intents| Ootle["Ootle L2 chain"]
+    WA -->|SHA HTLC fund / claim / refund| L1["Minotari L1"]
+    Ootle -->|authoritative rereads| PC
+    L1 -->|script readbacks| PC
 
-### Rust
+    subgraph Informational["Informational only — never execution authority"]
+        IDX["Indexer / discovery"] --> MD["Market data<br/>trades · OHLCV · pool metrics"]
+        MD --> UI
+    end
+```
+
+**Market data is not execution authority.** Discovery responses may be hostile or stale; every
+swap, liquidity, marketplace, and cross-layer action re-reads the authoritative component state
+from the wallet/chain before anything is constructed, and a requote or refusal is the correct
+outcome of a stale read. A poisoned indexer can degrade what you *see*, never what you *sign*.
+
+Trust boundaries in one line each:
+
+| Layer | Authority it holds |
+| --- | --- |
+| Discovery / indexer | Informational only; bounded transport; failures are states, never empty results |
+| Chain / wallet reread | The only settlement authority; resolvers fail closed on unvouchable state |
+| Frontend | Presentation and user intent; display values are type-branded away from execution inputs |
+| Wallet | Signing authority; the reviewed request is forwarded verbatim (`shown == signed`) |
+| Cross-layer coordinator | State, deadlines, UNKNOWN reconciliation, restart recovery; never trusts durable state alone |
+
+## The AMM
+
+- **Exact integer math everywhere.** Amounts are BigInt decimal strings on the client and
+  checked `u128`/192-bit intermediates on-chain. No floats, no rounding in the user's favour.
+- **Constant product with fees.** Output is `floor(rOut · e / (rIn + e))` where
+  `e = floor(in · (10000 − feeBps) / 10000)`; the full input is deposited, so the fee stays in
+  the pool and the constant product never decreases.
+- **First-deposit protection.** Initial shares are `floor(sqrt(a·b))` with a permanently locked
+  minimum; subsequent mints take the weaker proportional side against pre-deposit reserves.
+- **`min_output` is on-chain.** Slippage protection is enforced by the pool template; the
+  frontend derives it from a fresh quote and refuses to floor it to zero without an explicit,
+  auditable choice.
+- **Resource safety.** Assets are classified — `CANONICAL_TARI`, `PUBLIC_IMMUTABLE_OR_VETTED`,
+  `ISSUER_CONTROLLED`, `UNKNOWN`, `UNSUPPORTED` — by exact `ResourceAddress` (never by symbol or
+  metadata), and issuer-controlled assets require explicit acknowledgement before routing.
+- **Client/chain parity.** An independent reference model (Rust) and an independent BigInt model
+  (TypeScript) both re-derive the template's semantics; swap/LP sequence conservation is asserted
+  by property tests rather than by trusting the implementation as its own oracle.
+
+Deeper material: [docs/FIRST_DEPOSIT_AUDIT.md](docs/FIRST_DEPOSIT_AUDIT.md),
+[docs/LP_AUTHORITY_MODEL.md](docs/LP_AUTHORITY_MODEL.md),
+[security/LP_INVARIANTS.md](security/LP_INVARIANTS.md).
+
+## NFT marketplace
+
+- **Fixed-price listings** — one escrowed NFT per component, exact-price buy, seller-only
+  cancel, expiry that blocks buys.
+- **Item offers** — a buyer-funded escrow for one exact `(collection, nftId)`, buyer-only cancel,
+  one-time refund at expiry.
+- **Collection bids** — a standing limit order for up to N items from one collection with
+  per-item partial fills; `remaining_escrow == price_per_nft × remaining_quantity` is maintained
+  through fill/cancel/expiry, and terminal states refuse further fills.
+- **Sell Now** — ranks discovered bids but settles only against an authoritative readback of the
+  selected bid component.
+- Identity is the exact `ResourceAddress + NonFungibleId`; collection names and metadata never
+  influence settlement. Discovered marketplace state is a candidate, never a authority: every
+  route rereads the listing/offer/bid component before constructing a transaction.
+
+Deeper material: [docs/NFT_DESIGN.md](docs/NFT_DESIGN.md).
+
+## FAST_XTM_TARI — experimental cross-layer route
+
+Conceptually:
+
+```text
+XTM on Minotari L1
+        ↓  SHA-256 hashlock (H = SHA256(S), S generated inside the L1 wallet)
+TARI on Ootle L2
+        ↓  terminal settlement proof
+AMM → destination asset
+```
+
+The coordinator (`packages/protocol-client/src/crosschain`) runs an explicit state machine —
+`QUOTED → RESERVED → L1_FUNDING → L1_FUNDED → L2_FUNDING → BOTH_FUNDED → CLAIM_ARMED → …` — with
+these load-bearing properties:
+
+- **Quotes are validated entirely before inventory is reserved**, and a quote can back at most
+  one reservation (replay refused).
+- **Second-leg funding requires an authoritative first-leg verification stamp**; the state
+  machine itself refuses to record unproven evidence, and `amountAuthoritative: false` fails
+  closed.
+- **`CLAIM_ARMED` re-observes both chains fresh** at arm time — a reorg, a spend, a capability
+  loss, or a deadline drift between funding and arming moves the session to recovery *before*
+  the preimage can be disclosed.
+- **UNKNOWN is never failure.** A lost submission response forces reconciliation; terminal
+  states stay terminal; recovery is absorbing and never auto-resumes execution.
+- **Deadlines live in separate domains** (L1 heights vs L2 epochs), are derived from
+  authoritative reads, and are re-checked immediately before every irreversible phase.
+
+### Current cross-layer limitations
+
+1. **Browser L1 atomic primitives are upstream-blocked.** The normal browser wallet/provider
+   path does not yet expose the Minotari SHA atomic-swap operations
+   (`tari_l1_wasm` has no SHA swap surface). Ordinary browser XTM atomic swaps are therefore
+   **not functional today**; the UI shows an explicit blocker rather than a button.
+   [docs/TARI_BROWSER_SHA_SWAP_UPSTREAM_PLAN.md](docs/TARI_BROWSER_SHA_SWAP_UPSTREAM_PLAN.md)
+   tracks the upstream plan.
+2. **L1 amount authority fails closed.** Minotari output amounts live in blinded commitments; a
+   base-node readback alone cannot prove the plaintext amount. When no authoritative amount
+   evidence exists, the protocol refuses to treat the amount as proven — an intentional safety
+   boundary, not a bug. [security/MINOTARI_AUTHORITY_MODEL.md](security/MINOTARI_AUTHORITY_MODEL.md).
+3. **Real submission is gated OFF.** Testnet real submission requires the explicit environment
+   gate described below; mainnet never passes.
+
+Deeper material: [docs/FAST_XTM_TARI_ARCHITECTURE.md](docs/FAST_XTM_TARI_ARCHITECTURE.md),
+[docs/MINOTARI_ATOMIC_SWAP_API.md](docs/MINOTARI_ATOMIC_SWAP_API.md).
+
+## Multi-hop: XTM → TARI → AMM
+
+```text
+XTM
+ ↓  FAST_XTM_TARI (hop 1, experimental)
+TARI on Ootle L2
+ ↓  AMM swap (hop 2)
+wSTABLE / public token
+```
+
+- Hop 2 is constructible **only** from a minted, chain-proven terminal settlement proof; the
+  proof is revalidated against authoritative chain state before every hop-2 construction, and
+  its age window is a liveness bound, never a substitute for a chain read.
+- Hop 2's input is the **actual settled TARI amount** from the proof — never the quote.
+- The AMM requotes after hop 1; if the refreshed quote cannot still deliver the user's accepted
+  final minimum, the route pauses for a user decision rather than lowering `min_output`.
+- **Partial completion is a first-class outcome.** If hop 1 settles and hop 2 fails, the user
+  keeps their TARI and the route pauses — it is not reported as a total loss.
+- A failed/unknown hop-2 submission is reconciled by durable id; only an authoritative
+  `REJECTED`/`NOT_FOUND` lookup ever permits resubmission.
+
+Deeper material: [security/MULTIHOP_INVARIANTS.md](security/MULTIHOP_INVARIANTS.md),
+[security/MULTIHOP_ATTACK_MATRIX.md](security/MULTIHOP_ATTACK_MATRIX.md).
+
+## Market data
+
+- Canonical, idempotently-identified trade/activity records (trade / add / remove), derived
+  OHLCV candles, recent trades, 24h volume, LP fees, and liquidity metrics.
+- Prices are **exact rationals** internally; a single, documented display boundary converts to
+  `Number` for the chart.
+- Hostile observations are rejected: a trade that would reduce a pool's constant product is
+  refused before it can become a candle or a volume ranking.
+- The source model is traced from upstream — historical trades via paginated events, live via
+  SSE, **no consensus timestamps** (sub-epoch candles are marked unsupported rather than
+  fabricated), and **no automatic reorg detection** (`BLOCKED_EXTERNAL`).
+- Health is explicit: `SYNCED / SYNCING / STALE / DEGRADED / UNAVAILABLE`, with a global outage
+  banner that says what could not be read instead of rendering tables that look empty.
+
+Deeper material: [docs/MARKET_DATA_SOURCE_MODEL.md](docs/MARKET_DATA_SOURCE_MODEL.md),
+[security/MARKET_DATA_RESIDUAL_RISKS.md](security/MARKET_DATA_RESIDUAL_RISKS.md).
+
+## Frontend
+
+React 19 · Vite 6 · TypeScript 5.9 · React Router 7 · Lightweight Charts 5.2.1.
+
+- **Pools** — discovery with safety classification, market metrics, search and sorting.
+- **Pool market page** — market header, candlestick/volume chart with honest interval support,
+  swap card, liquidity panel, route panel, pool activity.
+- **NFTs** — collections, item grid with validated off-chain metadata (https-only, size-capped,
+  sanitised), listings/offers/bids/quote-book tabs, item detail.
+- **Activity** — durable operation history with explicit `UNKNOWN` reconciliation and a clear
+  "persisted claim ≠ chain-verified settlement" distinction.
+- **Wallet dialog** — status, network, gate state, per-leg capability advertisement.
+- **Honest degradation** — global outage notice, per-page unavailable states, no fabricated
+  zero-state data, mobile-responsive down to 360px.
+
+The frontend never references `window.tari` outside the single integration boundary
+(`services/tariWindow.ts`), which allow-lists methods, bounds non-interactive reads, and never
+gives a signing request a deadline.
+
+## Wallet architecture
+
+The production direction is browser-first:
+
+```text
+Web app → wallet adapter → browser Tari provider → self-custodial wallet
+```
+
+- Normal users are **not** expected to need a console wallet, `walletd`, a shell, a cloned
+  backend, or a localhost service — those exist as development/reference paths only
+  (`VITE_ENABLE_DEV_PROVIDERS` requires a development build).
+- The adapter interface exposes extension/embedded/wallet-daemon adapters; the Sapient adapter
+  is an explicit-unsupported seam pending a stable upstream dApp API.
+- Every financial operation goes through the review gate: a differential diff between the
+  reviewed transaction and the built intent, identity re-verification at authorization time
+  (provider object identity, network, account), and the reviewed request forwarded verbatim to
+  the signer.
+
+Deeper material: [docs/FRONTEND_TRUST_BOUNDARIES.md](docs/FRONTEND_TRUST_BOUNDARIES.md),
+[docs/FRONTEND_SECURITY_MODEL.md](docs/FRONTEND_SECURITY_MODEL.md).
+
+## Operations and recovery
+
+Operation states are `PENDING → SUBMITTED → CONFIRMED | FAILED | UNKNOWN`:
+
+- **`UNKNOWN ≠ FAILED`.** A lost response is displayed as *unknown* and requires reconciliation
+  by durable id; the UI offers no blind retry.
+- Only an authoritative lookup that proves rejection or non-existence permits resubmission.
+- Restart recovery re-derives real state from both chains rather than trusting the stored
+  pre-crash state, and terminal sessions are never re-driven.
+- Persisted history is a display cache under tamper resistance: allow-listed fields, forbidden
+  fields (including any secret-shaped key) rejected on sight, and a persisted `CONFIRMED` badge
+  is always presented as an *unverified claim* until an authoritative reread proves it.
+
+## Security
+
+Security testing has repeatedly found and fixed defects here — including critical- and
+high-severity issues — and the repository retains the regressions and attack matrices for every
+finding. That is evidence of effort, **not** a claim of production or mainnet readiness.
+
+What has been exercised (non-exhaustively):
+
+- Ootle engine testing of the pool and marketplace templates (Linux CI; Windows cannot build the
+  engine toolchain), plus independent/reference-model AMM checks and hostile LP/resource cases.
+- Cross-layer and multi-hop attack matrices with state-machine fuzzing (100k+ randomized
+  transition attempts) and crash/restart recovery.
+- Market-data poisoning (impossible-price trades, dedupe, reorg handling).
+- Browser wallet/provider attacks (spoofed providers, TOUCOOU between review and sign, silent
+  providers), persistence tampering, XSS/untrusted metadata, and shown == signed equivalence.
+- Clickjacking/CSP enforcement in real browsers (Chromium and Firefox), deployment-header
+  checks, and a full independent "Pixel Canary" adversarial pass.
+
+Selected retained evidence:
+
+| Document | What it covers |
+| --- | --- |
+| [security/PIXEL_CANARY_FULL_ATTACK_MATRIX.md](security/PIXEL_CANARY_FULL_ATTACK_MATRIX.md) | The whole-repository independent adversarial pass (68 classified rows) |
+| [security/PIXEL_CANARY_ARCHITECTURE_REVIEW.md](security/PIXEL_CANARY_ARCHITECTURE_REVIEW.md) | Independent architecture review, kept boundaries, fail-open patterns found |
+| [security/CROSS_LAYER_ATTACK_MATRIX.md](security/CROSS_LAYER_ATTACK_MATRIX.md) / [security/CROSS_LAYER_INVARIANTS.md](security/CROSS_LAYER_INVARIANTS.md) | Cross-layer coordinator audit and invariants |
+| [security/MULTIHOP_ATTACK_MATRIX.md](security/MULTIHOP_ATTACK_MATRIX.md) / [security/MULTIHOP_INVARIANTS.md](security/MULTIHOP_INVARIANTS.md) | Route-composition audit and invariants |
+| [security/LP_HOSTILE_AUDIT_REPORT.md](security/LP_HOSTILE_AUDIT_REPORT.md) / [security/LP_INVARIANTS.md](security/LP_INVARIANTS.md) | AMM/LP hostile audit and invariants |
+| [security/FRONTEND_HOSTILE_AUDIT_REPORT.md](security/FRONTEND_HOSTILE_AUDIT_REPORT.md) / [security/FRONTEND_RESIDUAL_RISKS.md](security/FRONTEND_RESIDUAL_RISKS.md) | Frontend/hostile-browser audit and residual risks |
+| [security/MINOTARI_AUTHORITY_MODEL.md](security/MINOTARI_AUTHORITY_MODEL.md) | Field-by-field L1 amount authority classification |
+| [security/DEPLOYMENT_SECURITY_MATRIX.md](security/DEPLOYMENT_SECURITY_MATRIX.md) | Deployment/hosting security posture |
+| [docs/SECURITY_AUDIT_OPUS.md](docs/SECURITY_AUDIT_OPUS.md) | Template-level audit (OPUS) including the resource-recall limitation |
+
+## Testing and CI
+
+Two GitHub Actions workflows gate every push to this branch:
+
+- **Node Tests** — `pnpm install --frozen-lockfile`, then per-package typecheck + tests
+  (`protocol-client`, `wallet-adapter`, `web` including the production build and
+  deployment-header assertions), plus the full browser-security suite (Chromium desktop, Chromium
+  mobile, Firefox) with failure artifacts.
+- **Security Engine Tests** — the Rust crates and the Ootle engine test suite on Linux
+  (`pool_math`, `pool_ref_model`, `protocol_types`, `audit_engine_tests`).
+
+Exact counts drift with the branch; prefer the badge. As of `72e29de`: protocol-client 201/201,
+wallet-adapter 21/21, web node 221/221, Chromium e2e 98/98 (desktop + mobile), hosting suite
+17/17, engine suite green in CI. The fuzz/property suites include 100k-transition state-machine
+fuzzing and 50k structured script mutations.
+
+## Development
+
+Requirements: Node ≥ 20, **pnpm 9.15.9** (pinned; the committed lockfile is `lockfileVersion 9.0`
+and installs are frozen in CI).
+
 ```bash
-# Build and test pool math
+pnpm install --frozen-lockfile      # install
+pnpm typecheck                      # all packages
+pnpm test                           # all packages (protocol-client includes its build)
+pnpm --filter @tari-ootle/web run dev        # frontend dev server
+pnpm --filter @tari-ootle/web run build      # production build + dist/_headers
+pnpm --filter @tari-ootle/web run test:e2e   # Chromium e2e (desktop + mobile)
+pnpm --filter @tari-ootle/web run test:e2e:all  # + Firefox (needs `run test:e2e:install` once)
+
 cargo test --manifest-path crates/pool_math/Cargo.toml
+cargo test --manifest-path crates/pool_ref_model/Cargo.toml --release
+cargo test --manifest-path audit_engine_tests/Cargo.toml   # Linux (CI); the engine toolchain does not compile on Windows
 ```
 
-### TypeScript
-```bash
-# Install dependencies
-pnpm install
+Workspace layout:
 
-# Type check
-pnpm typecheck
+| Path | Contents |
+| --- | --- |
+| `packages/protocol-client` | AMM/marketplace resolvers, cross-layer coordinator, multi-hop router, market data, Minotari script tooling (zero runtime dependencies) |
+| `packages/wallet-adapter` | Wallet adapters, transaction builders, wiring for the protocol client |
+| `apps/web` | React/Vite frontend, e2e + hosting suites, deployment-header generation |
+| `templates/` | Ootle templates: `fungible_pool`, `nft_marketplace`, `nft_item_offer`, `nft_collection_bid` |
+| `crates/` | `pool_math` (reference integer math), `pool_ref_model` (independent oracle), `protocol_types` |
+| `audit_engine_tests/` | Rust engine-level security tests (CI/Linux) |
+| `packages/ootle-wallet-core`, `packages/ui-components`, `apps/extension`, `apps/mobile` | Scaffolds — not yet part of the shipped application |
 
-# Build web
-pnpm --filter @tari-ootle/web build
-```
+## Environment variables
 
-### Build verification
-```bash
-# Verify static output
-ls apps/web/dist/
-# Verify extension manifest
-cat apps/extension/manifest.json
-# Verify no secrets in build
-find apps/web/dist -type f | head -20
-```
+All frontend variables are **public** (Vite embeds them in the bundle; never put secrets here).
 
-## Security status
-- Non-custodial architecture: user controls keys.
-- No admin withdrawal mechanism in design.
-- No protocol trading fee (0% developer fee).
-- No upgrade mechanism for deployed pools.
-- Wallet adapter requires independent transaction preview before signing.
-- CSP configured for static site.
-- Dependencies pinned; lock files committed.
+| Variable | Effect |
+| --- | --- |
+| `VITE_TARI_NETWORK` | `esmeralda` (default) or `localnet`. Anything resembling mainnet is refused and the build blocks with an explicit error. |
+| `VITE_INDEXER_URL` | Optional additional discovery/indexer origin (https required in production builds). |
+| `VITE_USE_FIXTURE_DATA` | Fixture market data — **development builds only**; a shipped bundle refuses it and shows a blocking notice. |
+| `VITE_ENABLE_DEV_PROVIDERS` | Development wallet providers (walletd etc.) — development builds only. |
+| `VITE_WALLETD_URL` | walletd endpoint for the development providers; ignored without the flag above. |
 
-## Security findings / known issues
-- TariSwap upstream uses `AccessRules::allow_all()` in test templates; our production templates must implement strict access rules.
-- First-deposit vulnerability exists if tiny initial liquidity allows ratio manipulation; minimum liquidity lock is recommended but not yet enforced.
-- Stealth/confidential routes reveal amounts at the AMM boundary; privacy claims must explicitly state this.
-- No formal smart contract audit completed.
-- No mainnet deployment yet; target is Esmeralda testnet.
+Security-sensitive flag: `TARI_LIQUIDITY_ENABLE_REAL_CROSSCHAIN_SUBMIT=1` enables **testnet**
+real cross-chain submission for the coordinator. It is OFF by default, is mirrored by the
+frontend's gate display, and mainnet never passes the gate. No secrets belong in any of these
+variables.
 
-## Wallet adapter status
-- BrowserExtensionWalletAdapter: implemented (requires extension installation).
-- EmbeddedOotleWalletAdapter: implemented (requires SDK wiring).
-- SapientWalletAdapter: adapter interface with explicit unsupported errors; stable public dApp API is missing upstream.
-- WalletDaemonAdapter: implemented for development/testing.
+## Deployment
 
-## Upstream versions inspected
-- tari-ootle (development branch, 2026-09-22)
-- tari-cli (main, 2026-09-22)
-- stable-coin (main, 2026-09-22)
-- @chironbuilder/ootle-sdk 0.1.11 (npm, published ~6 days before inspection)
-- TariSwap source: `crates/engine/tests/templates/tariswap/src/lib.rs` (BSD-3-Clause)
+- **Cloudflare Pages is the intended static deployment target.** The production build generates
+  `dist/_headers` (CSP including `frame-ancestors`, nosniff, COOP/CORP, Referrer-Policy,
+  Permissions-Policy) from a single source of truth in the code.
+- **GitHub Pages cannot serve `dist/_headers`** and would publish the signing UI without its
+  security policy. The Pages workflow therefore only runs on manual dispatch and requires an
+  explicit acknowledgement; it is not the supported interactive target
+  ([docs/GITHUB_PAGES.md](docs/GITHUB_PAGES.md)).
+- **Current status: configured, not live.** The headers are authored, generated, and
+  browser-tested locally, but no live HTTPS origin has been observed serving them
+  (audit item R-1, open). The exact closure procedure is in
+  [docs/TESTNET_HOSTING.md](docs/TESTNET_HOSTING.md).
+
+## Testnet status
+
+Network availability is a property of the *week*, not of the architecture — this section states
+the distinction:
+
+- **Esmeralda/Ootle availability (checked 2026-09-27, read-only):** the configured indexer
+  endpoints (`indexer.esmeralda.tari.com`, `indexer-fallback.tari.com`, `esmeralda.tari.com`)
+  were authoritative DNS failures (NXDOMAIN via the local resolver, Google DNS, and Cloudflare
+  DNS), so no discovery, read, or integration could be executed from this environment.
+  `ootle.tari.com` (the Ootle Playground/docs site) was reachable and now publishes indexer API
+  documentation for `tari_indexer 0.41.0`, which is consistent with the ecosystem moving again —
+  but no live indexer endpoint was discoverable. The application's honest outage state is what
+  renders under this condition, and it is tested for.
+- **Feature status** (the tables above) is independent of this snapshot: implemented features
+  are exercised by deterministic suites, not by live uptime.
+
+Real funds are not used anywhere in this repository's tests, and the real-submit gate stays OFF.
+
+## Roadmap
+
+In rough order:
+
+1. Live Cloudflare deployment and observation of the real response headers (closes R-1).
+2. Read-only integration validation against a reachable Ootle/Esmeralda indexer.
+3. Real browser-wallet validation: connect, preview, sign, confirm a small flow.
+4. First live ordinary L2 swap end-to-end on testnet.
+5. Live LP add/remove cycle on testnet.
+6. Live NFT marketplace flows (list, buy, offer, fill) on testnet.
+7. Pool/trade event emission in the pool template to enrich market-data ingestion.
+8. Upstream browser L1 SHA atomic-swap capabilities (unblock the normal-user cross-layer path).
+9. Real `FAST_XTM_TARI` happy path on testnet, then the refund path.
+10. Reverse route (`TARI → XTM`) where an L1 amount-authority API exists.
+11. Multi-provider routing and depth aggregation.
+12. External security review.
 
 ## Licensing
-- Protocol code: MIT
-- @chironbuilder/ootle-sdk dependency: MIT (not copied; referenced only)
-- Upstream Tari code references: BSD-3-Clause (not copied; referenced in docs only)
-- Sapient wallet reference: PolyForm Noncommercial (not copied; adapter interface only)
 
-## Documentation
-- `docs/ARCHITECTURE.md`
-- `docs/SECURITY_MODEL.md`
-- `docs/THREAT_MODEL.md`
-- `docs/LEGAL_DESIGN.md`
-- `docs/UPSTREAM_BASELINE.md`
-- `docs/TARISWAP_REFERENCE.md`
-- `docs/THIRD_PARTY_LICENSES.md`
-- `docs/NFT_DESIGN.md`
-- `docs/STEALTH_ASSET_DESIGN.md`
-- `docs/STABLECOIN_INTEGRATION.md`
-- `docs/SAPIENT_INTEGRATION.md`
-- `docs/EXTENSION_SECURITY.md`
-- `docs/MOBILE_SECURITY.md`
-- `docs/GITHUB_PAGES.md`
-- `docs/TESTNET_RUNBOOK.md`
-- `docs/AUDIT_CHECKLIST.md`
-- `docs/ROUTE_MATRIX.md`
-
-## Next best task
-1. Deploy a test pool component to Esmeralda using tari-cli.
-2. Verify swap/add/remove liquidity cycle with wallet adapter connected.
-3. Complete security audit checklist items for P0 before any mainnet consideration.
-4. Implement minimum liquidity lock or initial deposit protection.
+- Protocol code: MIT.
+- Upstream Tari references: BSD-3-Clause (referenced and traced, not copied).
+- Charts: [TradingView Lightweight Charts](https://github.com/tradingview/lightweight-charts)
+  (Apache-2.0) — see the attribution in the app footer.
+- See [docs/THIRD_PARTY_LICENSES.md](docs/THIRD_PARTY_LICENSES.md).

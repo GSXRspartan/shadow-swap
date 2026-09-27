@@ -1,17 +1,65 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Tari Ootle Liquidity Protocol</title>
-  <meta name="description" content="Non-custodial liquidity protocol for Tari Ootle. Public fungible pools, native Tari support, permissionless." />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link rel="manifest" href="/manifest.json" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https://indexer.esmeralda.tari.com https://indexer-fallback.tari.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none';" />
-</head>
-<body>
-  <div id="root"></div>
-  <script type="module" src="/src/main.tsx"></script>
-</body>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#080a0e" />
+    <title>Ootle Liquidity — testnet</title>
+    <meta
+      name="description"
+      content="Non-custodial liquidity protocol for Tari Ootle. Experimental software on a test network. Not audited for mainnet."
+    />
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/icon.svg" />
+    <link rel="manifest" href="/manifest.json" />
+    <!--
+      Content Security Policy.
+
+      A wallet dApp is reached through `window.tari` injected into this page, so
+      there is no postMessage bridge in this app and no `connect-src` to a local
+      wallet service. The policy is therefore tight by construction:
+
+        default-src 'self'   nothing loads unless explicitly allowed
+        script-src  'self'   no inline script, no eval, no CDN. Vite emits a
+                            module script and nothing else, so this is satisfiable.
+        connect-src 'self' + the two allow-listed Esmeralda indexer origins.
+                            A configured custom indexer is added at build time
+                            only if it is not a private-network address; the
+                            build fails rather than shipping a localhost
+                            dependency.
+        img-src     'self' data: https:   NFT media is attacker-controlled, so
+                            https is allowed and validated per-URL by
+                            safeImageUrl (scheme, credentials, length).
+        frame-src   'none'   this app never embeds a frame, and must not be
+                            framed BY anything other than the wallet. Embedding
+                            is expressed by the deployment response header
+                            (see docs/FRONTEND_SECURITY_MODEL.md), not here.
+        frame-ancestors        NOT SET HERE. A meta CSP silently ignores
+                            frame-ancestors, so declaring it would be false
+                            assurance. The deployment MUST send
+                            `Content-Security-Policy: frame-ancestors 'self'
+                            https://universe.tari.mw` (or the wallet's own
+                            origin) as a real header. Without that header this
+                            page is clickjackable - recorded as a residual risk.
+        object-src 'none'    no plugins
+        base-uri    'self'    no <base> hijacking
+        form-action 'none'   no form exfiltration
+        upgrade-insecure-requests
+
+      `style-src` needs 'unsafe-inline' because React sets a handful of layout
+      styles as style attributes; there is no CSS injection vector because no
+      untrusted value ever reaches a style property (asserted in
+      test/security.test.cjs).
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https://indexer.esmeralda.tari.com https://indexer-fallback.tari.com; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests;"
+    />
+  </head>
+  <body>
+    <div id="root"></div>
+    <noscript>This application requires JavaScript.</noscript>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
 </html>

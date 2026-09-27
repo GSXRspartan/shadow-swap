@@ -1,0 +1,109 @@
+name: Security Engine Tests
+
+# Executes the REAL Ootle engine test suite (audit_engine_tests) on Linux, where the v0.41.1
+# engine's wasmer/Cranelift backend actually compiles (it does not on Windows). This is the
+# authoritative runtime evidence for the SECURITY_AUDIT_OPUS findings and OPUS-08.
+#
+# The job MUST fail if the engine suite cannot compile or any test fails — the engine suite is
+# never skipped.
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - "security/**"
+      - "feat/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-engine-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-D warnings"
+
+jobs:
+  engine-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain (stable + wasm target)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+          targets: wasm32-unknown-unknown
+
+      - name: Cache cargo (registry, git, target)
+        uses: Swatinem/rust-cache@v2
+        with:
+          # Distinct caches per standalone crate/target we touch.
+          key: security-engine-v1
+
+      # ---- Formatting (all Rust crates) ----
+      - name: rustfmt (pool_math)
+        run: cargo fmt --manifest-path crates/pool_math/Cargo.toml -- --check
+      - name: rustfmt (pool_ref_model)
+        run: cargo fmt --manifest-path crates/pool_ref_model/Cargo.toml -- --check
+      - name: rustfmt (protocol_types)
+        run: cargo fmt --manifest-path crates/protocol_types/Cargo.toml -- --check
+      - name: rustfmt (fungible_pool template)
+        run: cargo fmt --manifest-path templates/fungible_pool/Cargo.toml -- --check
+      - name: rustfmt (nft_marketplace template)
+        run: cargo fmt --manifest-path templates/nft_marketplace/Cargo.toml -- --check
+      - name: rustfmt (nft_item_offer template)
+        run: cargo fmt --manifest-path templates/nft_item_offer/Cargo.toml -- --check
+      - name: rustfmt (nft_collection_bid template)
+        run: cargo fmt --manifest-path templates/nft_collection_bid/Cargo.toml -- --check
+      - name: rustfmt (audit_engine_tests)
+        run: cargo fmt --manifest-path audit_engine_tests/Cargo.toml -- --check
+
+      # ---- cargo check + clippy (warnings denied via RUSTFLAGS) ----
+      - name: clippy (pool_math)
+        run: cargo clippy --manifest-path crates/pool_math/Cargo.toml --all-targets --all-features
+      - name: clippy (pool_ref_model)
+        run: cargo clippy --manifest-path crates/pool_ref_model/Cargo.toml --all-targets --all-features
+      - name: clippy (protocol_types)
+        run: cargo clippy --manifest-path crates/protocol_types/Cargo.toml --all-targets --all-features
+      - name: clippy (fungible_pool template, wasm)
+        run: cargo clippy --manifest-path templates/fungible_pool/Cargo.toml --release --target wasm32-unknown-unknown
+
+      # ---- Off-chain unit/property tests ----
+      - name: test (pool_math)
+        run: cargo test --manifest-path crates/pool_math/Cargo.toml
+      - name: test (pool_ref_model — differential, gauntlet, fuzzer)
+        run: cargo test --manifest-path crates/pool_ref_model/Cargo.toml --release
+      - name: test (protocol_types)
+        run: cargo test --manifest-path crates/protocol_types/Cargo.toml
+
+      # ---- Build the on-chain template to WASM (release) ----
+      - name: build fungible_pool WASM
+        run: cargo build --manifest-path templates/fungible_pool/Cargo.toml --release --target wasm32-unknown-unknown
+
+      - name: build nft_marketplace WASM
+        run: cargo build --manifest-path templates/nft_marketplace/Cargo.toml --release --target wasm32-unknown-unknown
+
+      - name: build nft_item_offer WASM
+        run: cargo build --manifest-path templates/nft_item_offer/Cargo.toml --release --target wasm32-unknown-unknown
+
+      - name: build nft_collection_bid WASM
+        run: cargo build --manifest-path templates/nft_collection_bid/Cargo.toml --release --target wasm32-unknown-unknown
+
+      - name: Record WASM size + SHA256
+        run: |
+          WASM=templates/fungible_pool/target/wasm32-unknown-unknown/release/fungible_pool.wasm
+          ls -l "$WASM"
+          sha256sum "$WASM"
+
+      # ---- REAL Ootle engine tests (never skipped; failure fails the job) ----
+      # tari_template_test_tooling compiles the real templates (fungible_pool, faucet, hostile)
+      # to WASM and runs them in the engine. This step is the authoritative runtime evidence.
+      - name: Engine tests (audit_engine_tests)
+        run: cargo test --manifest-path audit_engine_tests/Cargo.toml -- --nocapture

@@ -1,0 +1,23 @@
+[workspace]
+
+[package]
+name = "audit_engine_tests"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+# Host-side engine test harness for the SECURITY_AUDIT_OPUS run.
+# Points tari_template_test_tooling at the REAL pool template
+# (../templates/fungible_pool) so authorization and accounting
+# properties are proven by real engine execution, not by inspection.
+
+[dependencies]
+
+[dev-dependencies]
+tari_template_test_tooling = { git = "https://github.com/tari-project/tari-ootle.git", rev = "4732f65ec17a96547050989d78fd70a4e3d94113" }
+tari_template_lib = { git = "https://github.com/tari-project/tari-ootle.git", rev = "4732f65ec17a96547050989d78fd70a4e3d94113" }
+tari_template_abi = { git = "https://github.com/tari-project/tari-ootle.git", rev = "4732f65ec17a96547050989d78fd70a4e3d94113" }
+tari_ootle_transaction = { git = "https://github.com/tari-project/tari-ootle.git", rev = "4732f65ec17a96547050989d78fd70a4e3d94113" }
+tari_ootle_common_types = { git = "https://github.com/tari-project/tari-ootle.git", rev = "4732f65ec17a96547050989d78fd70a4e3d94113" }
+tari_engine_types = { git = "https://github.com/tari-project/tari-ootle.git", rev = "4732f65ec17a96547050989d78fd70a4e3d94113" }
+tari_crypto = "0.23"

@@ -1,0 +1,17 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "noEmit": true,
+    "declaration": false,
+    "allowImportingTsExtensions": false,
+    "types": ["node", "react", "react-dom"],
+    "paths": {
+      "@tari-ootle/protocol-client": ["../../packages/protocol-client/dist/index.d.ts"],
+      "@tari-ootle/protocol-client/crosschain": ["../../packages/protocol-client/dist/crosschain/index.d.ts"],
+      "@tari-ootle/wallet-adapter": ["../../packages/wallet-adapter/dist/index.d.ts"]
+    }
+  },
+  "include": ["e2e/**/*.ts", "playwright.config.ts"]
+}

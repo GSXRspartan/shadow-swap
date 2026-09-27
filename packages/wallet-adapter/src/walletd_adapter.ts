@@ -1,79 +1,93 @@
-import { WalletAdapter, WalletSession, NetworkInfo, AccountInfo, Balance, ResourceInfo, TransactionPreview, TransactionResult } from '\.\/interface';
+import { WalletAdapter, WalletSession, NetworkInfo, AccountInfo, Balance, ResourceInfo, TransactionPreview, TransactionResult } from './interface';
+import { notImplemented, WalletAdapterNotImplementedError } from './not_implemented';
 
+export { WalletAdapterNotImplementedError };
+
+const refuse = notImplemented(
+  'WalletDaemonAdapter',
+  'No walletd JSON-RPC transport is implemented in this build. ' +
+    'There is deliberately NO default endpoint: the previous default of http://localhost:5100/json_rpc was a hard-coded localhost dependency that a production build would silently dial.',
+);
+
+/**
+ * NOT IMPLEMENTED. Retained for source compatibility only.
+ *
+ * The previous implementation was actively dangerous:
+ *   - it defaulted to a `http://localhost:5100/json_rpc` endpoint, so a
+ *     production build dialled localhost with no operator opt-in;
+ *   - `connect()` returned a session with the fabricated address
+ *     `walletd-account` WITHOUT calling the daemon at all;
+ *   - `signAndSubmit()` returned `tx-walletd-<timestamp>` without submitting
+ *     anything, so the execution layer would persist SUBMITTED for an id that
+ *     can never be resolved.
+ */
 export class WalletDaemonAdapter implements WalletAdapter {
-  adapterName(): string { return 'WalletDaemonSigner'; }
-  adapterType(): 'walletd' { return 'walletd'; }
+  private readonly daemonUrl: string | undefined;
 
-  constructor(private daemonUrl: string = 'http://localhost:5100/json_rpc') {}
-
-  async isSupported(): Promise<boolean> {
-    try {
-      const res = await fetch(this.daemonUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', method: 'get_version', id: 1 }) });
-      return res.ok;
-    } catch {
-      return false;
-    }
+  /**
+   * The endpoint is accepted only so callers keep compiling, and is never
+   * dialled. There is no default: a localhost endpoint must be an explicit,
+   * development-only, operator-supplied decision.
+   */
+  constructor(daemonUrl?: string) {
+    this.daemonUrl = daemonUrl;
   }
 
-  async connect(networkHint?: NetworkInfo): Promise<WalletSession> {
-    return {
-      adapterType: 'walletd',
-      connectedAt: new Date().toISOString(),
-      network: networkHint || { name: 'esmeralda', indexerUrls: ['https://indexer.esmeralda.tari.com'], nativeResourceAddress: null },
-      account: { address: 'walletd-account', accountIndex: 0, label: 'Wallet Daemon' },
-      supportedFeatures: ['connect', 'disconnect', 'getBalances', 'getResources', 'previewTransaction', 'signAndSubmit'],
-      permissions: ['fullAccess'],
-    };
+  adapterName(): string {
+    return 'WalletDaemonSigner(NOT_IMPLEMENTED)';
+  }
+
+  adapterType(): 'walletd' {
+    return 'walletd';
+  }
+
+  /** Always `false`. No transport exists, so there is nothing to probe. */
+  async isSupported(): Promise<boolean> {
+    return false;
+  }
+
+  /** The configured endpoint, for diagnostics only. Never dialled. */
+  describeEndpoint(): string {
+    return this.daemonUrl === undefined ? 'none configured' : this.daemonUrl;
+  }
+
+  async connect(_networkHint?: NetworkInfo): Promise<WalletSession> {
+    return refuse('connect');
   }
 
   async disconnect(): Promise<void> {
-    // walletd does not have a disconnect mechanism; session expires independently
+    // Disconnecting something that was never connected is a no-op, not a failure.
   }
 
   async getNetwork(): Promise<NetworkInfo> {
-    return { name: 'esmeralda', indexerUrls: ['https://indexer.esmeralda.tari.com'], nativeResourceAddress: null };
+    return refuse('getNetwork');
   }
 
   async getAccounts(): Promise<AccountInfo[]> {
-    return [{ address: 'walletd-account', accountIndex: 0, label: 'Wallet Daemon' }];
+    return refuse('getAccounts');
   }
 
   async getSelectedAccount(): Promise<AccountInfo> {
-    return { address: 'walletd-account', accountIndex: 0, label: 'Wallet Daemon' };
+    return refuse('getSelectedAccount');
   }
 
   async getBalances(): Promise<Balance[]> {
-    return [];
+    return refuse('getBalances');
   }
 
   async getResources(): Promise<ResourceInfo[]> {
-    return [];
+    return refuse('getResources');
   }
 
-  async previewTransaction(preview: Partial<TransactionPreview>): Promise<TransactionPreview> {
-    return {
-      componentAddress: preview.componentAddress || '',
-      method: preview.method || '',
-      args: preview.args || [],
-      resourcesInvolved: preview.resourcesInvolved || [],
-      estimatedOutputs: preview.estimatedOutputs || [],
-      fee: preview.fee || 30,
-      maxEpoch: preview.maxEpoch || 100,
-      privacyDisclosure: preview.privacyDisclosure || 'Pool reserves and amounts are revealed at AMM boundary.',
-      networkName: 'esmeralda',
-      ...preview,
-    };
+  async previewTransaction(_preview: Partial<TransactionPreview>): Promise<TransactionPreview> {
+    return refuse('previewTransaction');
   }
 
-  async signAndSubmit(preview: TransactionPreview): Promise<TransactionResult> {
-    return {
-      transactionId: 'tx-walletd-' + Date.now(),
-      epoch: 1,
-      status: 'pending',
-    };
+  async signAndSubmit(_preview: TransactionPreview): Promise<TransactionResult> {
+    return refuse('signAndSubmit');
   }
 
-  async getTransactionStatus(txId: string): Promise<{ status: string; epoch?: number; error?: string }> {
-    return { status: 'pending', epoch: 1 };
+  async getTransactionStatus(_txId: string): Promise<{ status: string; epoch?: number; error?: string }> {
+    return refuse('getTransactionStatus');
   }
 }

@@ -1,0 +1,13 @@
+[package]
+name = "pool_ref_model"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+# INTENTIONALLY EMPTY: the reference model must be an INDEPENDENT implementation.
+# It deliberately does NOT depend on pool_math or any template code so that a bug
+# shared between the model and production cannot hide in a common dependency.
+
+[dev-dependencies]
+pool_math = { path = "../pool_math" }

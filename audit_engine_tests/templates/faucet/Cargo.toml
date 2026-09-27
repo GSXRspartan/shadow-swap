@@ -1,0 +1,19 @@
+[workspace]
+
+[package]
+name = "faucet"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tari_template_lib = { git = "https://github.com/tari-project/tari-ootle.git", rev = "4732f65ec17a96547050989d78fd70a4e3d94113" }
+
+[profile.release]
+opt-level = 's'
+lto = true
+codegen-units = 1
+panic = 'abort'
+strip = "debuginfo"
+
+[lib]
+crate-type = ["cdylib"]

@@ -1,0 +1,33 @@
+# Cross-layer residual risks — FAST_XTM_TARI
+
+Companion to `CROSS_LAYER_HOSTILE_AUDIT_REPORT.md`. Every entry states what is NOT proven,
+why, and what would retire it. Nothing here is an open CRITICAL/HIGH code defect; these are
+boundaries of the tested model, upstream dependencies, and accepted trust assumptions.
+
+| # | Risk | Class | Why it is still open | What retires it |
+|---|---|---|---|---|
+| RR-1 | **L1 amount cannot be proven through any exposed API.** A base-node read yields a blinded commitment, and the traced wallet gRPC has no RPC returning a decrypted, range-proof-verified value. The counterparty-funded L1 leg (`TARI_TO_XTM`) therefore cannot be completed by the reference provider. | EXTERNAL_RISK | `decrypt_data` + `verify_mask` exist in the wallet and are used by the real claim path, but no RPC/WASM operation surfaces them. | An upstream wallet/WASM operation returning `{ amountRaw, proof: 'DECRYPTED_RANGE_PROOF_VERIFIED' }` (specified in `docs/TARI_BROWSER_SHA_SWAP_UPSTREAM_PLAN.md` §5), or a protocol change committing the value publicly. |
+| RR-2 | **A third-party adapter can forge `amountAuthoritative: true`.** The coordinator takes the flag on trust because it cannot itself verify a commitment opening. | EXTERNAL_RISK (HIGH) | Interface contract, not a cryptographic check inside our process. | Integration review plus adapter-side proof verification; ideally the adapter returns the opening so the coordinator can re-verify it locally. |
+| RR-3 | **No live Esmeralda execution.** No funded wallet, no gRPC endpoint, no base-node readback. Every chain-level claim is traced or modelled. | BLOCKED_EXTERNAL | Environment lacks the infrastructure. | A funded `minotari_console_wallet` on Esmeralda plus a readback endpoint; then the §32 rows execute. |
+| RR-4 | **Browser L1 SHA leg is upstream-blocked.** `tari_l1_wasm` exposes only send/burn, so a normal user cannot run the L1 leg in a browser at all. | BLOCKED_EXTERNAL | Missing upstream primitive. | Layer A → B → C in `docs/TARI_BROWSER_SHA_SWAP_UPSTREAM_PLAN.md`. |
+| RR-5 | **No real Ootle L2 execution.** `OotleScriptPathLegPort` has no concrete provider; the L2 leg was attacked only at the port/coordinator boundary. | BLOCKED_EXTERNAL | Adapter not implemented. | A real Ootle provider plus the §27 engine-level cases (reused witness, already-spent input, duplicate claim/refund). |
+| RR-6 | **No reorg / finality simulation.** Reorg handling is tested with injectable doubles, not a controllable chain. | BLOCKED_TOOLING | No node simulator. | A local devnet or node-level fault injection. |
+| RR-7 | **Production restart-safe secret storage is unimplemented.** `InMemorySecretStore` is memory-only by design; a restart loses S and the session must fall back to the wallet's copy. | BLOCKED_EXTERNAL (HIGH) | `EncryptedSecretPersistence` is an interface with no implementation. | An encrypted, device/wallet-wrapped implementation, plus the §24 restart tests against it. |
+| RR-8 | **`MinotariDevGrpcProvider.fundings` is in-memory.** A restart loses the tx → output-hash association; `listInFlightSwaps` is a development aid. | EXTERNAL_RISK | Deliberate: the dev reference provider keeps no durable store. | A durable `operationId → outputHash` binding, ideally re-derived from the wallet's own output manager. |
+| RR-9 | **Reservation ledger is single-process.** Race protection is correct in-process; a multi-process provider needs a transactional store with compare-and-swap. | EXTERNAL_RISK | `InMemoryReservationLedger` is a reference implementation of the invariant, not a database. | A durable ledger enforcing the same transitions under real concurrency. |
+| RR-10 | **Duplicate-call races are protected by the in-process state machine only.** A cross-process store could accept two concurrent reveals. | EXTERNAL_RISK | Same as RR-9. | Durable compare-and-swap on the session record. |
+| RR-11 | **`unsafeAllowAssertedDeadlines` is a trust escape hatch.** With it set, the deadline gate is an assertion. | Accepted risk (documented) | Needed so tests can drive the machine without a live chain. | Never set it in a deployment configuration; a deployment lint/CI check could assert its absence. |
+| RR-12 | **Capability advertisement reflects wiring, not a live handshake.** `primitivesStatus()` returns `VERIFIED` when a transport is injected; no `GetVersion` round-trip is performed. | LOW | The dev provider has no version handshake. | A real `GetVersion` check against the pinned v6.0.0 surface. |
+| RR-13 | **Provider-script verification is a model, not the engine.** `executeShaHtlcBranch` reproduces the traced opcode semantics to fail *before* any wallet call, but the canonical interpreter remains the base node. | Accepted risk (documented) | Reimplementing consensus in JS is inherently approximate. | Parity testing against a real node (folds into RR-3). |
+| RR-14 | **Fixed test vectors are not canonical Ristretto points.** The suite proves byte-level SHA/script semantics; it does not prove the wallet would accept a given `S`. | Accepted risk (documented) | Generating valid points needs a Ristretto implementation or a wallet call. | Live claim execution (RR-3), which uses wallet-generated points. |
+| RR-15 | **Quote authentication is a seam, not cryptography.** `ProviderAuthenticationSeam` exists because no verifiable provider-key API is available. A peer can present a fabricated quote; the coordinator defends structurally, not by signature. | EXTERNAL_RISK (MEDIUM) | No provider signing key in the stack. | A provider attestation scheme (signature over quote bytes). |
+| RR-16 | **Economic exposure to a malicious provider is not a protocol defect.** Over-advertised inventory or a provider that disappears after acceptance is a business loss bounded by the refund deadline, not a drain. | EXTERNAL_RISK (MEDIUM) | Out of scope for contract safety. | Reputation/reputation-slashing or a bonded-provider model. |
+| RR-17 | **The AMM hop is deliberately inert.** `composable: false` means composition cannot start; a future implementer could still build an unsafe path if that flag is bypassed. | Accepted risk (documented) | Typed as a literal `false` so the compiler rejects an "enabled" value. | Enabling composition only with a terminal, chain-proven settlement proof on `RouteResult` plus the new multi-hop hostile suite. |
+
+## Explicitly NOT claimed
+
+- Not unhackable.
+- Not fully secure.
+- Not mainnet-ready.
+- Not production-ready in any direction: both L1 legs and the entire L2 leg lack a
+  production provider, and the browser path does not exist upstream.

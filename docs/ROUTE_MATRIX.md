@@ -5,13 +5,19 @@ UI must read from this source; never hardcode route status independently.
 
 | Route Pair | Asset Types | Status | Fee Tier | Blocker / Note |
 |------------|-------------|--------|----------|----------------|
-| Public Fungible / Tari Native | Fungible / Fungible (Tari resource) | Experimental | 30 bp (0.30%) | Requires native Tari resource validation; TariSwap template supports this |
+| Public Fungible / Tari Native | Fungible / canonical Tari | EXPERIMENTAL | 30 bp (0.30%) | Public AMM boundary; canonical address only |
 | Public Fungible / Public Fungible | Fungible / Fungible | Experimental | 30 bp (0.30%) | Standard AMM; tested with integer math; requires deployment |
-| Stealth Asset / Tari Native | Stealth / Fungible | Blocked | 30 bp (0.30%) | Privacy loss at AMM boundary; requires user disclosure |
-| Stealth Asset / Public Fungible | Stealth / Fungible | Blocked | 30 bp (0.30%) | Same privacy issue |
-| Wrapped Stablecoin / Tari Native | Public Fungible (wrapped) / Fungible | Blocked | 30 bp (0.30%) | Requires upstream stablecoin without admin controls |
-| Private Stablecoin Direct / Public | Confidential / Fungible | Blocked | 30 bp (0.30%) | Direct private AMM not safe; use wrapped route first |
-| NFT Collection / Tari Native | Non-Fungible / Fungible | Blocked | N/A | Requires separate NFT inventory design; no upstream pool exists |
+| Public Fungible / wSTABLE | Public fungible / public fungible | EXPERIMENTAL | 30 bp (0.30%) | Existing AMM primitive; wrapper must be a reviewed `ISSUER_CONTROLLED_QUOTE_ASSET`; public market |
+| Tari / wSTABLE | Canonical Tari / public fungible | EXPERIMENTAL | 30 bp (0.30%) | Existing AMM primitive; public market; wrapper remains issuer-controlled |
+| Stealth Asset / Tari Native | Stealth / canonical Tari | BLOCKED | 30 bp (0.30%) | Requires a dedicated revealed-boundary adapter and real engine proof |
+| Stealth Asset / wSTABLE | Stealth / public fungible | BLOCKED | 30 bp (0.30%) | Requires a dedicated revealed-boundary adapter and real engine proof |
+| Private Stablecoin / Tari | Stealth private coin / canonical Tari | DESIGN_ONLY | 30 bp (0.30%) | Holder reveal into a same-resource bucket is source-proven; separate revealed-boundary adapter is not yet engine-proven |
+| Private Stablecoin / Public Fungible | Stealth private coin / public fungible | DESIGN_ONLY | 30 bp (0.30%) | Same holder-controlled reveal boundary; issuer-controlled reserve risk must be tested |
+| Private Stablecoin / wSTABLE | Stealth private coin / public wrapper | BLOCKED | N/A | Wrapper conversion is issuer-admin-gated and per-user limited; distinct from direct revealed-boundary trading |
+| NFT Collection / Tari Native | Non-fungible / canonical Tari | BLOCKED | N/A | Requires separate NFT inventory design; no upstream pool exists |
+| NFT Collection / wSTABLE | Non-fungible / public fungible | BLOCKED | N/A | Requires separate NFT inventory design and reviewed wrapper configuration |
+| Generic Confidential / Tari | Confidential / canonical Tari | BLOCKED | N/A | Constant-product arithmetic cannot be claimed over hidden amounts |
+| Generic Confidential / wSTABLE | Confidential / public fungible | BLOCKED | N/A | Constant-product arithmetic cannot be claimed over hidden amounts |
 
 Status definitions:
 - TESTED: Executed on testnet with verified results.

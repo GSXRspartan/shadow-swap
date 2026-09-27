@@ -1,81 +1,73 @@
-import { WalletAdapter, WalletSession, NetworkInfo, AccountInfo, Balance, ResourceInfo, TransactionPreview, TransactionResult } from '\.\/interface';
+import { WalletAdapter, WalletSession, NetworkInfo, AccountInfo, Balance, ResourceInfo, TransactionPreview, TransactionResult } from './interface';
+import { notImplemented, WalletAdapterNotImplementedError } from './not_implemented';
 
+export { WalletAdapterNotImplementedError };
+
+const refuse = notImplemented(
+  'BrowserExtensionWalletAdapter',
+  'This class is a declared placeholder for the historical extension interface. Use the Tari dApp provider bridge (apps/web) instead.',
+);
+
+/**
+ * NOT IMPLEMENTED. Retained only for source compatibility with the historical
+ * extension interface.
+ *
+ * Previously this returned a plausible session, the placeholder account
+ * `extension-account-placeholder`, empty balances, and `pending` for every
+ * transaction lookup — so it could be bound to and would look connected. Every
+ * operation that could return financial or account state now refuses loudly.
+ */
 export class BrowserExtensionWalletAdapter implements WalletAdapter {
-  adapterName(): string { return 'BrowserExtensionSigner'; }
-  adapterType(): 'extension' { return 'extension'; }
-
-  async isSupported(): Promise<boolean> {
-    try {
-      // Check if extension is present (e.g., through global window or message testing)
-      const hasExtension = typeof (globalThis as any).tariWalletExtension !== 'undefined';
-      return !!hasExtension;
-    } catch {
-      return false;
-    }
+  adapterName(): string {
+    return 'BrowserExtensionSigner(NOT_IMPLEMENTED)';
   }
 
-  async connect(networkHint?: NetworkInfo): Promise<WalletSession> {
-    const session: WalletSession = {
-      adapterType: 'extension',
-      connectedAt: new Date().toISOString(),
-      network: networkHint || { name: 'esmeralda', indexerUrls: ['https://indexer.esmeralda.tari.com'], nativeResourceAddress: null },
-      account: { address: 'extension-account-placeholder', accountIndex: 0, label: 'Extension' },
-      supportedFeatures: ['connect', 'disconnect', 'getBalances', 'getResources', 'previewTransaction', 'signAndSubmit'],
-      permissions: ['readBalances', 'signTransactions'],
-    };
-    return session;
+  adapterType(): 'extension' {
+    return 'extension';
+  }
+
+  /** Always `false`: a provider that cannot answer a capability handshake is not a provider. */
+  async isSupported(): Promise<boolean> {
+    return false;
+  }
+
+  async connect(_networkHint?: NetworkInfo): Promise<WalletSession> {
+    return refuse('connect');
   }
 
   async disconnect(): Promise<void> {
-    // Revoke permissions through extension message if available
+    // Disconnecting something that was never connected is a no-op, not a failure.
   }
 
   async getNetwork(): Promise<NetworkInfo> {
-    return { name: 'esmeralda', indexerUrls: ['https://indexer.esmeralda.tari.com'], nativeResourceAddress: null };
+    return refuse('getNetwork');
   }
 
   async getAccounts(): Promise<AccountInfo[]> {
-    return [{ address: 'ext-0', accountIndex: 0, label: 'Extension Account' }];
+    return refuse('getAccounts');
   }
 
   async getSelectedAccount(): Promise<AccountInfo> {
-    return { address: 'ext-0', accountIndex: 0, label: 'Extension Account' };
+    return refuse('getSelectedAccount');
   }
 
   async getBalances(): Promise<Balance[]> {
-    return [];
+    return refuse('getBalances');
   }
 
   async getResources(): Promise<ResourceInfo[]> {
-    return [];
+    return refuse('getResources');
   }
 
-  async previewTransaction(preview: Partial<TransactionPreview>): Promise<TransactionPreview> {
-    const full: TransactionPreview = {
-      componentAddress: preview.componentAddress || '',
-      method: preview.method || '',
-      args: preview.args || [],
-      resourcesInvolved: preview.resourcesInvolved || [],
-      estimatedOutputs: preview.estimatedOutputs || [],
-      fee: preview.fee || 30,
-      maxEpoch: preview.maxEpoch || 100,
-      privacyDisclosure: preview.privacyDisclosure || 'Pool reserves and amounts are revealed at AMM boundary.',
-      networkName: 'esmeralda',
-      ...preview,
-    };
-    return full;
+  async previewTransaction(_preview: Partial<TransactionPreview>): Promise<TransactionPreview> {
+    return refuse('previewTransaction');
   }
 
-  async signAndSubmit(preview: TransactionPreview): Promise<TransactionResult> {
-    // Actual extension message passing would occur here
-    return {
-      transactionId: 'tx-ext-' + Date.now(),
-      epoch: 1,
-      status: 'pending',
-    };
+  async signAndSubmit(_preview: TransactionPreview): Promise<TransactionResult> {
+    return refuse('signAndSubmit');
   }
 
-  async getTransactionStatus(txId: string): Promise<{ status: string; epoch?: number; error?: string }> {
-    return { status: 'pending', epoch: 1 };
+  async getTransactionStatus(_txId: string): Promise<{ status: string; epoch?: number; error?: string }> {
+    return refuse('getTransactionStatus');
   }
 }

@@ -1,52 +1,74 @@
 # STABLECOIN INTEGRATION
 
-Status: P3 BLOCKED / DESIGN ONLY
+Status: public-wrapper AMM lane EXPERIMENTAL; direct private-stablecoin revealed-boundary lane
+DESIGN_ONLY; private-stablecoin ↔ wrapper gateway BLOCKED.
 
 ## Upstream source
 - Repository: https://github.com/tari-project/stable-coin
 - Branch: main
+- Pinned commit: `bef1a89aa33d89ca0ed3882b44cdd625f61303e2` (2026-09-22, `chore: reduce string sizes (#33)`)
 - License: BSD-3-Clause
 - Template: `templates/private_stable_coin/issuer-no-user-badge/` is the working version.
 
-## Current upstream capabilities (from source inspection)
-- Stealth token issuance with configurable supply.
-- Admin controls (pause, freeze/unfreeze UTXOs, token recall, user blacklisting).
-- Wrapped token exchange: stealth <-> public fungible.
-- Configurable fees (fixed or percentage-based).
+## Inspected upstream implementation
 
-## Why direct private stablecoin AMM is blocked
-- Admin-controlled templates have privileged functions (`pause`, `freeze`, `recall`, `setAdmin`) that violate our protocol's non-custody, permissionless requirement.
-- Our protocol must NOT include admin keys, pause functions, or user blacklisting.
-- Direct private AMM trading would reveal amounts or require admin-managed conversion, which conflicts with permissionless design.
+The reviewed template is `templates/private_stable_coin/issuer-no-user-badge`. It creates a
+stealth private coin plus an optional public fungible `w<SYMBOL>` wrapper. The public wrapper is
+minted/burned only by the stablecoin component, has no recall/freeze/deposit restriction, and is
+compatible with the existing public-fungible pool *as a public asset*. That compatibility does not
+make the quote asset permissionless or peg-guaranteed.
 
-## Likely safe route (to verify)
+The component itself is admin-gated. Its controls include supply mint/burn, user-badge and
+exchange-limit management, private-coin recall of revealed balances, UTXO freeze/unfreeze and
+burn, transfer-fee configuration, and pause state. Both conversion methods require component
+admin access plus a user badge proof; the former is capped by an admin-set per-user limit and
+charges the configured wrapper-exchange fee. The project must never hold that admin badge.
+
+## Route boundary and issuer risk
+
+`PRIVATE_BEFORE_ROUTE` → `REVEALED_AT_MARKET_BOUNDARY` → `PUBLIC_AMM` →
+`REPRIVATE_AFTER_ROUTE` is the privacy model for a future direct private-stablecoin pool. The
+inspected upstream holder tests show that an ordinary account holder can withdraw and transfer a
+revealed bucket of the same stealth resource without an admin proof. Ootle's wallet SDK also
+builds holder-signed `stealth_transfer_with_input_bucket` instructions for a resource's own
+stealth inputs and produces a revealed bucket. Neither operation invokes the stablecoin component.
+
+The current `fungible_pool` deliberately rejects non-canonical stealth resources, so this is
+`DESIGN_ONLY` until a separate revealed-boundary adapter has real engine proof. The AMM trade and
+its reserves would be public. Re-stealthing is wallet-side and remains unproven for this route.
+
+Treat every configured wrapper as `ISSUER_CONTROLLED_QUOTE_ASSET`: the AMM controls only its own
+reserve accounting, LP supply, 30-bps fee, and swap rules. The issuer controls the backing/private
+coin and whether or on what terms a user can enter or exit the wrapper. The public wrapper's source
+rules are non-recallable/non-freezable, but this is an upstream-source/deployment review fact, not
+a permissionless guarantee that the AMM template can prove for an arbitrary address under OPUS-08.
+
+## Permitted architecture
 ```
-PRIVATE STABLECOIN
-        ->
-PUBLIC WRAPPED STABLECOIN (via upstream exchange mechanism, without admin control)
-        ->
-AMM (public fungible pair)
-        ->
-OPTIONAL PRIVATE CONVERSION (user-controlled, separate from protocol)
+PUBLIC FUNGIBLE / wSTABLE  -- public constant-product pool
+TARI / wSTABLE             -- public constant-product pool
+
+PRIVATE STABLE / TARI      -- DESIGN_ONLY revealed-boundary market
+PRIVATE STABLE / TOKEN     -- DESIGN_ONLY revealed-boundary market
+
+PRIVATE STABLECOIN ↔ wSTABLE -- BLOCKED: issuer-admin-gated conversion
 ```
 
 ## Privacy disclosure matrix
 | Step | Asset Type | Amount Visibility | Admin Control Required |
 |------|-----------|-------------------|------------------------|
-| User wallet (before deposit) | Private stealth | Hidden | No |
-| AMM pool deposit | Revealed public amount | Revealed | No (if using public wrapped) |
+| Holder's private stable UTXO | Stealth stable coin | Hidden from the public; issuer has a view key | Holder controls the spend key |
+| Revealed market input | Same stealth resource, revealed bucket | Revealed | Holder-signed transaction; no issuer proof shown in the upstream holder path |
+| AMM pool deposit | Revealed stable or wrapped public fungible amount | Revealed | Pool has no issuer authority |
 | AMM reserve | Revealed public amount | Revealed | No |
 | AMM output (public wrapped) | Revealed public amount | Revealed | No |
-| Conversion back to private | User-controlled | Hidden after conversion | Depends on upstream mechanism |
+| Conversion back to private wrapper route | Stealth asset | Hidden from the public after conversion | Issuer-admin-gated |
 
-Important: The AMM trade itself is NEVER confidential if amounts and resource links are revealed at the pool boundary. Any claim of "confidential trading" through this protocol must be false.
+Issuer-risk boundary: `recall_revealed_tokens` is an admin-only exposed method and its current
+implementation targets a registered `Account` vault, not an arbitrary pool component vault. The
+stealth resource itself is recallable/freezable by the stablecoin component, however, so LPs still
+inherit `ISSUER_CONTROLLED_STABLECOIN` risk. A dedicated adapter must add hostile issuer tests
+before its route becomes executable.
 
-## Blocker evidence
-- `stable-coin` templates include admin badge requirements (`issuer` with user badges; `admin-only control`).
-- `AccessRules` in stable-coin templates include privileged operations not suitable for permissionless AMM.
-- No upstream public, permissionless stablecoin AMM exists today.
-
-## Next task (after P0-P1)
-1. Build public wrapped stablecoin adapter using non-admin upstream mechanism or create independent public fungible wrapper.
-2. Verify that conversion mechanism does not require our protocol to hold admin keys.
-3. Test with current stable-coin source before enabling any route.
+Important: the AMM trade itself is never confidential. The wrapper conversion builder remains
+blocked because it would require issuer authority.
