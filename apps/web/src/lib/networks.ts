@@ -20,12 +20,57 @@ export interface FrontendNetwork {
   allowsLocalEndpoints: boolean;
 }
 
+/**
+ * Verified public Esmeralda indexer origins.
+ *
+ * These were replaced on 2026-09-28 after the previously configured hosts
+ * (`indexer.esmeralda.tari.com`, `indexer-fallback.tari.com`) were found to be
+ * authoritative NXDOMAIN, i.e. stale configuration rather than a dead network.
+ * The replacements are the endpoints the official Tari tooling itself defaults
+ * to, and both were read live before being adopted:
+ *
+ *  - `https://ootle-indexer-a.tari.com` — the default returned by
+ *    `defaultIndexerUrl(Network.Esmeralda)` in `tari-project/ootle.ts`
+ *    (`packages/ootle/src/helpers/network.ts`), which mirrors
+ *    `default_indexer_url()` in the Rust `ootle-rs` crate.
+ *  - `https://ootle-indexer-b.tari.com` — same network, kept as a second origin
+ *    so one degraded node does not take discovery down.
+ *
+ * Observed from this environment on 2026-09-28, read-only, both hosts answered
+ * `GET /info` with `tari_indexer` 0.41.4, `"network":"esmeralda"`,
+ * `"network_byte":38`, and the same `current_epoch`. 38 == 0x26 ==
+ * `Network.Esmeralda` in the official enum, which is what
+ * `assertIndexerNetworkIdentity` checks.
+ *
+ * Both origins answer with `access-control-allow-origin: *`, so they are
+ * directly browser-reachable and `connect-src` lists them explicitly. They are
+ * also served over HTTPS and send `strict-transport-security` and
+ * `x-content-type-options: nosniff`.
+ *
+ * See docs/TESTNET_HOSTING.md for the captured evidence.
+ */
+export const ESMERALDA_INDEXER_URLS: readonly string[] = [
+  'https://ootle-indexer-a.tari.com',
+  'https://ootle-indexer-b.tari.com',
+];
+
+/**
+ * `Network.Esmeralda` in the official Tari SDKs, as a decimal byte.
+ *
+ * Cross-checked against `GET /info` `network_byte` so a substituted endpoint
+ * that happens to answer HTTP 200 cannot be mistaken for the right chain.
+ */
+export const NETWORK_BYTES: Readonly<Record<FrontendNetworkId, number>> = {
+  esmeralda: 0x26,
+  localnet: 0x10,
+};
+
 export const FRONTEND_NETWORKS: Readonly<Record<FrontendNetworkId, FrontendNetwork>> = {
   esmeralda: {
     id: 'esmeralda',
     displayName: 'Esmeralda Testnet',
     badge: 'TESTNET',
-    indexerUrls: ['https://indexer.esmeralda.tari.com', 'https://indexer-fallback.tari.com'],
+    indexerUrls: [...ESMERALDA_INDEXER_URLS],
     allowsLocalEndpoints: false,
   },
   localnet: {

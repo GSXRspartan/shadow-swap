@@ -11,7 +11,9 @@
 
 import type { PoolPair, AssetSafetyClass, ResourceRoutingClass } from '@tari-ootle/protocol-client';
 import { safetyFromPairClass, weakestClassification, toAssetChip, type AssetChip } from '../lib/assetIdentity.js';
+import { DEFAULT_NETWORK, type FrontendNetworkId } from '../lib/networks.js';
 import { discoveryList, postJson } from './net.js';
+import { describeIdentity, isVerified, verifyIndexerIdentity } from './indexerIdentity.js';
 import type { AppConfig } from './config.js';
 
 export interface PoolDescriptor {
@@ -118,13 +120,29 @@ export interface PoolDiscoverySource {
  * Indexer-backed discovery. The expected payload is a JSON array (or
  * `{ data: [...] }`) of pool records. Anything else is reported as unavailable
  * rather than half-parsed.
+ *
+ * The endpoint's network identity is verified FIRST, on every call, and a
+ * refusal to establish that identity stops discovery before the discovery query
+ * is even sent. That ordering is the point: an endpoint that cannot say which
+ * chain it is, or that says a different one, must not get to answer "here are
+ * your pools". This is discovery-only evidence — it never authorises execution
+ * and never substitutes for the authoritative reread the resolvers perform.
  */
 export class IndexerPoolDiscovery implements PoolDiscoverySource {
   readonly name: string;
   /** Set when the configured URL is unusable. Discovery then fails closed. */
   private readonly invalid: string | undefined;
 
-  constructor(private readonly indexerUrl: string) {
+  constructor(
+    private readonly indexerUrl: string,
+    /** The network this build permits. Identity verification compares against it. */
+    private readonly expected: { readonly network: FrontendNetworkId; readonly networkName: string } = {
+      network: DEFAULT_NETWORK,
+      networkName: DEFAULT_NETWORK,
+    },
+    /** Injected in tests; defaults to a real bounded fetch. */
+    private readonly verify: typeof verifyIndexerIdentity = verifyIndexerIdentity,
+  ) {
     let host: string | undefined;
     try {
       host = new URL(indexerUrl).host;
@@ -141,6 +159,12 @@ export class IndexerPoolDiscovery implements PoolDiscoverySource {
   async discover(): Promise<PoolDiscoveryResult> {
     if (this.invalid !== undefined) {
       return { pools: [], source: this.name, unavailableReason: this.invalid };
+    }
+    // Identity before content. A refusal here is reported as itself and never
+    // collapsed into "no pools".
+    const identity = await this.verify(this.indexerUrl, this.expected);
+    if (!isVerified(identity)) {
+      return { pools: [], source: this.name, unavailableReason: `Pool discovery is unavailable. ${describeIdentity(identity)}` };
     }
     // Bounded transport: a hung or oversized endpoint produces an unavailable
     // result within a fixed deadline instead of a permanently loading list.
@@ -180,5 +204,9 @@ export function createPoolDiscovery(config: AppConfig, fixtures: PoolDescriptor[
     };
   }
   const url = config.indexerUrls[0];
-  return url === undefined ? new UnavailablePoolDiscovery() : new IndexerPoolDiscovery(url);
+  // The provider-reported network name is the id itself for both allowlisted
+  // testnets, which is exactly what `GET /info` `network` returns on Esmeralda.
+  return url === undefined
+    ? new UnavailablePoolDiscovery()
+    : new IndexerPoolDiscovery(url, { network: config.network, networkName: config.network });
 }

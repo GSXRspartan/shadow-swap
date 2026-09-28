@@ -11,6 +11,8 @@ const appRoot = path.resolve(__dirname, '..');
 const srcRoot = path.join(appRoot, 'src');
 const distDir = path.join(appRoot, 'dist');
 const built = require('../build-test/lib/deploymentHeaders.js');
+const networks = require('../build-test/lib/networks.js');
+const config = require('../build-test/services/config.js');
 
 function sourceFiles(dir, extensions) {
   const out = [];
@@ -61,6 +63,31 @@ test('csp: connect-src cannot be widened to a wildcard or a private address', ()
     assert.equal(/^(127\.0\.0\.1|localhost|\[::1\]|0\.0\.0\.0|10\.|192\.168\.)/.test(origin), false, `private address in connect-src: ${origin}`);
     assert.equal(/mainnet/.test(origin), false);
   }
+});
+
+test('csp: connect-src covers exactly the configured esmeralda indexer origins', () => {
+  // The regression this guards is real: `connect-src` and the configured endpoint
+  // used to be two independent hand-written strings, and when the configured
+  // hosts were replaced on 2026-09-28 the CSP would have kept allowing the dead
+  // origins and blocked the live ones. They are now derived from one table.
+  const connect = /connect-src ([^;]+)/.exec(built.CONTENT_SECURITY_POLICY);
+  assert.ok(connect, 'connect-src must be declared');
+  const allowed = connect[1].split(/\s+/).filter((entry) => entry !== "'self'").sort();
+  assert.deepEqual(allowed, [...networks.ESMERALDA_INDEXER_URLS].sort());
+  // And the resolved production config must not name an origin outside it.
+  const resolved = config.resolveConfig({ MODE: 'production', DEV: false });
+  assert.deepEqual(resolved.blocking, []);
+  for (const url of resolved.indexerUrls) {
+    assert.ok(allowed.includes(url.replace(/\/+$/, '')), `configured origin ${url} is not permitted by connect-src`);
+  }
+});
+
+test('csp: every configured esmeralda origin is https and non-local', () => {
+  for (const url of networks.ESMERALDA_INDEXER_URLS) {
+    assert.match(url, /^https:\/\//, `production indexer origin must be https: ${url}`);
+    assert.equal(networks.localEndpointReason(url, false), undefined, `${url} must be usable outside a development build`);
+  }
+  assert.equal(networks.NETWORK_BYTES.esmeralda, 0x26, 'Esmeralda is network byte 38, matching the live /info');
 });
 
 test('csp: frame-ancestors is in the response header, not the meta tag', () => {

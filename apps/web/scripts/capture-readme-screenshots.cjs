@@ -42,7 +42,7 @@ const COLLECTION = 'otl_ootsuki_0001';
 // AT the indexer origin, exactly where production metadata would come from.
 // Media (an <img>, governed by the permissive `img-src https:`) may come from
 // any https host and uses the intercepted media origin.
-const METADATA_ORIGIN = 'https://indexer.esmeralda.tari.com';
+const METADATA_ORIGIN = 'https://ootle-indexer-a.tari.com';
 const ITEMS = [
   { nftId: '0001', listingAddress: 'listing_0001', price: '42000000', quoteResource: 'otl_wstable_0001', metadataUri: `${METADATA_ORIGIN}/metadata/0001.json` },
   { nftId: '0002', price: '38000000', quoteResource: 'otl_wstable_0001', metadataUri: `${METADATA_ORIGIN}/metadata/0002.json` },
@@ -103,7 +103,7 @@ async function main() {
     // Context-level interception: every page in the context sees the same
     // deterministic discovery and media responses.
     for (const ctx of [context, mobileContext]) {
-      await ctx.route('https://indexer.esmeralda.tari.com/**', async (route) => {
+      await ctx.route('https://ootle-indexer-a.tari.com/**', async (route) => {
         const url = route.request().url();
         const metadataId = /\/metadata\/(\d+)\.json/.exec(url)?.[1];
         if (metadataId !== undefined) {

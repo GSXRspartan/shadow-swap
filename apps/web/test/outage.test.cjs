@@ -21,6 +21,7 @@ const assert = require('node:assert/strict');
 const net = require('../build-test/services/net.js');
 const pools = require('../build-test/services/pools.js');
 const marketplace = require('../build-test/services/marketplace.js');
+const identity = require('../build-test/services/indexerIdentity.js');
 
 const HANG_URL = 'https://indexer.example.invalid/query';
 const originalFetch = globalThis.fetch;
@@ -33,6 +34,28 @@ function jsonResponse(payload, headers = {}) {
   const body = typeof payload === 'string' ? payload : JSON.stringify(payload);
   return { ok: true, status: 200, headers: new Headers(headers), text: async () => body };
 }
+
+/**
+ * A fetch stub that models the real endpoint shape rather than answering
+ * everything with the same document.
+ *
+ * Discovery now performs a network-identity preflight (`GET {base}/info`) before
+ * it will trust any discovery content, so a stub that returns the pool list to
+ * every request no longer models an endpoint at all. These helpers keep the
+ * outage tests testing what they mean to test.
+ */
+const IDENTITY_OK = { version: '0.41.4', network: 'esmeralda', network_byte: 38, current_epoch: 11602 };
+
+/** Routes by URL: `/info` answers the identity, anything else answers `payload`. */
+function endpointFetch(payload, identity = IDENTITY_OK) {
+  return (url) => jsonResponse(new URL(url).pathname === '/info' ? identity : payload);
+}
+
+/** The production discovery base, so the identity path is `/info` on it. */
+const LIVE_BASE = 'https://ootle-indexer-a.tari.com';
+// Production passes the bare origin (`config.indexerUrls[0]`), so the identity
+// preflight resolves to `{origin}/info` and the discovery query POSTs to `{origin}`.
+const DISCOVERY_URL = LIVE_BASE;
 
 function hangingFetch() {
   return (_url, init) =>
@@ -157,23 +180,169 @@ test('outage: a malformed configured endpoint fails closed instead of throwing',
 // ---------------------------------------------------------------------------
 
 test('outage: a healthy discovery response is still parsed into pools', async () => {
-  globalThis.fetch = async () =>
-    jsonResponse([
-      {
-        poolComponent: 'component_pool_1',
-        resourceA: 'otl_canonical_tari',
-        resourceB: 'otl_wstable_1',
-        baseSymbol: 'TARI',
-        quoteSymbol: 'wSTABLE',
-        baseDecimals: '6',
-        quoteDecimals: '6',
-        safetyClass: 'PUBLIC_IMMUTABLE_OR_VETTED',
-      },
-    ]);
-  const source = new pools.IndexerPoolDiscovery(HANG_URL);
+  globalThis.fetch = endpointFetch([
+    {
+      poolComponent: 'component_pool_1',
+      resourceA: 'otl_canonical_tari',
+      resourceB: 'otl_wstable_1',
+      baseSymbol: 'TARI',
+      quoteSymbol: 'wSTABLE',
+      baseDecimals: '6',
+      quoteDecimals: '6',
+      safetyClass: 'PUBLIC_IMMUTABLE_OR_VETTED',
+    },
+  ]);
+  const source = new pools.IndexerPoolDiscovery(DISCOVERY_URL);
   const result = await source.discover();
   assert.equal(result.pools.length, 1);
   assert.equal(result.unavailableReason, undefined);
+});
+
+// ---------------------------------------------------------------------------
+// 5. NETWORK IDENTITY PREFLIGHT (fail closed on the wrong chain)
+// ---------------------------------------------------------------------------
+
+test('identity: a matching network name AND byte is accepted', () => {
+  const verdict = identity.classifyIndexerIdentity(
+    `${LIVE_BASE}/info`,
+    { version: '0.41.4', network: 'esmeralda', network_byte: 38, current_epoch: 11602 },
+    { network: 'esmeralda', networkName: 'esmeralda' },
+  );
+  assert.equal(verdict.status, 'VERIFIED');
+  assert.equal(verdict.networkByte, 38);
+  assert.equal(verdict.currentEpoch, '11602');
+  assert.equal(identity.isVerified(verdict), true);
+});
+
+test('identity: a right name with the WRONG byte is refused, not accepted on the name alone', () => {
+  // The name is a self-assertion any substituted endpoint can make. The byte is
+  // the independent check, so agreeing on the name must not be enough.
+  const verdict = identity.classifyIndexerIdentity(
+    `${LIVE_BASE}/info`,
+    { network: 'esmeralda', network_byte: 36 },
+    { network: 'esmeralda', networkName: 'esmeralda' },
+  );
+  assert.equal(verdict.status, 'NETWORK_MISMATCH');
+  assert.equal(identity.isVerified(verdict), false);
+});
+
+test('identity: a different network is refused and names both chains', () => {
+  const verdict = identity.classifyIndexerIdentity(
+    'https://somewhere.example/info',
+    { network: 'mainnet', network_byte: 0 },
+    { network: 'esmeralda', networkName: 'esmeralda' },
+  );
+  assert.equal(verdict.status, 'NETWORK_MISMATCH');
+  assert.match(verdict.reason, /mainnet/);
+  assert.match(verdict.reason, /esmeralda/);
+});
+
+test('identity: an endpoint that answers but names no network is UNIDENTIFIED, never verified', () => {
+  const verdict = identity.classifyIndexerIdentity(
+    `${LIVE_BASE}/info`,
+    { version: '0.41.4' },
+    { network: 'esmeralda', networkName: 'esmeralda' },
+  );
+  assert.equal(verdict.status, 'UNIDENTIFIED');
+});
+
+test('identity: a name with no byte is UNIDENTIFIED, because the byte is the independent evidence', () => {
+  const verdict = identity.classifyIndexerIdentity(
+    `${LIVE_BASE}/info`,
+    { network: 'esmeralda' },
+    { network: 'esmeralda', networkName: 'esmeralda' },
+  );
+  assert.equal(verdict.status, 'UNIDENTIFIED');
+});
+
+test('identity: a non-object or array reply is UNUSABLE, never verified', () => {
+  const expected = { network: 'esmeralda', networkName: 'esmeralda' };
+  for (const payload of [null, 'ok', 42, [{ network: 'esmeralda', network_byte: 38 }]]) {
+    const verdict = identity.classifyIndexerIdentity(`${LIVE_BASE}/info`, payload, expected);
+    assert.equal(verdict.status, 'UNUSABLE', `payload ${JSON.stringify(payload)} must be refused`);
+  }
+});
+
+test('identity: a hostile /info cannot inject markup into the rendered reason', () => {
+  const verdict = identity.classifyIndexerIdentity(
+    `${LIVE_BASE}/info`,
+    { network: '<img src=x onerror=alert(1)>', network_byte: -1 },
+    { network: 'esmeralda', networkName: 'esmeralda' },
+  );
+  assert.notEqual(verdict.status, 'VERIFIED');
+});
+
+test('identity: UNREACHABLE says nothing about the network being down', async () => {
+  globalThis.fetch = async () => {
+    throw new Error('getaddrinfo ENOTFOUND nowhere.example');
+  };
+  const verdict = await identity.verifyIndexerIdentity('https://nowhere.example', {
+    network: 'esmeralda',
+    networkName: 'esmeralda',
+  });
+  assert.equal(verdict.status, 'UNREACHABLE');
+  // The distinction matters: an unreachable endpoint is an endpoint problem, and
+  // must never be rendered as "the network is down".
+  assert.match(identity.describeIdentity(verdict), /nothing about the network/i);
+});
+
+test('identity: a malformed configured origin is refused before any request is made', async () => {
+  let called = false;
+  globalThis.fetch = async () => {
+    called = true;
+    return jsonResponse({});
+  };
+  const verdict = await identity.verifyIndexerIdentity('not a url', {
+    network: 'esmeralda',
+    networkName: 'esmeralda',
+  });
+  assert.equal(verdict.status, 'UNUSABLE');
+  assert.equal(called, false, 'a malformed origin must not produce a network request');
+});
+
+test('discovery: a wrong-network endpoint never reaches the discovery query', async () => {
+  const seen = [];
+  globalThis.fetch = async (url) => {
+    seen.push(String(url));
+    if (new URL(url).pathname === '/info') {
+      return jsonResponse({ version: '0.41.4', network: 'esmeralda', network_byte: 36 });
+    }
+    // If this is ever reached the test fails, because the discovery query must
+    // not be issued against an endpoint whose identity could not be established.
+    return jsonResponse({ data: [{ poolComponent: 'component_pool_1' }] });
+  };
+  const source = new pools.IndexerPoolDiscovery(DISCOVERY_URL);
+  const result = await source.discover();
+  assert.equal(result.pools.length, 0);
+  assert.match(result.unavailableReason, /restricted to "esmeralda"/);
+  assert.deepEqual(seen, [`${LIVE_BASE}/info`], 'only the identity preflight may be issued');
+});
+
+test('discovery: an unidentified endpoint is an explicit refusal, not an empty list', async () => {
+  globalThis.fetch = endpointFetch({ data: [{ poolComponent: 'component_pool_1' }] }, { version: '0.41.4' });
+  const result = await new pools.IndexerPoolDiscovery(DISCOVERY_URL).discover();
+  assert.equal(result.pools.length, 0);
+  assert.match(result.unavailableReason, /could not be identified/i);
+});
+
+test('discovery: a 200 that is not JSON never reads as zero pools', async () => {
+  globalThis.fetch = async (url) =>
+    new URL(url).pathname === '/info'
+      ? { ok: true, status: 200, headers: new Headers(), text: async () => '<html>captive portal</html>' }
+      : jsonResponse([]);
+  const result = await new pools.IndexerPoolDiscovery(DISCOVERY_URL).discover();
+  assert.equal(result.pools.length, 0);
+  assert.match(result.unavailableReason, /not valid JSON/);
+});
+
+test('discovery: a verified endpoint returning a real empty list is an empty list, not a refusal', async () => {
+  // The distinction the endpoint evidence requires: our templates are
+  // unpublished on Esmeralda, which is an EMPTY deployment, not an indexer
+  // outage. The gate must not flatten those two into the same state.
+  globalThis.fetch = endpointFetch({ data: [] });
+  const result = await new pools.IndexerPoolDiscovery(DISCOVERY_URL).discover();
+  assert.equal(result.pools.length, 0);
+  assert.equal(result.unavailableReason, undefined, 'a verified empty list is not a failure and must not be dressed as one');
 });
 
 test('outage: a failed marketplace query is distinguishable from zero collections', async () => {

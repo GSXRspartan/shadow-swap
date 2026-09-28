@@ -40,8 +40,27 @@
  * single clickjacking control and this header is omitted on purpose.
  */
 
+import { ESMERALDA_INDEXER_URLS } from './networks.js';
+
 /** The wallet dApp frame origin, pinned exactly. Never a wildcard. */
 export const WALLET_DAPP_ORIGIN = 'https://universe.tari.mw';
+
+/**
+ * Origins the app is allowed to connect to, derived from the network table.
+ *
+ * Previously this string was written out by hand here while the endpoints the
+ * app actually used were written out by hand in `services/config.ts`. The two
+ * copies were independent, and when the configured hosts were replaced the CSP
+ * would have kept allowing the dead ones and blocked the live ones. Deriving it
+ * from the same source the client resolves keeps `connect-src` and the
+ * configured indexer structurally incapable of disagreeing.
+ *
+ * Only the public testnet origins are listed. Localnet's `127.0.0.1` default is
+ * deliberately excluded: a production build must not be able to reach a local
+ * endpoint, and adding it would also let the `deployment.test.cjs` private-
+ * address assertion pass for the wrong reason.
+ */
+export const CONNECT_ALLOWED_ORIGINS: readonly string[] = ESMERALDA_INDEXER_URLS;
 
 export const CONTENT_SECURITY_POLICY = [
   "default-src 'self'",
@@ -50,7 +69,7 @@ export const CONTENT_SECURITY_POLICY = [
   `script-src 'self' ${WALLET_DAPP_ORIGIN}`,
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: https:",
-  "connect-src 'self' https://indexer.esmeralda.tari.com https://indexer-fallback.tari.com",
+  `connect-src 'self' ${CONNECT_ALLOWED_ORIGINS.join(' ')}`,
   "frame-src 'none'",
   "object-src 'none'",
   "base-uri 'self'",
