@@ -51,10 +51,20 @@
       styles as style attributes; there is no CSS injection vector because no
       untrusted value ever reaches a style property (asserted in
       test/security.test.cjs).
+
+      The `connect-src` list below is a SECOND, independent copy of the one in
+      apps/web/src/lib/deploymentHeaders.ts. A browser enforces BOTH, and the
+      effective policy is their intersection, so a stale copy here silently
+      blocks a correct deployment - which is exactly what happened when the
+      indexer origins moved on 2026-09-28 and this tag was missed: the response
+      header was correct and every cross-origin discovery read still failed.
+
+      `test/deployment.test.cjs` now asserts the two `connect-src` lists are
+      identical, so the copy cannot drift again without failing the build.
     -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https://indexer.esmeralda.tari.com https://indexer-fallback.tari.com; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests;"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https://ootle-indexer-a.tari.com https://ootle-indexer-b.tari.com; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests;"
     />
   </head>
   <body>

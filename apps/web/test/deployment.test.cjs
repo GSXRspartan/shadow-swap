@@ -90,6 +90,69 @@ test('csp: every configured esmeralda origin is https and non-local', () => {
   assert.equal(networks.NETWORK_BYTES.esmeralda, 0x26, 'Esmeralda is network byte 38, matching the live /info');
 });
 
+test('csp: the meta tag and the response header name the SAME connect origins', () => {
+  // A browser enforces the meta policy AND the response policy, and the
+  // effective policy is their intersection. So this is a second independent copy
+  // of `connect-src`, and a stale one silently blocks a correct deployment.
+  //
+  // That is not hypothetical: when the indexer origins changed on 2026-09-28 the
+  // response header was updated and this meta tag was missed. The header was
+  // right, the browser suite went red, and every cross-origin discovery read
+  // failed with `TypeError: Failed to fetch`.
+  const html = fs.readFileSync(path.join(appRoot, 'index.html'), 'utf8');
+  const meta = /http-equiv="Content-Security-Policy"\s+content="([^"]+)"/.exec(html);
+  assert.ok(meta, 'index.html must declare a CSP');
+
+  const originsOf = (policy) => {
+    const match = /connect-src ([^;]+)/.exec(policy);
+    assert.ok(match, `connect-src must be declared in: ${policy.slice(0, 60)}`);
+    return match[1].trim().split(/\s+/).sort();
+  };
+  assert.deepEqual(
+    originsOf(meta[1]),
+    originsOf(built.CONTENT_SECURITY_POLICY),
+    'the meta CSP and the response CSP must name identical connect origins, or the effective policy is the intersection of the two',
+  );
+
+  // And the shipped artifact must carry the same list as the source, so a stale
+  // dist cannot pass a test that only reads index.html.
+  const builtHtml = fs.readFileSync(path.join(distDir, 'index.html'), 'utf8');
+  const builtMeta = /http-equiv="Content-Security-Policy"\s+content="([^"]+)"/.exec(builtHtml);
+  assert.ok(builtMeta, 'the built index.html must carry the meta CSP');
+  assert.deepEqual(originsOf(builtMeta[1]), originsOf(built.CONTENT_SECURITY_POLICY));
+});
+
+test('csp: no retired indexer host survives anywhere in the shipped frontend', () => {
+  // Both of the pre-2026-09-28 origins are authoritative NXDOMAIN. Leaving one
+  // in a policy or a permission list is not harmless: an allow-list that names
+  // only dead hosts fails closed, and one that names both dead and live hosts
+  // is misleading to whoever reads it during an incident.
+  const retired = ['indexer.esmeralda.tari.com', 'indexer-fallback.tari.com'];
+  const files = sourceFiles(appRoot, ['.ts', '.tsx', '.html', '.mjs', '.cjs']);
+  for (const file of files) {
+    const text = fs.readFileSync(file, 'utf8');
+    for (const host of retired) {
+      // Comments and evidence documents may name them historically; a policy,
+      // a permission list, or a fetch target may not. Identify those by shape.
+      assert.equal(
+        /["'`][^"'`\n]*(?:connect-src|host_permissions|page\.route|fetch\()[^"'`\n]*["'`][^"'`\n]*" ?\+? ?[^\n]*https?:\/\/[^"'`\n]*\/[^"'`\n]*$/.test(text) && text.includes(host),
+        false,
+        `${path.relative(appRoot, file)} appears to reference the retired origin ${host}`,
+      );
+    }
+  }
+  // The two policy strings themselves must not contain it, checked directly
+  // rather than by the heuristic above.
+  assert.equal(/indexer\.esmeralda\.tari\.com/.test(built.CONTENT_SECURITY_POLICY), false);
+  const html = fs.readFileSync(path.join(appRoot, 'index.html'), 'utf8');
+  assert.equal(/indexer\.esmeralda\.tari\.com/.test(html), false);
+  assert.equal(/indexer-fallback\.tari\.com/.test(html), false);
+  const manifest = JSON.parse(fs.readFileSync(path.join(appRoot, '..', 'extension', 'manifest.json'), 'utf8'));
+  for (const pattern of manifest.host_permissions ?? []) {
+    assert.equal(/indexer\.esmeralda\.tari\.com|indexer-fallback\.tari\.com/.test(pattern), false, `extension host permission still names a retired origin: ${pattern}`);
+  }
+});
+
 test('csp: frame-ancestors is in the response header, not the meta tag', () => {
   // A meta CSP ignores frame-ancestors, so declaring it there would be false
   // assurance. It must appear in the generated response header instead. Only
