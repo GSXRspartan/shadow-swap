@@ -345,15 +345,27 @@ Web app → wallet adapter → browser Tari provider → self-custodial wallet
 - Normal users are **not** expected to need a console wallet, `walletd`, a shell, a cloned
   backend, or a localhost service — those exist as development/reference paths only
   (`VITE_ENABLE_DEV_PROVIDERS` requires a development build).
-- The adapter interface exposes extension/embedded/wallet-daemon adapters; the Sapient adapter
-  is an explicit-unsupported seam pending a stable upstream dApp API.
+- The frontend references `window.tari` in exactly one place
+  (`apps/web/src/services/tariWindow.ts`), which allow-lists every method it will call.
+  **All thirteen allow-listed methods were verified to exist in the deployed Tari Universe
+  connector on 2026-09-28**, and the connector's confidential/shielded methods are
+  deliberately *not* called: this is a public AMM, and asking a wallet for more than the app
+  needs is a cost, not a feature.
+- Provider detection is by **object identity** at authorization time, never by the connector's
+  `tari:announceProvider` / `tari#initialized` events, because an announcement is another thing a
+  hostile page can emit. A provider that reports `isEmbedded === false` is refused before any
+  call rather than being allowed to reject every request.
 - Every financial operation goes through the review gate: a differential diff between the
   reviewed transaction and the built intent, identity re-verification at authorization time
   (provider object identity, network, account), and the reviewed request forwarded verbatim to
   the signer.
+- **Honest capability states.** A capability the browser provider does not have is reported as
+  unavailable. There is deliberately no silent `walletd` fallback and no placeholder provider, so
+  "the browser cannot do this" is visible rather than papered over.
 
 Deeper material: [docs/FRONTEND_TRUST_BOUNDARIES.md](docs/FRONTEND_TRUST_BOUNDARIES.md),
-[docs/FRONTEND_SECURITY_MODEL.md](docs/FRONTEND_SECURITY_MODEL.md).
+[docs/FRONTEND_SECURITY_MODEL.md](docs/FRONTEND_SECURITY_MODEL.md),
+[docs/TARI_BROWSER_ATOMIC_SWAP_PROVIDER_GAP.md](docs/TARI_BROWSER_ATOMIC_SWAP_PROVIDER_GAP.md).
 
 ## Operations and recovery
 

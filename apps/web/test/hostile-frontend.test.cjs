@@ -130,6 +130,128 @@ test('spoof: getTariProvider throws a typed refusal rather than returning a stub
   }
 });
 
+// ---------------------------------------------------------------------------
+// Provider compatibility with the live Tari Universe connector
+//
+// Verified 2026-09-28 against the DEPLOYED connector, not a copy of it:
+// https://universe.tari.mw/tari-connector.js
+// ---------------------------------------------------------------------------
+
+const UPSTREAM_METHODS = [
+  'tari_getNetwork',
+  'tari_requestAccounts',
+  'tari_getAccounts',
+  'tari_getWalletAddress',
+  'tari_getCapabilities',
+  'tari_disconnect',
+  'tari_getBalances',
+  'tari_getSubstate',
+  'tari_getTransactionResult',
+  'tari_signAndSubmitTransaction',
+  'tari_createTransactionRequest',
+  'tari_getTransactionRequest',
+  'tari_submitTransactionRequest',
+];
+
+test('provider: every allow-listed method exists in the live upstream connector', () => {
+  // The allow-list is a fail-closed guard, which means an invented method name
+  // is not a harmless typo: it is a method that can never succeed and a denial
+  // reason that would point at the wallet instead of at this repository. This
+  // pins the list to the surface observed on the deployed connector.
+  const upstream = new Set(UPSTREAM_METHODS);
+  for (const method of Object.values(tari.TARI_METHODS)) {
+    assert.ok(upstream.has(method), `allow-listed method "${method}" does not exist in the live Tari Universe connector`);
+  }
+});
+
+test('provider: the private/shielded methods are deliberately NOT called', () => {
+  // The connector also exposes a confidential surface: tari_getViewAccess,
+  // tari_requestViewAccess, tari_revokeViewAccess, tari_getPrivateBalances,
+  // tari_getShieldedOutputs, tari_scanForResourceUtxos,
+  // tari_scanForPrivatePayments, tari_claimPrivatePayment,
+  // tari_signOwnershipChallenge, tari_signWalletOwnershipChallenge.
+  //
+  // None of them are used, and that is the intended state: this is a PUBLIC
+  // constant-product AMM and a public marketplace. Adding any of them would
+  // widen what the app asks a wallet for. Asserted so adding one is deliberate.
+  const used = new Set(Object.values(tari.TARI_METHODS));
+  for (const method of [
+    'tari_getPrivateBalances',
+    'tari_getShieldedOutputs',
+    'tari_claimPrivatePayment',
+    'tari_requestViewAccess',
+    'tari_revokeViewAccess',
+    'tari_getViewAccess',
+    'tari_scanForPrivatePayments',
+    'tari_scanForResourceUtxos',
+    'tari_signOwnershipChallenge',
+    'tari_signWalletOwnershipChallenge',
+  ]) {
+    assert.equal(used.has(method), false, `${method} must not be in the allow-list for a public AMM`);
+  }
+});
+
+test('provider: tari_getSubstate is called with `substateId`, the name the connector uses', async () => {
+  // The connector calls this method with `{ substateId, version }` in three
+  // separate places. An earlier version of this app sent `{ address }`, which no
+  // provider accepts on the wire. That mattered because this is the
+  // AUTHORITATIVE read path: the resolvers would have failed closed, which is
+  // safe, but every real-wallet reread would have failed.
+  let seen;
+  const provider = {
+    request: async (envelope) => {
+      seen = envelope;
+      return { substateId: 'component_abc', fields: { reserves: '1' } };
+    },
+  };
+  const view = await tari.readSubstate(provider, 'component_abc');
+  assert.equal(seen.method, 'tari_getSubstate');
+  assert.equal(seen.params.substateId, 'component_abc', 'substateId must be the primary key');
+  // The compatibility alias carries the identical string, so it introduces no
+  // second value that could disagree.
+  assert.equal(seen.params.address, seen.params.substateId);
+  assert.equal(view.address, 'component_abc');
+});
+
+test('provider: a reply keyed `substateId` is accepted, not only one keyed `address`', async () => {
+  const provider = { request: async () => ({ substateId: 'component_xyz', fields: {} }) };
+  const view = await tari.readSubstate(provider, 'component_xyz');
+  assert.equal(view.address, 'component_xyz');
+});
+
+test('provider: a present-but-not-embedded provider is refused before any call', async () => {
+  // The connector script is loadable from any page, but outside a wallet's dApp
+  // frame `request` rejects immediately. Detecting `isEmbedded === false` up
+  // front turns that into one honest state, instead of a stream of rejections
+  // and a per-attempt timeout burn, presented as "wallet disconnected".
+  let called = 0;
+  const scope = {
+    tari: {
+      isEmbedded: false,
+      request: async () => {
+        called += 1;
+        return {};
+      },
+    },
+  };
+  assert.throws(() => tari.getTariProvider(scope), tari.TariProviderError);
+  assert.equal(called, 0, 'no provider call may be made against a non-embedded provider');
+  try {
+    tari.getTariProvider(scope);
+  } catch (error) {
+    assert.equal(error.code, 'NOT_INJECTED');
+  }
+});
+
+test('provider: a provider that does not publish isEmbedded still works', () => {
+  // Only an explicit `false` is refused. Requiring the field would break any
+  // provider that does not implement it, and inventing a requirement the real
+  // interface may not guarantee is how an integration quietly stops working.
+  const provider = { request: async () => ({}) };
+  assert.equal(tari.getTariProvider({ tari: provider }), provider);
+  assert.equal(tari.getTariProvider({ tari: { ...provider, isEmbedded: true } }).isEmbedded, true);
+});
+
 test('spoof: a capability reply with no recognisable flag is treated as NOT ADVERTISED', () => {
   // A provider that returns an empty object must not be read as "supports
   // nothing, so everything is fine".

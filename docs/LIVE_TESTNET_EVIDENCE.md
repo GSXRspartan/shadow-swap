@@ -239,21 +239,46 @@ components.
 ## 6. Wallet / provider network identity
 
 `GET /info` reports `network: "esmeralda"` and `network_byte: 38`. The
-frontend's allowlist already uses the id `esmeralda`, and `NETWORK_BYTES.esmeralda
-= 0x26` is asserted in tests against this observation.
+frontend's allowlist already uses the id `esmeralda`, and
+`NETWORK_BYTES.esmeralda = 0x26` is asserted in tests against this observation.
 
-The browser provider surface is `window.tari` with methods such as
-`tari_getNetwork`, `tari_getCapabilities`, `tari_requestAccounts`,
-`tari_getSubstate`, and `tari_signAndSubmitTransaction`, behind a single
-integration boundary (`apps/web/src/services/tariWindow.ts`). Per the recorded
-wallet architecture, that provider is injected by a cross-origin connector script
-from the wallet's dApp frame, not into arbitrary pages — which is why
-`frame-ancestors` and `script-src` must allow `https://universe.tari.mw`.
+### 6.1 The provider connector was read directly
+
+The Tari Universe connector was fetched and read — not a copy of it:
+
+```
+GET https://universe.tari.mw/                      → 200
+GET https://universe.tari.mw/tari-connector.js    → 200, 18,589 bytes
+```
+
+Three findings came out of that and are recorded in full in
+[docs/TARI_BROWSER_ATOMIC_SWAP_PROVIDER_GAP.md](TARI_BROWSER_ATOMIC_SWAP_PROVIDER_GAP.md):
+
+1. **All thirteen allow-listed `window.tari` methods exist upstream.** Nothing
+   this app calls is invented. The connector's confidential/shielded methods are
+   deliberately unused — this is a public AMM.
+2. **`tari_getSubstate` takes `substateId`, not `address`.** This app was sending
+   `{ address }`. That is the **authoritative readback path**, so a real wallet
+   would have failed every reread. The failure mode is safe (the resolvers fail
+   closed) but the product would have been non-functional. Fixed, with `address`
+   kept as an identical-value alias.
+3. **The `script-src https://universe.tari.mw` allowance is observed, not
+   assumed** (resolves R-13). The connector's own source states the wallet loads
+   it as a cross-origin script into the dApp document and forwards by
+   `postMessage`.
+
+Also learned: the provider publishes `isEmbedded`, not the `isAvailable` its own
+doc comment names — an upstream doc slip, recorded so nobody depends on a
+property that does not exist. The app refuses an explicit `isEmbedded === false`
+before making any call.
+
+### 6.2 What was not verified
 
 **No real wallet was available in this environment.** Every provider interaction
 in the test suites is an injected double. No claim is made that a real wallet
-completed a real flow. See `security/FRONTEND_RESIDUAL_RISKS.md` R-13 for the
-unverified part of this.
+completed a real flow, and none of the connector's *runtime* behaviour — approval
+prompts, rejections, account switching, capability advertisement — has been
+observed, only its declared interface and source.
 
 ---
 
@@ -294,8 +319,12 @@ A machine-readable capture from this session is in
 | Network identity `esmeralda` / byte 38 | **VERIFIED LIVE** | matches official SDK enum |
 | Indexer version 0.41.4, epoch 11602 | **VERIFIED LIVE** | `/info`, `/epoch-manager/stats` |
 | Browser-safe (direct CORS) | **VERIFIED LIVE** | `access-control-allow-origin: *` |
+| All 13 allow-listed `tari_*` methods exist | **VERIFIED AGAINST DEPLOYED SOURCE** | `universe.tari.mw/tari-connector.js` fetched and read |
+| `tari_getSubstate` param name (`substateId`) | **VERIFIED AGAINST DEPLOYED SOURCE** | three call sites in the connector; fixed a real defect here |
+| `script-src` wallet allowance is required | **VERIFIED AGAINST DEPLOYED SOURCE** | resolves R-13 |
 | This protocol's templates published on-chain | **NOT PRESENT** | 4 catalogue queries, 0 entries |
 | Live pool / NFT discovery of our pools | **BLOCKED_EXTERNAL** | requires the publication step |
+| Discovery query convention matches the indexer API | **OPEN (R-14)** | `POST {base}` vs REST; reported honestly, no shim |
 | Any transaction executed | **NOT ATTEMPTED** | out of scope and gated |
-| Real wallet provider exercised | **NOT ATTEMPTED** | no wallet available |
+| Real wallet provider **runtime** behaviour exercised | **NOT ATTEMPTED** | no wallet available; interface verified, behaviour not |
 | Deployed HTTPS host serving `_headers` | **NOT ATTEMPTED** | no Cloudflare credentials; R-1 open |

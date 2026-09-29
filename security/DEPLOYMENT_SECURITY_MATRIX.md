@@ -113,6 +113,23 @@ All against the production bundle, served with the policy enforced.
 | D-7.12 | Discovery query convention matches the live indexer's API shape | **OPEN (R-14)** | Discovery issues `POST {base} {"query":"pool_discovery"}`; the live indexer is REST and answers `404`. Reported honestly as unavailable. No shim, because a shim would mean injecting fabricated records |
 | D-7.13 | Indexer origins are browser-reachable without a relay | **FIXED at `8ef3d03`** | Observed `access-control-allow-origin: *` on both origins; `connect-src` lists them explicitly, so the CSP is a real restriction rather than a formality |
 
+### 7a. Provider compatibility with the live Tari Universe connector
+
+Verified 2026-09-28 by fetching and reading the deployed connector
+(`https://universe.tari.mw/tari-connector.js`, 200, 18,589 bytes) rather than
+from a reference copy. Detail in
+`docs/TARI_BROWSER_ATOMIC_SWAP_PROVIDER_GAP.md`.
+
+| # | Control | Class | Evidence |
+|---|---|---|---|
+| D-7a.1 | Every allow-listed `window.tari` method exists upstream | FIXED | `HF provider: every allow-listed method exists in the live upstream connector`. All 13 verified verbatim; an allow-list is fail-closed, so an invented name would misattribute a defect to the wallet |
+| D-7a.2 | The confidential/shielded provider surface is deliberately not called | FIXED | `HF provider: the private/shielded methods are deliberately NOT called` — 10 methods asserted absent. This is a public AMM |
+| D-7a.3 | `tari_getSubstate` is called with the parameter name the provider accepts | **FIXED — was a real defect** | The connector uses `{ substateId, version }` in three places and never `address`. This app sent `{ address }`. Because this is the authoritative readback port, a real wallet would have failed every reread. Now `substateId` primary with `address` as an identical-value alias. `HF provider: tari_getSubstate is called with substateId, the name the connector uses` |
+| D-7a.4 | A provider present but not embedded is refused before any call | FIXED | The connector sets `isEmbedded` and rejects immediately when false. `HF provider: a present-but-not-embedded provider is refused before any call` |
+| D-7a.5 | `isEmbedded` is not made a *requirement* | FIXED | `HF provider: a provider that does not publish isEmbedded still works`. Only an explicit `false` is refused |
+| D-7a.6 | The `script-src https://universe.tari.mw` allowance is **observed**, not assumed | **FIXED — resolves R-13** | The connector's own source: "The wallet runs your dApp in a cross-origin iframe, so it cannot reach into this page … So the provider lives here and forwards every call to the wallet by postMessage" |
+| D-7a.7 | Provider announcement events are not trusted for detection | FIXED by design | The connector dispatches `tari:announceProvider` / `tari#initialized` and maintains `window.tariProviders`. Detection is by object identity at authorization time, because an event is another thing a hostile page can emit |
+
 ## 8. Browser, account, and storage boundaries
 
 | # | Control | Class | Evidence |
@@ -163,38 +180,45 @@ All against the production bundle, served with the policy enforced.
 
 ## Totals
 
-Counted from the rows above, at `8ef3d03`.
+Counted from the rows above, at `8ef3d03` plus the provider verification.
 
 | Class | Count |
 |---|---|
 | PASS (verified working) | 0 |
-| FIXED (control implemented and regression-proven) | 66 |
+| FIXED (control implemented and regression-proven) | 73 |
 | N/A_BY_CONSTRUCTION | 2 |
 | EXTERNAL_RISK | 3 |
 | BLOCKED_EXTERNAL | 10 |
 | BLOCKED_TOOLING | 4 |
 | OPEN (real gap, accepted and documented) | 1 |
 | **UNKNOWN** | **0** |
-| **Total rows** | **86** |
+| **Total rows** | **93** |
 
 Open CRITICAL: **0**. Open HIGH: **1** (D-1.11 / R-1).
 
 Counts are of rows, not of distinct problems. The `8ef3d03` pass moved **6 rows
 from `BLOCKED_EXTERNAL` to `FIXED`** because the Ootle indexer turned out to be
 reachable after all and its identity is now verified (D-7.6 through D-7.10,
-D-7.13), added 4 rows for the CSP/`connect-src` derivation, the SPA rewrite, the
-`_redirects`/policy separation, and the live-origin verifier (D-1.12–D-1.15), and
-added **1 row the previous state could not have had** — D-7.12 / R-14, a genuine
-protocol mismatch that only became *visible* once the endpoint began answering.
-Being able to see a defect is not the same as being free of it; the row is
-recorded as `OPEN`, not moved.
+D-7.13), and added 4 rows for the CSP/`connect-src` derivation, the SPA rewrite,
+the `_redirects`/policy separation, and the live-origin verifier (D-1.12–D-1.15).
+The provider verification added 7 more (D-7a.1–D-7a.7), of which **D-7a.3 was a
+real defect found and fixed** — the authoritative readback sent `address` where
+the provider accepts `substateId` — and **D-7a.6 resolved R-13** against the
+deployed connector's own source.
+
+Two rows are worth reading together, because one is the lesson of this pass. Six
+rows moved to `FIXED` because a previously "unreachable" endpoint turned out to
+be reachable, and **one row moved the other way**: D-7.12 / R-14, a genuine
+protocol mismatch that could not have been written down before, because the
+endpoint used to answer nothing at all. Being able to see a defect is not the
+same as being free of it, so the row is recorded as `OPEN`, not quietly closed.
 
 The 10 remaining `BLOCKED_EXTERNAL` rows cluster into four causes: no real wallet
 provider, no deployed URL, no published protocol templates, and no physical
-device. The 66 `FIXED` rows likewise cluster, and several rows exist because one
+device. The 73 `FIXED` rows likewise cluster, and several rows exist because one
 underlying fix needed asserting from more than one angle (for example F-02 is
 asserted at the provider boundary, at the request-derivation level, and at the
-freeze level).
+freeze level; D-7a.3 is asserted at the parameter name *and* at the reply key).
 
 **No row is `UNKNOWN`.** Where evidence does not exist, the row says so and says
 why. Historical attack matrices elsewhere in `security/` are kept as historical

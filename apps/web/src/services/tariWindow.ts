@@ -43,6 +43,22 @@ export interface TariProvider {
   request<T = unknown>(envelope: TariRequestEnvelope): Promise<T>;
   on?(event: string, listener: (...args: unknown[]) => void): void;
   removeListener?(event: string, listener: (...args: unknown[]) => void): void;
+  /**
+   * `true` only when the page is running inside a wallet's dApp iframe.
+   *
+   * Verified against the live connector on 2026-09-28: its provider object
+   * carries `isTariWallet`, `isEmbedded`, and `info`, and its `request` rejects
+   * immediately with "this page is not running inside Tari Universe" when
+   * `isEmbedded` is false. (Its own doc comment mentions `isAvailable`, which the
+   * object does not actually define — an upstream doc slip, not a contract.)
+   *
+   * Optional here on purpose. Only an explicit `false` is refused, so a provider
+   * that does not publish the field at all still works; a provider that
+   * positively says it is not embedded is refused BEFORE any call is made,
+   * rather than being allowed to reject every request and present as a wallet
+   * that is merely disconnected.
+   */
+  isEmbedded?: boolean;
 }
 
 declare global {
@@ -95,6 +111,16 @@ export function getTariProvider(scope: unknown = globalThis): TariProvider {
   // Fail closed on a provider that cannot answer the capability handshake.
   if (typeof provider.request !== 'function') {
     throw new TariProviderError('The injected Tari provider does not implement request().', 'MALFORMED_REPLY');
+  }
+  // The connector script is reachable from any page, but outside a wallet's dApp
+  // frame every call rejects. Detecting that here turns "connected to nothing"
+  // into one honest state instead of a stream of rejected reads, and it avoids
+  // burning a call timeout per attempt on a provider that will never answer.
+  if (provider.isEmbedded === false) {
+    throw new TariProviderError(
+      'A Tari provider is present but this page is not running inside a Tari wallet dApp frame, so it cannot answer. Open the app from the wallet.',
+      'NOT_INJECTED',
+    );
   }
   return provider;
 }
@@ -299,12 +325,32 @@ export async function fetchBalances(provider: TariProvider): Promise<TariBalance
  * Authoritative component read. Used as the `AuthoritativeSubstateReader` port
  * for the protocol-client's readback providers, so every resolver reread in the
  * app flows through exactly one code path.
+ *
+ * PARAMETER NAME — verified against the live connector on 2026-09-28.
+ *
+ * The deployed Tari Universe connector (`https://universe.tari.mw/tari-connector.js`)
+ * calls this method with `{ substateId, version }` in three separate places:
+ *
+ *   getSubstate: function (substateId, version) {
+ *     return request("tari_getSubstate", { substateId: substateId, version: ... });
+ *   }
+ *
+ * An earlier version of this function sent `{ address }`, which is the name this
+ * codebase uses internally and which no provider on the wire actually accepts.
+ * Because this is the *authoritative* read path, that mismatch would have made
+ * every real-wallet reread fail — safely, in that the resolvers fail closed, but
+ * non-functional for a real user.
+ *
+ * `substateId` is therefore the primary key. `address` is sent alongside it as a
+ * compatibility alias for any provider that used the older name; both carry the
+ * identical string, so there is no ambiguity to resolve and no new input to
+ * validate. Replies are accepted under either key.
  */
 export async function readSubstate(provider: TariProvider, address: string): Promise<TariSubstateView | undefined> {
-  const reply = await call<Record<string, unknown>>(provider, TARI_METHODS.getSubstate, { address });
+  const reply = await call<Record<string, unknown>>(provider, TARI_METHODS.getSubstate, { substateId: address, address });
   if (reply.notFound === true || reply.found === false) return undefined;
   const view: TariSubstateView = {
-    address: readString(reply.address ?? address, 'address'),
+    address: readString(reply.address ?? reply.substateId ?? address, 'address'),
     fields: {},
   };
   if (typeof reply.templateName === 'string') view.templateName = reply.templateName;
