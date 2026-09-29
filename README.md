@@ -271,8 +271,14 @@ these load-bearing properties:
 3. **Real submission is gated OFF.** Testnet real submission requires the explicit environment
    gate described below; mainnet never passes.
 
+**These three limitations are unchanged by any of the work in this repository**, and no attempt
+was made to force browser XTM execution. `CLAIM_ARMED`, amount authority, settlement-proof
+revalidation, terminal proof requirements, restart recovery, `UNKNOWN` handling, and preimage
+custody are all still enforced and still independently tested.
+
 Deeper material: [docs/FAST_XTM_TARI_ARCHITECTURE.md](docs/FAST_XTM_TARI_ARCHITECTURE.md),
-[docs/MINOTARI_ATOMIC_SWAP_API.md](docs/MINOTARI_ATOMIC_SWAP_API.md).
+[docs/MINOTARI_ATOMIC_SWAP_API.md](docs/MINOTARI_ATOMIC_SWAP_API.md),
+[security/MINOTARI_AUTHORITY_MODEL.md](security/MINOTARI_AUTHORITY_MODEL.md).
 
 ## Multi-hop: XTM → TARI → AMM
 
@@ -545,9 +551,11 @@ The **endpoint works**. What does **not** exist yet is our own deployment on it:
 
 | Item | Status | Blocker |
 | --- | --- | --- |
+| Template WASM builds | ✅ `IMPLEMENTED` | All four compile to `wasm32-unknown-unknown --release` (196–243 KB) |
+| Templates published on Esmeralda | — | **The next step.** Requires a human publication action; documented in [docs/TESTNET_RUNBOOK.md](docs/TESTNET_RUNBOOK.md) |
 | Cloudflare Pages deployment + response headers | ⚙️ `CONFIGURED_NOT_LIVE` (R-1 open) | No Cloudflare credentials in this environment |
-| Live ordinary L2 swap / LP / NFT flows | — | Requires our templates to be published, then a funded browser wallet |
-| Browser provider inside a real wallet dApp frame | 🧪 | Requires a running wallet extension; all provider evidence so far is injected doubles |
+| Live ordinary L2 swap / LP / NFT flows | — | Requires the publication step, then a funded browser wallet |
+| Browser provider inside a real wallet dApp frame | 🧪 | Requires a running wallet extension; the *interface* is verified against the deployed connector, the runtime is not |
 
 **Feature status** (the tables above) is independent of this snapshot: implemented features are
 exercised by deterministic suites, not by live uptime. Real funds are not used anywhere in this

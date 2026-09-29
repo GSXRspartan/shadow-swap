@@ -178,6 +178,32 @@ This is now asserted in code and tests: a verified endpoint returning a genuinel
 empty list produces an **empty list with no unavailable reason**, while an
 unverifiable or wrong-network endpoint produces a **typed refusal**.
 
+### 4.2 Publication readiness — verified, and deliberately not performed
+
+All four templates were built locally on 2026-09-28 (`cargo` 1.97.1,
+`wasm32-unknown-unknown --release`, offline, non-destructive):
+
+| Template | Bytes |
+|---|---|
+| `fungible_pool` | 242,679 |
+| `nft_marketplace` | 196,014 |
+| `nft_item_offer` | 198,624 |
+| `nft_collection_bid` | 198,829 |
+
+Publication is therefore **mechanically ready**: the artifacts exist and compile.
+
+**It was not performed.** Publishing spends testnet funds, mutates shared testnet
+state, and is irreversible for the resulting template address. It is also exactly
+the kind of action that must not happen as a side effect of a test run or a CI
+job. The procedure is documented in
+[docs/TESTNET_RUNBOOK.md](TESTNET_RUNBOOK.md) § *"Publish the protocol templates"*,
+including the explicit prohibitions: no automated publish, no hand-written publish
+script, and no substituting fabricated pool records for a real deployment.
+
+So the exact next requirement is a **human publication step**, not a code change:
+publish the four templates from the wallet web UI, then point discovery at the REST
+endpoints that serve the resulting components.
+
 ---
 
 ## 5. API shape: REST, and there is no GraphQL endpoint
