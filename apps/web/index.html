@@ -16,13 +16,21 @@
     <!--
       Content Security Policy.
 
-      A wallet dApp is reached through `window.tari` injected into this page, so
-      there is no postMessage bridge in this app and no `connect-src` to a local
-      wallet service. The policy is therefore tight by construction:
+      A wallet dApp reaches `window.tari` through the official integration model:
+      the dApp includes the wallet's connector script unconditionally, and the
+      connector supplies the provider when the dApp runs inside a Tari Universe
+      iframe and stands aside when a Sapient extension already owns `window.tari`
+      in an ordinary tab. So this app must work in BOTH placements.
 
         default-src 'self'   nothing loads unless explicitly allowed
-        script-src  'self'   no inline script, no eval, no CDN. Vite emits a
-                            module script and nothing else, so this is satisfiable.
+        script-src  'self' https://universe.tari.mw
+                            the ONE non-'self' script source is the wallet
+                            connector origin. It is exact, never a wildcard. The
+                            connector is a cross-origin script loaded into THIS
+                            document, so `'self'` alone would block it and leave
+                            the embedded placement unable to connect at all. No
+                            'unsafe-inline' and no 'unsafe-eval' is accepted in
+                            exchange: Vite emits a module script and nothing else.
         connect-src 'self' + the two allow-listed Esmeralda indexer origins.
                             A configured custom indexer is added at build time
                             only if it is not a private-network address; the
@@ -31,17 +39,16 @@
         img-src     'self' data: https:   NFT media is attacker-controlled, so
                             https is allowed and validated per-URL by
                             safeImageUrl (scheme, credentials, length).
-        frame-src   'none'   this app never embeds a frame, and must not be
-                            framed BY anything other than the wallet. Embedding
-                            is expressed by the deployment response header
-                            (see docs/FRONTEND_SECURITY_MODEL.md), not here.
+        frame-src   'none'   this app never embeds a frame. Being framed BY the
+                            wallet is expressed by the deployment response
+                            header (see docs/FRONTEND_SECURITY_MODEL.md), not
+                            here.
         frame-ancestors        NOT SET HERE. A meta CSP silently ignores
                             frame-ancestors, so declaring it would be false
                             assurance. The deployment MUST send
                             `Content-Security-Policy: frame-ancestors 'self'
-                            https://universe.tari.mw` (or the wallet's own
-                            origin) as a real header. Without that header this
-                            page is clickjackable - recorded as a residual risk.
+                            https://universe.tari.mw` as a real header, or the
+                            wallet cannot embed this app.
         object-src 'none'    no plugins
         base-uri    'self'    no <base> hijacking
         form-action 'none'   no form exfiltration
@@ -52,24 +59,50 @@
       untrusted value ever reaches a style property (asserted in
       test/security.test.cjs).
 
-      The `connect-src` list below is a SECOND, independent copy of the one in
-      apps/web/src/lib/deploymentHeaders.ts. A browser enforces BOTH, and the
-      effective policy is their intersection, so a stale copy here silently
-      blocks a correct deployment - which is exactly what happened when the
-      indexer origins moved on 2026-09-28 and this tag was missed: the response
-      header was correct and every cross-origin discovery read still failed.
+      A BROWSER ENFORCES BOTH this meta policy and the response-header policy, and
+      the effective result is their INTERSECTION. The `script-src` and
+      `connect-src` lists below were therefore independent hand-maintained copies
+      of the ones in apps/web/src/lib/deploymentHeaders.ts, and they had drifted:
+      the response header carried the wallet origin for `script-src` while this
+      meta tag did not, so the effective policy blocked the connector even though
+      the header was correct — and the embedded placement could never have
+      connected.
 
-      `test/deployment.test.cjs` now asserts the two `connect-src` lists are
-      identical, so the copy cannot drift again without failing the build.
+      `test/deployment.test.cjs` now asserts the `script-src` and `connect-src`
+      lists are identical in BOTH places, so neither copy can drift again without
+      failing the build.
     -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https://ootle-indexer-a.tari.com https://ootle-indexer-b.tari.com; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests;"
+      content="default-src 'self'; script-src 'self' https://universe.tari.mw; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https://ootle-indexer-a.tari.com https://ootle-indexer-b.tari.com; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests;"
     />
   </head>
   <body>
     <div id="root"></div>
     <noscript>This application requires JavaScript.</noscript>
+    <!--
+      The Tari wallet connector, included UNCONDITIONALLY, as the official
+      integration model requires ("Include it always.").
+
+      It is what makes the wallet reachable when this dApp is embedded in a Tari
+      Universe iframe, and it stands aside when a browser-extension provider
+      already owns `window.tari` in an ordinary tab. Including it conditionally —
+      after trying to detect which wallet is present — is exactly the
+      wallet-detection the documentation forbids, and it would also race the
+      provider's own initialisation.
+
+      Loading it here, in the document, before the app's module script, is
+      deliberate: the provider is published on script load, so the app observes a
+      provider that already exists. The app still tolerates a provider that
+      appears later, via the documented `tari#initialized` event, because the
+      extension injects at `document_start` and either order is possible.
+
+      It is `async`/`defer`-free on purpose: a deferred connector would race the
+      first render, and a synchronous cross-origin script at the end of <head>
+      cannot observe or alter the app's DOM. The exact origin is allowed by the
+      `script-src` above; nothing wider is permitted.
+    -->
+    <script src="https://universe.tari.mw/tari-connector.js"></script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

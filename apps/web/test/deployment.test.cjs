@@ -38,22 +38,6 @@ function bundleText() {
 // CSP
 // ===========================================================================
 
-test('csp: the meta policy in index.html carries the load-bearing directives', () => {
-  const html = fs.readFileSync(path.join(appRoot, 'index.html'), 'utf8');
-  const match = /http-equiv="Content-Security-Policy"\s+content="([^"]+)"/.exec(html);
-  assert.ok(match, 'index.html must declare a CSP');
-  const csp = match[1];
-  for (const directive of ["default-src 'self'", "script-src 'self'", "object-src 'none'", "base-uri 'self'", "form-action 'none'", "frame-src 'none'"]) {
-    assert.ok(csp.includes(directive), `the meta CSP must contain "${directive}"`);
-  }
-  // Inline script and eval must be absent, or the meta policy is theatre.
-  assert.equal(/script-src[^;]*'unsafe-inline'/.test(csp), false, 'no inline script may be permitted');
-  assert.equal(/script-src[^;]*'unsafe-eval'/.test(csp), false, 'no eval may be permitted');
-  assert.equal(/unsafe-eval/.test(csp), false);
-  // A wildcard would defeat the whole point.
-  assert.equal(/default-src[^;]*\*/.test(csp), false, 'no wildcard source may be permitted');
-});
-
 test('csp: connect-src cannot be widened to a wildcard or a private address', () => {
   const csp = built.CONTENT_SECURITY_POLICY;
   const connect = /connect-src ([^;]+)/.exec(csp);
@@ -120,6 +104,80 @@ test('csp: the meta tag and the response header name the SAME connect origins', 
   const builtMeta = /http-equiv="Content-Security-Policy"\s+content="([^"]+)"/.exec(builtHtml);
   assert.ok(builtMeta, 'the built index.html must carry the meta CSP');
   assert.deepEqual(originsOf(builtMeta[1]), originsOf(built.CONTENT_SECURITY_POLICY));
+});
+
+test('csp: the meta tag and the response header name the SAME script origins', () => {
+  // The same intersection trap, for the wallet connector. The response header
+  // carried `script-src 'self' https://universe.tari.mw` while the meta tag said
+  // `script-src 'self'`, so the EFFECTIVE policy blocked the connector and the
+  // Tari Universe iframe placement could never have connected — the header being
+  // correct is not sufficient when a second, narrower policy is also enforced.
+  const html = fs.readFileSync(path.join(appRoot, 'index.html'), 'utf8');
+  const meta = /http-equiv="Content-Security-Policy"\s+content="([^"]+)"/.exec(html);
+  assert.ok(meta, 'index.html must declare a CSP');
+
+  const sourcesOf = (policy) => {
+    const match = /script-src ([^;]+)/.exec(policy);
+    assert.ok(match, `script-src must be declared in: ${policy.slice(0, 60)}`);
+    return match[1].trim().split(/\s+/).sort();
+  };
+  assert.deepEqual(
+    sourcesOf(meta[1]),
+    sourcesOf(built.CONTENT_SECURITY_POLICY),
+    'the meta CSP and the response CSP must name identical script sources, or the narrower one silently blocks the wallet connector',
+  );
+
+  const builtHtml = fs.readFileSync(path.join(distDir, 'index.html'), 'utf8');
+  const builtMeta = /http-equiv="Content-Security-Policy"\s+content="([^"]+)"/.exec(builtHtml);
+  assert.ok(builtMeta, 'the built index.html must carry the meta CSP');
+  assert.deepEqual(sourcesOf(builtMeta[1]), sourcesOf(built.CONTENT_SECURITY_POLICY));
+});
+
+test('the wallet connector is included unconditionally, as the official model requires', () => {
+  // The published integration model says to include it always: it is what makes
+  // the wallet reachable when the dApp is embedded in Tari Universe, and it
+  // stands aside when an extension already owns `window.tari` in a tab.
+  //
+  // Two things are therefore wrong and both are checked here:
+  //   - the script tag being ABSENT, which makes the embedded placement unable
+  //     to connect at all;
+  //   - the tag being CONDITIONAL (behind a wallet check, a user agent test, or
+  //     a runtime branch), which is the wallet-detection the documentation
+  //     forbids and would race the provider's own initialisation.
+  const html = fs.readFileSync(path.join(appRoot, 'index.html'), 'utf8');
+  const tags = html.match(/<script\b[^>]*>/g) ?? [];
+  const connectors = tags.filter((tag) => tag.includes('universe.tari.mw/tari-connector.js'));
+
+  assert.equal(connectors.length, 1, 'the connector must be included exactly once');
+  const [connector] = connectors;
+  assert.match(connector, /src="https:\/\/universe\.tari\.mw\/tari-connector\.js"/, 'the connector origin must be exact, not interpolated');
+  assert.equal(/async|defer/.test(connector), false, 'the connector must not be deferred; it publishes the provider on script load');
+  assert.equal(/type="module"/.test(connector), false, 'the connector is a classic script');
+  // No `data-tari-*` / `id` gate or inline conditional wrapper.
+  assert.equal(/<script[^>]*\bif\b/i.test(connector), false, 'the connector tag must be unconditional');
+  assert.equal(tags.filter((tag) => /if\s*\(/.test(tag)).length, 0, 'no script tag may be wrapped in a wallet-detection conditional');
+
+  // The same must be true of the SHIPPED artifact, not only the source.
+  const builtHtml = fs.readFileSync(path.join(distDir, 'index.html'), 'utf8');
+  const builtConnectors = (builtHtml.match(/<script\b[^>]*>/g) ?? []).filter((tag) => tag.includes('universe.tari.mw/tari-connector.js'));
+  assert.equal(builtConnectors.length, 1, 'the built page must include the connector exactly once');
+});
+
+test('csp: the meta policy in index.html carries the load-bearing directives', () => {
+  const html = fs.readFileSync(path.join(appRoot, 'index.html'), 'utf8');
+  const meta = /http-equiv="Content-Security-Policy"\s+content="([^"]+)"/.exec(html);
+  assert.ok(meta, 'index.html must declare a CSP');
+  const csp = meta[1];
+  for (const directive of ["default-src 'self'", "script-src 'self'", "object-src 'none'", "base-uri 'self'", "form-action 'none'", "frame-src 'none'"]) {
+    assert.ok(csp.includes(directive), `the meta CSP must contain "${directive}"`);
+  }
+  // The wallet connector origin must be permitted by the meta policy too, since
+  // the effective policy is the intersection of the meta and header policies.
+  assert.match(csp, /script-src[^;]*https:\/\/universe\.tari\.mw/, 'the meta CSP must allow the wallet connector origin');
+  assert.equal(/\*/.test(csp), false, 'the meta CSP must not use a wildcard source');
+  // Inline script and eval must be absent, or the meta policy is theatre.
+  assert.equal(/script-src[^;]*'unsafe-inline'/.test(csp), false, 'no inline script may be permitted');
+  assert.equal(/script-src[^;]*'unsafe-eval'/.test(csp), false, 'no eval may be permitted');
 });
 
 test('csp: no retired indexer host survives anywhere in the shipped frontend', () => {

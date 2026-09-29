@@ -1,9 +1,17 @@
 /**
  * Wallet capability presentation.
  *
- * Capability-driven behaviour only: no wallet brand appears in trading logic,
+ * Capability-driven behaviour only. No wallet brand appears in trading logic,
  * and the browser's known L1 SHA-atomic-swap gap is reported from the
  * protocol-client's own constant rather than from hand-written copy.
+ *
+ * The upstream rule this implements is explicit: "Never branch on which wallet
+ * is present. Call `tari_getCapabilities` and branch on the answer." Every
+ * feature decision below is therefore a question about the ADVERTISEMENT, never
+ * about which wallet produced it. Both the Sapient extension and the Tari
+ * Universe web wallet implement the same interface, and what differs between
+ * them is what a given ACCOUNT can do — a daemon-relayed account has no view
+ * secret — not which product is present.
  */
 
 import { BROWSER_MINOTARI_PROVIDER, BROWSER_PROVIDER_BLOCKER, requiredCapabilitiesFor, NO_WALLET_LEG_CAPABILITIES, type WalletLegCapabilities } from '@tari-ootle/protocol-client/crosschain';

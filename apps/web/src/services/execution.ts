@@ -61,6 +61,13 @@ export interface SigningContext {
   network: string;
   poolOrDestination: string;
   privacyDisclosure: string;
+  /**
+   * The durable operation id, so the wallet's transaction-request id can be
+   * bound to the durable record. The request id survives a page reload; without
+   * being recorded against the operation it is lost, and the recovery this
+   * protocol depends on would have nothing to resume by.
+   */
+  operationId?: string;
 }
 
 function statusFrom(raw: string): ChainTransactionStatus {
@@ -181,8 +188,11 @@ export async function executeSwap<TIntent>(wallets: ExecutionWallets, input: Exe
     construct: (resolvedIntent: unknown) => ({ preview: input.toPreview(resolvedIntent as TIntent) }),
     async sign(envelope: WalletEnvelope) {
       // The provider receives the request generated from the frozen review, so
-      // the amounts it is asked to sign are the amounts the user was shown.
-      const result = await wallets.signAndSubmit(envelope.preview, input.context, input.review.walletRequest);
+      // the amounts it is asked to sign are the amounts the user was shown. The
+      // durable operation id travels with it so the wallet's transaction-request
+      // id can be bound to the durable record, which is what makes a reload
+      // resumable by id instead of losing the outcome.
+      const result = await wallets.signAndSubmit(envelope.preview, { ...input.context, operationId: input.recordInput.operationId }, input.review.walletRequest);
       return { ...envelope, transactionId: result.transactionId, epoch: result.epoch };
     },
     async submit(signed: WalletEnvelope) {

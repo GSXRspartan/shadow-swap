@@ -21,10 +21,26 @@ import { createPoolDiscovery, type PoolDescriptor, type PoolDiscoveryResult } fr
 import { MarketDataService, type MarketDataBundle } from '../services/marketData.js';
 import type { WalletLegCapabilities } from '../lib/capabilities.js';
 import { presentHealth, aggregateHealth, type HealthPresentation } from '../lib/health.js';
-import { TariProviderError } from '../services/tariWindow.js';
+import { TariProviderError, isTariInjected, onProviderInitialized, probeAvailability } from '../services/tariWindow.js';
+import type { TariWalletCapabilities } from '../services/tariDappTypes.js';
 import { UNAVAILABLE } from '../lib/format.js';
 
-export type WalletStatus = 'UNAVAILABLE' | 'DISCONNECTED' | 'CONNECTING' | 'CONNECTED' | 'ERROR';
+export type WalletStatus =
+  /** No `window.tari` object at all: no wallet is installed for this origin. */
+  | 'UNAVAILABLE'
+  /**
+   * A provider object exists but cannot service requests here — for example the
+   * Tari Universe connector loaded on a top-level page with no wallet frame, and
+   * no extension either. This is a DISTINCT state from `UNAVAILABLE`, because the
+   * fix is different: the user needs to open the app from a wallet, not install
+   * one.
+   */
+  | 'PROVIDER_UNAVAILABLE'
+  /** A provider is present and answered; no account is connected yet. */
+  | 'DISCONNECTED'
+  | 'CONNECTING'
+  | 'CONNECTED'
+  | 'ERROR';
 
 export interface WalletState {
   status: WalletStatus;
@@ -33,6 +49,8 @@ export interface WalletState {
   network?: NetworkInfo;
   networkId?: string;
   capabilities?: WalletLegCapabilities;
+  /** The published `tari_getCapabilities` advertisement, for feature gating. */
+  walletCapabilities?: TariWalletCapabilities;
   balances: Balance[];
   error?: string;
   /** Bumped whenever the provider reports an identity change. */
@@ -73,7 +91,7 @@ export interface ExecutionWalletsLike {
   preview(preview: Partial<import('@tari-ootle/wallet-adapter').TransactionPreview>): Promise<import('@tari-ootle/wallet-adapter').TransactionPreview>;
   signAndSubmit(
     preview: import('@tari-ootle/wallet-adapter').TransactionPreview,
-    context: { assets: string[]; operation: string; network: string; poolOrDestination: string; privacyDisclosure: string },
+    context: { assets: string[]; operation: string; network: string; poolOrDestination: string; privacyDisclosure: string; operationId?: string },
     reviewedRequest: Readonly<Record<string, unknown>>,
   ): Promise<import('@tari-ootle/wallet-adapter').TransactionResult>;
   getTransactionStatus(txId: string): Promise<{ status: string; epoch?: number; error?: string }>;
@@ -112,11 +130,14 @@ export function AppProvider({
   const identityRef = useRef<ExecutionIdentity | null>(null);
 
   const [wallet, setWallet] = useState<WalletState>(() => {
-    const bridge = walletService.bridge();
-    if (bridge === undefined) {
-      return { ...INITIAL_WALLET, status: 'UNAVAILABLE', error: 'No Tari wallet provider is injected in this page. Open the app from the wallet dApp frame, or install a provider that exposes tari_getCapabilities.' };
-    }
-    return INITIAL_WALLET;
+    // Deliberately NOT `Boolean(window.tari)`. A truthy `window.tari` is neither
+    // a usable wallet nor evidence of one: the Tari Universe connector is
+    // documented as safe to include unconditionally, and on a top-level page with
+    // no wallet frame it still publishes a provider object whose every request
+    // rejects. Availability is established below by an actual call, and the two
+    // failure modes get different states.
+    if (isTariInjected()) return INITIAL_WALLET;
+    return { ...INITIAL_WALLET, status: 'UNAVAILABLE', error: 'No Tari wallet provider is present on this page.' };
   });
 
   const [market, setMarket] = useState<MarketDataState>(() =>
@@ -147,34 +168,88 @@ export function AppProvider({
 
   // ---- wallet -------------------------------------------------------------
 
+  /**
+   * Resolve the wallet, and keep resolving it.
+   *
+   * The published lifecycle makes `window.tari` appear AFTER this app's module
+   * has been evaluated: the Sapient extension injects at `document_start` and the
+   * Tari Universe connector on script load, and both dispatch `tari#initialized`.
+   * Deciding once, at mount, whether a provider existed made a documented
+   * integration look permanently broken for anyone whose wallet initialised
+   * later, so the listener re-runs the same resolution.
+   *
+   * The event is only ever a HINT to re-read. It is not an authority: a hostile
+   * page script can dispatch any event it likes, so identity is always
+   * re-established by comparing the live `window.tari` OBJECT against the one
+   * pinned at connect, which is what `verifyIdentity` does at authorization time.
+   */
   useEffect(() => {
-    const bridge = walletService.bridge();
-    bridgeRef.current = bridge;
-    if (bridge === undefined) return;
     let cancelled = false;
-    void (async () => {
+
+    const resolve = async () => {
+      if (cancelled) return;
+      const bridge = walletService.bridge();
+      bridgeRef.current = bridge;
+      if (bridge === undefined) {
+        setWallet((previous) => ({ ...previous, status: 'UNAVAILABLE', error: 'No Tari wallet provider is present on this page.' }));
+        return;
+      }
       try {
+        // Mandatory capability handshake, and a real availability probe. The
+        // handshake asks the account what it can do; the probe asks whether the
+        // provider can answer at all. Neither asks which wallet is present.
+        const availability = await probeAvailability();
+        if (cancelled) return;
+        if (!availability.available) {
+          setWallet((previous) => ({
+            ...previous,
+            status: availability.reason === 'absent' ? 'UNAVAILABLE' : 'PROVIDER_UNAVAILABLE',
+            error:
+              availability.reason === 'absent'
+                ? 'No Tari wallet provider is present on this page.'
+                : 'A Tari provider is present but cannot answer here. Open this app from inside a Tari wallet, or install a browser wallet extension.',
+          }));
+          return;
+        }
         const supported = await bridge.isSupported();
         if (cancelled) return;
         if (!supported) {
-          setWallet((previous) => ({ ...previous, status: 'UNAVAILABLE', error: 'The injected provider did not answer the capability handshake, so it is not being used.' }));
+          setWallet((previous) => ({ ...previous, status: 'PROVIDER_UNAVAILABLE', error: 'The Tari provider did not answer the capability handshake, so it is not being used.' }));
+          return;
         }
+        // `tari_getNetwork` is documented as answerable WITHOUT a connection, so
+        // the network is validated here, before the user is ever prompted to
+        // connect. That is what makes a wrong-network refusal distinct from an
+        // absent wallet and from an unconnected one.
         const network = await bridge.getNetwork().catch(() => undefined);
         if (cancelled) return;
-        setWallet((previous) => ({ ...previous, network, networkId: network?.name }));
+        setWallet((previous) => ({
+          ...previous,
+          status: previous.status === 'UNAVAILABLE' || previous.status === 'PROVIDER_UNAVAILABLE' ? 'DISCONNECTED' : previous.status,
+          network,
+          networkId: network?.name,
+        }));
       } catch (error) {
-        if (!cancelled) setWallet((previous) => ({ ...previous, status: 'UNAVAILABLE', error: (error as Error).message }));
+        if (!cancelled) {
+          setWallet((previous) => ({ ...previous, status: 'PROVIDER_UNAVAILABLE', error: error instanceof TariProviderError ? error.message : (error as Error).message }));
+        }
       }
-    })();
+    };
+
+    void resolve();
+    const detach = onProviderInitialized(globalThis, () => {
+      void resolve();
+    });
     return () => {
       cancelled = true;
+      detach();
     };
   }, [walletService]);
 
   const connect = useCallback(async () => {
     const bridge = bridgeRef.current ?? walletService.bridge();
     if (bridge === undefined) {
-      setWallet((previous) => ({ ...previous, status: 'UNAVAILABLE', error: 'No Tari wallet provider is injected in this page.' }));
+      setWallet((previous) => ({ ...previous, status: 'UNAVAILABLE', error: 'No Tari wallet provider is present on this page.' }));
       return;
     }
     setWallet((previous) => ({ ...previous, status: 'CONNECTING', error: undefined }));
@@ -188,12 +263,14 @@ export function AppProvider({
         network,
         networkId: network.name,
         capabilities: bridge.legCapabilities(),
+        walletCapabilities: bridge.walletCapabilities(),
         balances,
         identityEpoch: 0,
       });
     } catch (error) {
       const message = error instanceof TariProviderError ? error.message : (error as Error).message;
-      setWallet((previous) => ({ ...previous, status: 'ERROR', error: message, session: undefined, account: undefined, balances: [] }));
+      const status: WalletStatus = error instanceof TariProviderError && error.code === 'REJECTED' ? 'DISCONNECTED' : 'ERROR';
+      setWallet((previous) => ({ ...previous, status, error: message, session: undefined, account: undefined, balances: [] }));
     }
   }, [walletService]);
 
@@ -208,6 +285,39 @@ export function AppProvider({
     }
     setWallet({ ...INITIAL_WALLET, status: 'DISCONNECTED', identityEpoch: 1 });
   }, []);
+
+  /**
+   * React to the wallet's own lifecycle events.
+   *
+   * `accountsChanged` invalidates every account-bound thing: the identity
+   * (cleared below, so any review issued for the previous account is refused at
+   * authorization), the account, the cached balances, and the capability
+   * advertisement. Capabilities are re-read rather than remembered because a
+   * private view-access grant also drops when the account changes, and a view
+   * capability that survives a switch is a capability this app would wrongly
+   * assume.
+   *
+   * An approval that is already in progress is NOT rebound to the new account.
+   * The identity reset is what makes that fail closed: the outstanding operation
+   * cannot be re-authorized under the new account and is reconciled instead.
+   */
+  useEffect(() => {
+    const bridge = walletService.bridge();
+    if (bridge === undefined) return undefined;
+    return bridge.on((event) => {
+      if (event.kind === 'accountsChanged' || event.kind === 'networkChanged') {
+        setWallet((previous) =>
+          previous.status === 'CONNECTED'
+            ? { ...previous, status: 'DISCONNECTED', session: undefined, account: undefined, balances: [], capabilities: undefined, walletCapabilities: undefined, networkId: event.kind === 'networkChanged' ? event.network : previous.networkId, error: 'The wallet changed account or network. Review again before submitting.' }
+            : previous,
+        );
+        return;
+      }
+      if (event.kind === 'disconnected') {
+        setWallet((previous) => ({ ...INITIAL_WALLET, status: 'DISCONNECTED', identityEpoch: previous.identityEpoch + 1 }));
+      }
+    });
+  }, [walletService]);
 
   // ---- pool discovery + health -------------------------------------------
 
@@ -267,7 +377,9 @@ export function AppProvider({
       preview: (preview) => bridge.previewTransaction(preview),
       signAndSubmit: (preview, context, reviewedRequest) =>
         // The reviewed request is forwarded, not re-derived, so the payload the
-        // provider signs is the one the user approved.
+        // provider signs is the one the user approved. `operationId` is threaded
+        // through so the wallet's durable transaction-request id can be bound to
+        // the durable operation record before any further progress is assumed.
         bridge.signAndSubmitReviewed(
           {
             ...preview,
@@ -275,7 +387,7 @@ export function AppProvider({
             privacyDisclosure: context.privacyDisclosure,
           },
           reviewedRequest,
-          context,
+          { ...context, operationId: context.operationId },
         ),
       getTransactionStatus: (txId) => bridge.getTransactionStatus(txId),
     };

@@ -9,29 +9,31 @@
  *
  * EMBEDDING MODEL — why `frame-ancestors` is not `'none'`.
  *
- * This app is NOT a top-level page in its intended deployment. Per
- * docs/TARI_BROWSER_ATOMIC_SWAP_PROVIDER_GAP.md, which records the wallet's
- * observed architecture:
+ * `window.tari` is implemented by BOTH Tari wallets: the Sapient browser
+ * extension, which injects the provider into every page it can reach, and the
+ * Tari Universe web wallet, which runs dApps in a cross-origin iframe inside the
+ * wallet. The published integration model has the dApp include the wallet's
+ * connector script unconditionally, because that script is what makes the wallet
+ * reachable when the dApp IS embedded, and it stands aside when an extension
+ * already owns `window.tari` in an ordinary tab.
  *
- *   "`window.tari` is NOT injected into arbitrary pages: dApps run in a
- *    cross-origin iframe inside the wallet and load
- *    `https://universe.tari.mw/tari-connector.js` (same-page wallet model)."
- *
- * Two consequences follow, and both are load-bearing:
+ * So this app must work in BOTH placements, and that has two consequences:
  *
  *   1. The app MUST be framable by the wallet. `frame-ancestors 'none'` or
- *      `'self'` would make the product non-functional, so the wallet origin is
- *      an exact, non-wildcard allowance.
+ *      `'self'` would make the embedded placement non-functional, so the wallet
+ *      origin is an exact, non-wildcard allowance. It costs nothing when the app
+ *      is opened as a top-level page, which is how the extension placement works.
  *   2. The wallet's connector is a CROSS-ORIGIN script loaded into THIS
  *      document. `script-src 'self'` alone would block it, and with no
- *      `window.tari` the app cannot connect at all. The exact origin is
- *      therefore allowed in `script-src` — narrowly, with no wildcard, and
- *      with no `unsafe-inline` or `unsafe-eval` accepted in exchange.
+ *      `window.tari` the embedded placement could not connect at all. The exact
+ *      origin is therefore allowed in `script-src` — narrowly, with no wildcard,
+ *      and with no `unsafe-inline` or `unsafe-eval` accepted in exchange.
  *
- * The exact injection mechanism (a script element inserted by the frame, versus
- * a postMessage-only bridge) was not observable in this environment, so the
- * `script-src` allowance is a documented requirement of the recorded
- * architecture rather than an observed fact. It is tracked as R-13.
+ * This is a documented, verified property of the official integration model, not
+ * an assumption about an untraced injection mechanism: the published reference
+ * shows the connector being included unconditionally, and the connector's own
+ * source states that the wallet reaches the dApp by loading it into the dApp
+ * document.
  *
  * `X-Frame-Options` is deliberately ABSENT. It cannot express a cross-origin
  * allow-list: `SAMEORIGIN` would block the wallet, and `ALLOW-FROM` is obsolete
