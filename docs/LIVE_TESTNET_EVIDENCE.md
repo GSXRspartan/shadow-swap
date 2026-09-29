@@ -332,8 +332,13 @@ for n in fungible_pool nft_marketplace nft_item_offer nft_collection_bid; do
 done
 ```
 
-A machine-readable capture from this session is in
-[`.research/live-endpoint-evidence-2026-09-28.json`](../.research/live-endpoint-evidence-2026-09-28.json).
+The verbatim values quoted throughout this document are what these commands
+returned; they are reproducible, so a reader does not have to trust the capture.
+A machine-readable dump of this session's `/info`, `/epoch-manager/stats`,
+`/network`, and `/resources/tari` responses was written to
+`.research/live-endpoint-evidence-2026-09-28.json`, but **`.research/` is
+gitignored** and that file is therefore a local artifact, not committed
+evidence. Everything a reviewer needs is in the tables above.
 
 ---
 

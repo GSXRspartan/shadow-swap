@@ -445,10 +445,18 @@ Two GitHub Actions workflows gate every push to this branch:
 - **Security Engine Tests** — the Rust crates and the Ootle engine test suite on Linux
   (`pool_math`, `pool_ref_model`, `protocol_types`, `audit_engine_tests`).
 
-Exact counts drift with the branch; prefer the badge. As of `8ef3d03`: protocol-client 201/201,
-wallet-adapter 21/21, web node 236/236, Chromium e2e 98/98 (desktop + mobile), hosting suite
-17/17, engine suite green in CI. The fuzz/property suites include 100k-transition state-machine
-fuzzing and 50k structured script mutations.
+Exact counts drift with the branch; prefer the badge. As of `35e3f81`: protocol-client 201/201,
+wallet-adapter 21/21, web node 247/247, Chromium e2e 98/98 (desktop + mobile), hosting suite
+17/17, Firefox e2e 49/49 observed passing locally, engine suite green in CI. The fuzz/property
+suites include 100k-transition state-machine fuzzing and 50k structured script mutations.
+
+Two of those numbers moved during the live-testnet pass, and both are worth stating plainly: the
+node suite grew from 221 to 247 as new adversarial cases were added, and the Chromium suite went
+**red** mid-pass and had to be fixed rather than adjusted. The failure was a duplicated
+`connect-src` — a meta CSP in `index.html` alongside the response header, with the effective policy
+being their intersection — which the browser suite caught and a code review had not. It is recorded
+in [security/FRONTEND_HOSTILE_AUDIT_REPORT.md](security/FRONTEND_HOSTILE_AUDIT_REPORT.md) § 8
+rather than quietly repaired.
 
 ## Development
 
