@@ -1,3 +1,10 @@
+> **SUPERSEDED IN PART (2026-09-29).** This document reverse-engineered the
+> provider from `tari-connector.js` alone. Tari has since published the dApp
+> integration contract, and the provider boundary is now coded against
+> <https://universe.tari.mw/integration/tari-dapp.d.ts> instead. The claims below
+> about `isEmbedded` gating, the `address` compatibility alias, and the
+> "Sapient-shaped" interface are **no longer correct**. The authoritative record
+> is [`docs/TARI_WALLET_INTEGRATION_CONFORMANCE.md`](TARI_WALLET_INTEGRATION_CONFORMANCE.md).
 # Tari browser atomic-swap provider gap analysis
 
 Reference: `chironbuilds/tari-l1-wallet-ui` (commit tree `e76cc7289fde6e1d3b69c3dbe6ede571188138d1`, master, 25 commits, inspected 2026-09-25).

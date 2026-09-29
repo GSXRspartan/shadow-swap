@@ -70,7 +70,7 @@ All against the production bundle, served with the policy enforced.
 | D-4.2 | Live identity is re-derived at authorization, never replayed | FIXED | `HF liveIdentity: the bridge reads the CURRENT provider and capabilities`; `E2E a provider replaced mid-session is refused at authorization` |
 | D-4.3 | The wallet connector origin is allowed in `script-src`, pinned | FIXED | `DEP csp: the script policy names the wallet connector origin and nothing wider` |
 | D-4.4 | The exact connector injection mechanism (script element vs postMessage-only) | **EXTERNAL_RISK (R-13)** | The repository documents a cross-origin connector loaded into this document. The precise mechanism was not observable here, so the `script-src` allowance is a documented requirement, not an observed fact |
-| D-4.5 | A real wallet connection, capability handshake, and account/network switch | BLOCKED_EXTERNAL | No Tari wallet is installed and `window.tari` cannot be provided outside the wallet's own dApp frame. All provider evidence is from an injected double |
+| D-4.5 | A real wallet connection, capability handshake, and account/network switch | BLOCKED_EXTERNAL | No Tari wallet is installed in this environment. All provider evidence is from a double that implements the **published** contract (`tari-dapp.d.ts`), exercised in a real browser across both provider forms — embedded and non-embedded. The interface is verified; the runtime against a real wallet binary is not |
 
 ## 5. Build reproducibility and supply chain
 
@@ -113,23 +113,33 @@ All against the production bundle, served with the policy enforced.
 | D-7.12 | Discovery query convention matches the live indexer's API shape | **OPEN (R-14)** | Discovery issues `POST {base} {"query":"pool_discovery"}`; the live indexer is REST and answers `404`. Reported honestly as unavailable. No shim, because a shim would mean injecting fabricated records |
 | D-7.13 | Indexer origins are browser-reachable without a relay | **FIXED at `8ef3d03`** | Observed `access-control-allow-origin: *` on both origins; `connect-src` lists them explicitly, so the CSP is a real restriction rather than a formality |
 
-### 7a. Provider compatibility with the live Tari Universe connector
+### 7a. Provider compatibility with the Tari dApp integration contract
 
-Verified 2026-09-28 by fetching and reading the deployed connector
-(`https://universe.tari.mw/tari-connector.js`, 200, 18,589 bytes) rather than
-from a reference copy. Detail in
-`docs/TARI_BROWSER_ATOMIC_SWAP_PROVIDER_GAP.md`.
+Verified 2026-09-29 against the **published contract** rather than against a
+reverse-engineered copy of one wallet's bridge script:
+`https://universe.tari.mw/integration/tari-dapp.d.ts` (the type authority),
+`llms.txt` / `llms-full.txt` / `SKILL.md` (the reference), and
+`https://universe.tari.mw/tari-connector.js` (evidence, not authority). Full
+detail in `docs/TARI_WALLET_INTEGRATION_CONFORMANCE.md`.
+
+This section **supersedes** the 2026-09-28 connector-derived revision. Several
+of its conclusions were wrong, and two of its cited test names never existed in
+this repository.
 
 | # | Control | Class | Evidence |
 |---|---|---|---|
-| D-7a.1 | Every allow-listed `window.tari` method exists upstream | FIXED | `HF provider: every allow-listed method exists in the live upstream connector`. All 13 verified verbatim; an allow-list is fail-closed, so an invented name would misattribute a defect to the wallet |
-| D-7a.2 | The confidential/shielded provider surface is deliberately not called | FIXED | `HF provider: the private/shielded methods are deliberately NOT called` — 10 methods asserted absent. This is a public AMM |
-| D-7a.3 | `tari_getSubstate` is called with the parameter name the provider accepts | **FIXED — was a real defect** | The connector uses `{ substateId, version }` in three places and never `address`. This app sent `{ address }`. Because this is the authoritative readback port, a real wallet would have failed every reread. Now `substateId` primary with `address` as an identical-value alias. `HF provider: tari_getSubstate is called with substateId, the name the connector uses` |
-| D-7a.4 | A provider present but not embedded is refused before any call | FIXED | The connector sets `isEmbedded` and rejects immediately when false. `HF provider: a present-but-not-embedded provider is refused before any call` |
-| D-7a.5 | `isEmbedded` is not made a *requirement* | FIXED | `HF provider: a provider that does not publish isEmbedded still works`. Only an explicit `false` is refused |
-| D-7a.6 | The `script-src https://universe.tari.mw` allowance is **observed**, not assumed | **FIXED — resolves R-13** | The connector's own source: "The wallet runs your dApp in a cross-origin iframe, so it cannot reach into this page … So the provider lives here and forwards every call to the wallet by postMessage" |
-| D-7a.7 | Provider announcement events are not trusted for detection | FIXED by design | The connector dispatches `tari:announceProvider` / `tari#initialized` and maintains `window.tariProviders`. Detection is by object identity at authorization time, because an event is another thing a hostile page can emit |
-
+| D-7a.1 | Every allow-listed `window.tari` method exists in the contract | FIXED | `conformance: every allow-listed method exists in the published contract`. An allow-list is fail-closed, so an invented name would misattribute a defect to the wallet |
+| D-7a.2 | The confidential/shielded provider surface is deliberately not called | FIXED | `conformance: the private/stealth surface is deliberately not called`. 10 methods asserted absent. The private transaction-request kinds are not even transcribed into this codebase's types |
+| D-7a.3 | `tari_getSubstate` carries only documented parameters | **FIXED � was a real defect, twice** | The contract is `{ substateId, version? }`. The first revision sent `{ address }`; the "fix" sent `{ substateId, address }`, and that alias **was transmitted**. It is removed, because an undocumented outbound field works by accident against one bridge and breaks against another. `conformance: tari_getSubstate transmits exactly { substateId } and nothing else` |
+| D-7a.4 | **No wallet-identity or embedding gate.** A provider present but not embedded is ACCEPTED | **CORRECTED 2026-09-29 � the previous control was wrong** | `window.tari` is implemented by BOTH the Sapient extension and the Tari Universe web wallet, and the reference is explicit that a dApp "never detects which wallet it has". The published type marks `isEmbedded` **optional** and specific to the embedded provider, so the extension does not publish it at all and any rule keyed on it refuses a valid wallet. `conformance: an explicitly non-embedded provider is accepted, not refused` |
+| D-7a.5 | `isEmbedded`, `info`, and the provider registry are never consulted | FIXED | `conformance: the provider boundary never reads isEmbedded, info, or the registry` � a source-level guard, because no behavioural test can prove a field is not read on some path |
+| D-7a.6 | `script-src https://universe.tari.mw` in the meta CSP **and** the response header | **FIXED � was a real defect** | The header carried the wallet origin; the **meta** CSP in `index.html` did not. A browser enforces both and the effective policy is their **intersection**, so the meta tag silently blocked the connector and the embedded placement could never have connected. `csp: the meta tag and the response header name the SAME script origins` |
+| D-7a.7 | The connector is included **unconditionally**, as the official model requires | FIXED | The reference says "Include it always." `the wallet connector is included unconditionally, as the official model requires` asserts the tag is present, exactly once, not deferred, and not wrapped in a wallet-detection conditional |
+| D-7a.8 | Provider announcement events are not trusted for detection | FIXED by design | The connector dispatches `tari:announceProvider` / `tari#initialized` and maintains `window.tariProviders`. `tari#initialized` is consumed as a HINT to re-read, because a provider appearing after the app starts is documented normal initialisation. Identity is still established by object comparison, and a **mid-session replacement still invalidates the session**: `conformance: mid-session provider replacement is still detected` |
+| D-7a.9 | Provider **presence** is not conflated with wallet **availability** | FIXED | The connector is safe to include unconditionally and still publishes a provider object it cannot serve. Availability is established by a real, connection-independent call (`tari_getNetwork`). `conformance: a present-but-unusable provider is UNAVAILABLE, not ABSENT` |
+| D-7a.10 | The undocumented `isAvailable` property is never read | FIXED | The connector's own header comment names it; neither the published interface nor the deployed object defines it. Availability is established by behaviour instead. `conformance: availability is never inferred from the undefined isAvailable property` |
+| D-7a.11 | Provider errors are classified by the documented `code`, never by message substring | **FIXED � was a real defect** | Substring matching turned an internal failure whose text contained "reject" into a clean user rejection. `conformance: the documented code is the ONLY discriminator, never the message` |
+| D-7a.12 | No outbound request carries an undocumented parameter | FIXED | `conformance: NO outbound request carries an undocumented parameter` drives every method through a double that rejects any parameter the interface does not define |
 ## 8. Browser, account, and storage boundaries
 
 | # | Control | Class | Evidence |

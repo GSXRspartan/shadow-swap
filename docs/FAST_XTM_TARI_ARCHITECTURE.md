@@ -1,3 +1,9 @@
+> **TERMINOLOGY CORRECTED (2026-09-29).** "Sapient-shaped" is wrong: the dApp
+> interface is the **published Tari contract**
+> (<https://universe.tari.mw/integration/tari-dapp.d.ts>), implemented by both the
+> Sapient browser extension and the Tari Universe web wallet. The app never
+> detects which one is present. See
+> [`docs/TARI_WALLET_INTEGRATION_CONFORMANCE.md`](TARI_WALLET_INTEGRATION_CONFORMANCE.md).
 # FAST_XTM↔TARI cross-layer route — architecture
 
 Status: **EXPERIMENTAL / TESTNET.** This phase IMPLEMENTS the route architecture; a dedicated

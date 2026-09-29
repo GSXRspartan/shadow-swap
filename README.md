@@ -352,24 +352,41 @@ Web app → wallet adapter → browser Tari provider → self-custodial wallet
   backend, or a localhost service — those exist as development/reference paths only
   (`VITE_ENABLE_DEV_PROVIDERS` requires a development build).
 - The frontend references `window.tari` in exactly one place
-  (`apps/web/src/services/tariWindow.ts`), which allow-lists every method it will call.
-  **All thirteen allow-listed methods were verified to exist in the deployed Tari Universe
-  connector on 2026-09-28**, and the connector's confidential/shielded methods are
-  deliberately *not* called: this is a public AMM, and asking a wallet for more than the app
+  (`apps/web/src/services/tariWindow.ts`), which allow-lists every method it will call and codes
+  every request and reply against the **published contract**
+  ([`tari-dapp.d.ts`](https://universe.tari.mw/integration/tari-dapp.d.ts)), not against a
+  reverse-engineered copy of one wallet's bridge. The connector's confidential/shielded methods
+  are deliberately *not* called: this is a public AMM, and asking a wallet for more than the app
   needs is a cost, not a feature.
-- Provider detection is by **object identity** at authorization time, never by the connector's
-  `tari:announceProvider` / `tari#initialized` events, because an announcement is another thing a
-  hostile page can emit. A provider that reports `isEmbedded === false` is refused before any
-  call rather than being allowed to reject every request.
+- **`window.tari` is one interface implemented by both Tari wallets** — the Sapient browser
+  extension and the Tari Universe web wallet — and the app **never detects which one it has**.
+  Feature decisions come from `tari_getCapabilities` and from nothing else. A provider is never
+  refused for not running in an iframe; the connector is included unconditionally, exactly as the
+  official model requires, and it stands aside when an extension already owns `window.tari`.
+- **Provider presence is not wallet availability.** A truthy `window.tari` is neither: the
+  connector still publishes a provider object on a page it cannot serve. Availability is
+  established by a real, connection-independent call (`tari_getNetwork`), and "no wallet", "a
+  wallet is present but cannot answer here" and "connected" are three distinct states with three
+  different remedies.
+- Provider detection is by **object identity** at authorization time. `tari#initialized` and
+  `tari:announceProvider` are treated as hints to re-read, never as authority, because an event is
+  another thing a hostile page can emit. A provider appearing *after* the app starts is normal
+  initialisation and is accepted; a provider *replaced mid-session* invalidates the session and
+  every review bound to it.
 - Every financial operation goes through the review gate: a differential diff between the
   reviewed transaction and the built intent, identity re-verification at authorization time
-  (provider object identity, network, account), and the reviewed request forwarded verbatim to
-  the signer.
-- **Honest capability states.** A capability the browser provider does not have is reported as
-  unavailable. There is deliberately no silent `walletd` fallback and no placeholder provider, so
-  "the browser cannot do this" is visible rather than papered over.
+  (provider object identity, network, account, capabilities), and the reviewed, deep-frozen
+  instructions forwarded verbatim to the signer. Where the account supports
+  `capabilities.transactionRequests`, submission goes through the create → approve → submit trio,
+  which takes **only a `requestId`** — so no payload can be re-derived between approval and
+  broadcast.
+- **Honest capability states.** A capability the connected account does not advertise is reported
+  as unavailable, and an account that advertises nothing is treated as advertising nothing. There
+  is deliberately no silent `walletd` fallback and no placeholder provider, so "the browser cannot
+  do this" is visible rather than papered over.
 
-Deeper material: [docs/FRONTEND_TRUST_BOUNDARIES.md](docs/FRONTEND_TRUST_BOUNDARIES.md),
+Deeper material: [docs/TARI_WALLET_INTEGRATION_CONFORMANCE.md](docs/TARI_WALLET_INTEGRATION_CONFORMANCE.md),
+[docs/FRONTEND_TRUST_BOUNDARIES.md](docs/FRONTEND_TRUST_BOUNDARIES.md),
 [docs/FRONTEND_SECURITY_MODEL.md](docs/FRONTEND_SECURITY_MODEL.md),
 [docs/TARI_BROWSER_ATOMIC_SWAP_PROVIDER_GAP.md](docs/TARI_BROWSER_ATOMIC_SWAP_PROVIDER_GAP.md).
 
@@ -563,7 +580,7 @@ The **endpoint works**. What does **not** exist yet is our own deployment on it:
 | Templates published on Esmeralda | — | **The next step.** Requires a human publication action; documented in [docs/TESTNET_RUNBOOK.md](docs/TESTNET_RUNBOOK.md) |
 | Cloudflare Pages deployment + response headers | ⚙️ `CONFIGURED_NOT_LIVE` (R-1 open) | No Cloudflare credentials in this environment |
 | Live ordinary L2 swap / LP / NFT flows | — | Requires the publication step, then a funded browser wallet |
-| Browser provider inside a real wallet dApp frame | 🧪 | Requires a running wallet extension; the *interface* is verified against the deployed connector, the runtime is not |
+| Browser provider, both wallet forms (embedded and non-embedded) | 🧪 | No Tari wallet binary is installed here. The **interface** is verified against the published contract (`tari-dapp.d.ts`) and exercised in a real browser against a double implementing it; the runtime is not |
 
 **Feature status** (the tables above) is independent of this snapshot: implemented features are
 exercised by deterministic suites, not by live uptime. Real funds are not used anywhere in this

@@ -1,3 +1,8 @@
+> **PARTIALLY SUPERSEDED (2026-09-29).** The provider-shape findings in this
+> document were derived from `tari-connector.js` alone and are now known to be
+> wrong in several places: a non-embedded provider is **not** refused, and the
+> `address` compatibility alias is **not** retained. The authoritative record is
+> [`docs/TARI_WALLET_INTEGRATION_CONFORMANCE.md`](TARI_WALLET_INTEGRATION_CONFORMANCE.md).
 # Live testnet evidence — Esmeralda endpoints
 
 **Captured:** 2026-09-28, read-only, from a developer machine.

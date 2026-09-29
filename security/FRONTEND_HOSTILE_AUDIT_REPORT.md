@@ -1,5 +1,15 @@
 # Frontend and browser hostile audit report
 
+> **PROVIDER SECTION PARTIALLY SUPERSEDED (2026-09-29).** The findings about the
+> `window.tari` provider were derived by reverse-engineering
+> `tari-connector.js`. Tari has since published the dApp integration contract
+> (<https://universe.tari.mw/integration/tari-dapp.d.ts>), and the provider
+> boundary has been recoded against it. Several conclusions below were wrong —
+> most importantly, a non-embedded provider was being REFUSED, which would have
+> blocked the Sapient browser extension entirely. The authoritative record is
+> [`docs/TARI_WALLET_INTEGRATION_CONFORMANCE.md`](../docs/TARI_WALLET_INTEGRATION_CONFORMANCE.md).
+> Everything outside the provider boundary is unaffected and still stands.
+
 **Scope.** The entire browser/client surface of the Tari Ootle Liquidity Protocol
 frontend: the shipped bundle, everything it loads, the wallet provider boundary,
 the execution and approval path, persistence, presentation, the deployment
@@ -225,9 +235,15 @@ Stated plainly, because an audit that hides its gaps is worse than no audit.
 - **No clickjacking exploit against a deployed URL.** The same test run against
   the local enforcing server proves the policy semantics; only a real host proves
   delivery.
-- **No real wallet.** `window.tari` cannot exist outside the wallet's own dApp
-  frame. Connection, capabilities, account, network, disconnect, and account /
-  network switching were all exercised with an injected provider double.
+- **No real wallet.** At the time of this report, `window.tari` was only
+  evidenced inside the wallet's own dApp frame. Connection, capabilities,
+  account, network, disconnect, and account / network switching were all exercised
+  with an injected provider double.
+  **CORRECTED 2026-09-29:** the published contract confirms `window.tari` is also
+  injected by the Sapient browser extension into any page it can reach, so an
+  ordinary top-level tab is a supported placement and not a degraded one. Both
+  provider forms are now exercised in a real browser. See
+  `docs/TARI_WALLET_INTEGRATION_CONFORMANCE.md`.
 - **No real Ootle indexer.** `indexer.esmeralda.tari.com` and
   `indexer-fallback.tari.com` do not resolve from this environment, verified by
   DNS failure rather than assumed. Real pool discovery, pool state, candles,
@@ -323,6 +339,15 @@ plainly which earlier statements no longer hold.
   settling on unvouchable state — but the product would have been non-functional
   while presenting as a wallet problem. Fixed; `address` kept as an
   identical-value alias.
+  **CORRECTED 2026-09-29:** that "fix" itself was wrong. An undocumented outbound
+  field works by accident against one bridge and breaks against another, so the
+  `address` alias was **removed** and the payload is now exactly
+  `{ substateId }`, which is what `tari-dapp.d.ts` defines. A strict provider
+  double that rejects any undefined parameter now prevents a regression. The
+  same audit found the signing parameter object was wrong too:
+  `tari_signAndSubmitTransaction` received `{ transaction, display }`, neither of
+  which is a documented member, and carried no `instructions` at all. See
+  `docs/TARI_WALLET_INTEGRATION_CONFORMANCE.md`.
 - **Two hand-maintained copies of `connect-src`.** `index.html` carried its own
   meta policy while `deploymentHeaders.ts` carried the response header. A browser
   enforces both and the effective policy is their intersection, so after the
