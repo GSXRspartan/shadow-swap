@@ -47,9 +47,33 @@ cat /tmp/tari-ootle/crates/engine/tests/templates/tariswap/src/lib.rs
 ```
 
 ## Check indexer endpoint health
+
+The current public Esmeralda indexer is a **REST** API, not a JSON-RPC root.
+The smallest useful read is `GET /info`, which also reports the network identity
+this app verifies before it trusts any discovery content:
+
+```bash
+# Network identity + version. Expect network "esmeralda", network_byte 38 (0x26).
+curl -sS https://ootle-indexer-a.tari.com/info
+curl -sS https://ootle-indexer-b.tari.com/info
+
+# Current epoch and block height
+curl -sS https://ootle-indexer-a.tari.com/epoch-manager/stats
+
+# Canonical TARI (tTARI) resource
+curl -sS https://ootle-indexer-a.tari.com/resources/tari
+
+# Is one of OUR templates published? (This repository's four are not, as of
+# 2026-09-28. A non-empty catalogue with no matching names means the endpoint
+# works and our deployment is simply empty — not an outage.)
+curl -sS 'https://ootle-indexer-a.tari.com/templates/catalogue?name_filter=pool&limit=100'
 ```
-curl -X POST https://indexer.esmeralda.tari.com -H 'Content-Type: application/json' -d '{"jsonrpc":"2.0","method":"get_version","id":1}'
-```
+
+`POST /` with a JSON-RPC `get_version` envelope returns **404**: that endpoint
+shape belongs to the old configuration and is not how `tari_indexer` 0.41.x
+serves. There is **no GraphQL endpoint** on this indexer; see
+[docs/LIVE_TESTNET_EVIDENCE.md](LIVE_TESTNET_EVIDENCE.md) for the full captured
+API surface and the reasoning.
 
 ## Feature gate verification
 - Confirm BLOCKED routes (Stealth, Stablecoin, NFT) are disabled in UI.

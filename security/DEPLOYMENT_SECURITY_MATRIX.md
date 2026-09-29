@@ -4,13 +4,15 @@ Every row is classified. There are no `UNKNOWN` rows: where evidence does not
 exist, the row says so and says why.
 
 **Scope of evidence.** The frontend's hosting, headers, CSP, and the browser
-security boundaries, assessed at commit `ab66114` on
-`feat/multi-asset-stablecoin-markets`. The bundle hashed in §3 was served to a
-real browser and the policy was observed being enforced.
+security boundaries, assessed at commit `8ef3d03` on
+`feat/live-testnet-productization`. The bundle hashed in A–3 was served to a
+real browser and the policy was observed being enforced. Rows added at `8ef3d03`
+are marked **NEW**.
 
 **Headline:** R-1 is **NOT closed**. The configuration and the policy semantics
-are proven; delivery from a live deployment URL is not, because no Cloudflare
-account is reachable from this environment. R-13 is new and open.
+are proven and the deployment is now fully prepared, but delivery from a live
+deployment URL is not, because no Cloudflare account is reachable from this
+environment. R-13 is open. R-4 is reclassified (see section 6); R-14 is new.
 
 ---
 
@@ -28,7 +30,11 @@ account is reachable from this environment. R-13 is new and open.
 | D-1.8 | `X-Frame-Options` is **omitted** deliberately | FIXED | Cannot express a cross-origin allow-list; `SAMEORIGIN` would block the wallet and `ALLOW-FROM` is obsolete. `DEP csp: X-Frame-Options is omitted deliberately` |
 | D-1.9 | `Cross-Origin-Embedder-Policy` is not enabled | FIXED | COEP would require every cross-origin subresource to opt in, breaking the wallet connector and NFT media. Recorded in `DELIBERATELY_OMITTED_HEADERS` |
 | D-1.10 | HTTPS on the deployment, and `upgrade-insecure-requests` in the policy | BLOCKED_EXTERNAL | The directive is authored. No deployed URL exists to query, so HTTPS enforcement is unobserved |
-| D-1.11 | **The headers are actually delivered by the live deployment** | **EXTERNAL_RISK (R-1)** | Configuration authored, policy semantics proven in-browser against an enforcing server. **Delivery from a real URL is unverified** |
+| D-1.11 | **The headers are actually delivered by the live deployment** | **EXTERNAL_RISK (R-1)** | Configuration authored, policy semantics proven in-browser against an enforcing server, and the deployment path prepared. **Delivery from a real URL is unverified** |
+| D-1.12 | **NEW** — `connect-src` is derived from the same network table the client resolves, not written out independently | FIXED | Previously two hand-maintained strings. `DEP csp: connect-src covers exactly the configured esmeralda indexer origins` |
+| D-1.13 | **NEW** — `dist/_redirects` emits `/* /index.html 200`, so deep SPA routes resolve directly on the host | FIXED | `DEP spa: the build emits an explicit SPA fallback as a 200 rewrite, not a redirect`. A 30x would have made `/pools` — the deep route the clickjacking test depends on — not directly checkable |
+| D-1.14 | **NEW** — `dist/_redirects` carries no header rules and cannot weaken the policy | FIXED | `DEP spa: the redirects file carries no header rules, so it cannot weaken the policy` |
+| D-1.15 | **NEW** — a live-origin verifier exists and refuses a non-HTTPS origin | FIXED | `DEP live-headers verifier: it refuses a non-https origin, because R-1 needs HTTPS`. `apps/web/scripts/verify-live-headers.mjs`, read-only, exits non-zero on any mismatch |
 
 ## 2. Clickjacking
 
@@ -96,10 +102,16 @@ All against the production bundle, served with the policy enforced.
 | D-7.1 | Indexer data is never an execution source | FIXED | `HF poisoning` (4 cases) |
 | D-7.2 | A private-network indexer URL fails the build | FIXED | `DEP` endpoint cases |
 | D-7.3 | **Stale** Ootle state is displayed as stale | FIXED | Resolver `STALE` refuses submission; `HF` and component assertions |
-| D-7.4 | **Degraded / unavailable** Ootle is displayed honestly, never as zero | FIXED | `E2E:hosting with the real indexer unreachable` — the configured Esmeralda hostnames genuinely do not resolve, so this is the real failure path with nothing intercepted: shows "Pool discovery unavailable" and "Pool list unavailable", never "0 pools", zero table rows, no fixture marker |
+| D-7.4 | **Degraded / unavailable** Ootle is displayed honestly, never as zero | FIXED | `E2E:hosting with the real indexer unreachable` — the outage path, with nothing intercepted: shows "Pool discovery unavailable" and "Pool list unavailable", never "0 pools", zero table rows, no fixture marker |
 | D-7.5 | No fabricated pools, candles, balances, or NFTs while Ootle is down | FIXED | Same test, plus the NFT-page equivalent; `DEP` bundle scans for `FIXTURE_*` |
-| D-7.6 | Real pool discovery, pool state, candles, trades, and liquidity activity | BLOCKED_EXTERNAL | The indexer hostnames do not resolve and no alternative testnet endpoint is available |
-| D-7.7 | A live Ootle endpoint configured through deployment configuration | BLOCKED_EXTERNAL | The mechanism exists (`VITE_INDEXER_URL`); no valid endpoint to configure |
+| D-7.6 | Real **read** access to the Ootle chain (epoch, network identity, resources, transactions) | **FIXED at `8ef3d03`** | Verified live 2026-09-28 against `ootle-indexer-a`/`-b.tari.com`: `tari_indexer` 0.41.4, network `esmeralda`, byte `38`, epoch `11602`, 147,754 receipts. `docs/LIVE_TESTNET_EVIDENCE.md` |
+| D-7.7 | The configured indexer origin's **network identity is verified before discovery content is trusted** | **FIXED at `8ef3d03`** | `apps/web/src/services/indexerIdentity.ts`; `OUT discovery: a wrong-network endpoint never reaches the discovery query`. Name **and** byte checked; the byte is required because the name is a self-assertion |
+| D-7.8 | A wrong-network or unverifiable endpoint produces a typed refusal, never an empty list | **FIXED at `8ef3d03`** | `OUT identity: …` (9 cases: right name/wrong byte, other network, unnamed, no byte, non-object, array, hostile markup, unreachable, malformed origin) |
+| D-7.9 | `UNREACHABLE` is worded so it cannot be read as "the network is down" | **FIXED at `8ef3d03`** | `OUT identity: UNREACHABLE says nothing about the network being down` |
+| D-7.10 | An empty protocol deployment is distinguished from an indexer outage | **FIXED at `8ef3d03`** | `OUT discovery: a verified endpoint returning a real empty list is an empty list, not a refusal`. This repository's templates are unpublished, which is the empty case |
+| D-7.11 | Real pool discovery of **our** pools | **BLOCKED_EXTERNAL** | Our four templates are not published on Esmeralda (four catalogue queries, zero entries). Requires a publication step; no pool is faked meanwhile. R-14 |
+| D-7.12 | Discovery query convention matches the live indexer's API shape | **OPEN (R-14)** | Discovery issues `POST {base} {"query":"pool_discovery"}`; the live indexer is REST and answers `404`. Reported honestly as unavailable. No shim, because a shim would mean injecting fabricated records |
+| D-7.13 | Indexer origins are browser-reachable without a relay | **FIXED at `8ef3d03`** | Observed `access-control-allow-origin: *` on both origins; `connect-src` lists them explicitly, so the CSP is a real restriction rather than a formality |
 
 ## 8. Browser, account, and storage boundaries
 
@@ -151,22 +163,40 @@ All against the production bundle, served with the policy enforced.
 
 ## Totals
 
+Counted from the rows above, at `8ef3d03`.
+
 | Class | Count |
 |---|---|
 | PASS (verified working) | 0 |
-| FIXED (control implemented and regression-proven) | 56 |
+| FIXED (control implemented and regression-proven) | 66 |
 | N/A_BY_CONSTRUCTION | 2 |
-| EXTERNAL_RISK | 5 |
-| BLOCKED_EXTERNAL | 18 |
-| BLOCKED_TOOLING | 5 |
+| EXTERNAL_RISK | 3 |
+| BLOCKED_EXTERNAL | 10 |
+| BLOCKED_TOOLING | 4 |
+| OPEN (real gap, accepted and documented) | 1 |
 | **UNKNOWN** | **0** |
 | **Total rows** | **86** |
 
 Open CRITICAL: **0**. Open HIGH: **1** (D-1.11 / R-1).
 
-Counts are of rows, not of distinct problems: the 18 `BLOCKED_EXTERNAL` rows
-cluster into five causes — no wallet provider, no reachable Ootle indexer, no
-deployed URL, no funded testnet assets, and no physical device. The 56 `FIXED`
-rows likewise cluster, and several rows exist because one underlying fix needed
-asserting from more than one angle (for example F-02 is asserted at the provider
-boundary, at the request-derivation level, and at the freeze level).
+Counts are of rows, not of distinct problems. The `8ef3d03` pass moved **6 rows
+from `BLOCKED_EXTERNAL` to `FIXED`** because the Ootle indexer turned out to be
+reachable after all and its identity is now verified (D-7.6 through D-7.10,
+D-7.13), added 4 rows for the CSP/`connect-src` derivation, the SPA rewrite, the
+`_redirects`/policy separation, and the live-origin verifier (D-1.12–D-1.15), and
+added **1 row the previous state could not have had** — D-7.12 / R-14, a genuine
+protocol mismatch that only became *visible* once the endpoint began answering.
+Being able to see a defect is not the same as being free of it; the row is
+recorded as `OPEN`, not moved.
+
+The 10 remaining `BLOCKED_EXTERNAL` rows cluster into four causes: no real wallet
+provider, no deployed URL, no published protocol templates, and no physical
+device. The 66 `FIXED` rows likewise cluster, and several rows exist because one
+underlying fix needed asserting from more than one angle (for example F-02 is
+asserted at the provider boundary, at the request-derivation level, and at the
+freeze level).
+
+**No row is `UNKNOWN`.** Where evidence does not exist, the row says so and says
+why. Historical attack matrices elsewhere in `security/` are kept as historical
+records and are deliberately not rewritten to suggest that an earlier condition
+never existed.

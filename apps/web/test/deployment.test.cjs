@@ -202,6 +202,54 @@ test('csp: the build emitted the headers and the source-map policy', () => {
   assert.ok(fs.existsSync(path.join(distDir, 'SOURCE_MAP_POLICY.txt')), 'the source-map decision must be recorded');
 });
 
+// ===========================================================================
+// SPA routing
+// ===========================================================================
+
+test('spa: the build emits an explicit SPA fallback as a 200 rewrite, not a redirect', () => {
+  // A 30x here would be a functional bug rather than a security one: the browser
+  // URL would change, so reloading /pools would land on / and a deep link pasted
+  // into the wallet's dApp frame would not round-trip. That is exactly the deep
+  // route the clickjacking test relies on existing, so it is asserted.
+  if (!fs.existsSync(distDir)) assert.fail('production build not found');
+  const redirects = path.join(distDir, '_redirects');
+  assert.ok(fs.existsSync(redirects), 'the build must emit dist/_redirects');
+  const rules = fs
+    .readFileSync(redirects, 'utf8')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line !== '' && !line.startsWith('#'));
+  assert.deepEqual(rules, ['/*  /index.html  200']);
+  for (const rule of rules) {
+    assert.equal(/\s3\d\d\s/.test(rule), false, `the SPA fallback must not be a redirect: ${rule}`);
+  }
+});
+
+test('spa: the redirects file carries no header rules, so it cannot weaken the policy', () => {
+  // `_redirects` and `_headers` are separate grammars. A header smuggled into
+  // `_redirects` would either be silently ignored by the host or, worse, be read
+  // as a rule that changes which asset a path resolves to. The security policy
+  // must live in exactly one file.
+  const text = built.renderRedirectsFile();
+  assert.doesNotMatch(text, /content-security-policy/i);
+  assert.doesNotMatch(text, /x-frame-options/i);
+  assert.doesNotMatch(text, /cross-origin/i);
+  assert.doesNotMatch(text, /permissions-policy/i);
+  assert.match(text, /#/, 'the generated file must explain itself in comments');
+});
+
+test('live-headers verifier: it refuses a non-https origin, because R-1 needs HTTPS', () => {
+  // The verifier is the instrument used to close R-1. If it silently accepted an
+  // http:// origin it would produce evidence that does not satisfy the risk.
+  const script = path.join(appRoot, 'scripts', 'verify-live-headers.mjs');
+  assert.ok(fs.existsSync(script), 'the live-header verifier must exist');
+  const text = fs.readFileSync(script, 'utf8');
+  assert.match(text, /\/\^https:\\\/\\\/\/i\.test\(base\)/, 'the verifier must require an https origin');
+  assert.match(text, /\/pools/, 'the verifier must probe a deep client-side route, not only /');
+  assert.match(text, /X-Frame-Options|DELIBERATELY_OMITTED_HEADERS/, 'the verifier must check the deliberate omissions');
+  assert.doesNotMatch(text, /method:\s*'POST'/, 'the verifier must stay read-only');
+});
+
 test('csp: no untrusted value can reach a style attribute', () => {
   // `style-src 'unsafe-inline'` is required because React sets layout styles.
   // That is only safe if no untrusted value ever becomes a style value, so the

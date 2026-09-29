@@ -20,9 +20,10 @@ if (!existsSync(compiled)) {
 // The headers module is TypeScript, so it is compiled into the test build and
 // required from there. This keeps ONE source of truth for the policy.
 const require = createRequire(import.meta.url);
-const { renderHeadersFile, SECURITY_HEADERS } = require(compiled);
+const { renderHeadersFile, renderRedirectsFile, SECURITY_HEADERS } = require(compiled);
 
 writeFileSync(join(distDir, '_headers'), renderHeadersFile(), 'utf8');
+writeFileSync(join(distDir, '_redirects'), renderRedirectsFile(), 'utf8');
 
 /**
  * SOURCE MAP POLICY.
