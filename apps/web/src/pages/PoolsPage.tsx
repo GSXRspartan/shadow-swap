@@ -112,13 +112,31 @@ export function PoolsPage() {
     }
   };
 
-  const health = presentHealth(market.discovery.pools.length > 0 ? { status: 'SYNCED', source: market.discovery.source } : { status: 'UNAVAILABLE', source: market.discovery.source, reason: market.discovery.unavailableReason });
+  const health = presentHealth(
+    market.discovery.state === 'PROTOCOL_AVAILABLE' && market.discovery.pools.length > 0
+      ? { status: 'SYNCED', source: market.discovery.source }
+      : market.discovery.state === 'PROTOCOL_NOT_DEPLOYED' || market.discovery.state === 'PROTOCOL_DEPLOYED_EMPTY'
+        ? // The network answered. This is not an outage, so it is not dressed as
+          // one: an empty deployment reads as "nothing published yet", never as
+          // "indexer down" and never as "no liquidity".
+          { status: 'UNAVAILABLE', source: market.discovery.source, reason: market.discovery.detail ?? 'No pools are published for this deployment.' }
+        : { status: 'UNAVAILABLE', source: market.discovery.source, reason: market.discovery.unavailableReason },
+  );
 
   /**
-   * True when discovery did not produce an answer. The UI must not turn a
-   * transport or parsing failure into "this deployment has no pools".
+   * The five states are kept apart because each one is a different fact about
+   * the world with a different operator response:
+   *
+   *   INDEXER_UNAVAILABLE   the chain could not be read
+   *   WRONG_NETWORK         the chain was read and it is not the one we permit
+   *   PROTOCOL_NOT_DEPLOYED the chain is reachable; our templates are unpublished
+   *   PROTOCOL_DEPLOYED_EMPTY templates are live; no component instantiated yet
+   *   PROTOCOL_AVAILABLE    pool components exist on chain
    */
-  const discoveryFailed = market.discovery.unavailableReason !== undefined;
+  const state = market.discovery.state;
+  const isOutage = state === 'INDEXER_UNAVAILABLE' || state === 'WRONG_NETWORK';
+  const isEmptyDeployment = state === 'PROTOCOL_NOT_DEPLOYED' || state === 'PROTOCOL_DEPLOYED_EMPTY';
+  const candidates = market.discovery.candidates;
 
 
   return (
@@ -135,9 +153,15 @@ export function PoolsPage() {
         </div>
       </div>
 
-      {market.discovery.unavailableReason !== undefined && (
-        <Notice tone="warn" title="Pool discovery unavailable">
+      {isOutage && (
+        <Notice tone="warn" title={state === 'WRONG_NETWORK' ? 'Refusing this network' : 'Pool discovery unavailable'}>
           {market.discovery.unavailableReason}
+        </Notice>
+      )}
+
+      {isEmptyDeployment && (
+        <Notice tone="info" title={state === 'PROTOCOL_NOT_DEPLOYED' ? 'Network reachable, protocol not yet deployed' : 'Protocol published, not yet in use'}>
+          {market.discovery.detail}
         </Notice>
       )}
 
@@ -147,9 +171,11 @@ export function PoolsPage() {
             // A failed discovery is NOT a zero. Rendering "0 pools" when the
             // request failed tells a user their money has no market, which is a
             // different and much stronger claim than "we could not find out".
-            discoveryFailed && market.pools.length === 0
+            isOutage && market.pools.length === 0
               ? 'Pool list unavailable'
-              : `${filtered.length} pool${filtered.length === 1 ? '' : 's'}`
+              : state === 'PROTOCOL_NOT_DEPLOYED'
+                ? 'Templates not published yet'
+                : `${filtered.length} pool${filtered.length === 1 ? '' : 's'}`
           }
           actions={
             <div className="field" style={{ maxWidth: 280 }}>
@@ -171,15 +197,22 @@ export function PoolsPage() {
           <div style={{ padding: 'var(--s-4)' }}>
             <LoadingBlock label="Loading pools" rows={5} />
           </div>
-        ) : market.pools.length === 0 ? (
+        ) : isEmptyDeployment ? (
           <EmptyState
-            title={discoveryFailed ? 'Pool list unavailable' : 'No pools to show'}
+            title={state === 'PROTOCOL_NOT_DEPLOYED' ? 'Protocol not yet deployed on this network' : 'Published, but no pool has been created'}
             detail={
-              market.discovery.unavailableReason ??
-              'Discovery returned no pools for this deployment. No pool list is fabricated.'
+              market.discovery.detail ??
+              (state === 'PROTOCOL_NOT_DEPLOYED'
+                ? 'The indexer is reachable and reports no published protocol template. Publish the four templates, then refresh. No pool is fabricated to fill this page.'
+                : 'The protocol templates are published and the indexer is reachable. No pool component has been instantiated from them yet.')
             }
           />
-        ) : (
+        ) : isOutage ? (
+          <EmptyState
+            title="Pool list unavailable"
+            detail={market.discovery.unavailableReason ?? 'The indexer could not be read. No claim is made about whether pools exist.'}
+          />
+        ) : market.pools.length > 0 ? (
           <div className="table-wrap">
             <table className="table">
               <caption className="sr-only">Discovered liquidity pools with market metrics</caption>
@@ -242,6 +275,41 @@ export function PoolsPage() {
               </tbody>
             </table>
           </div>
+        ) : candidates.length > 0 ? (
+          // Pool components exist on chain but their state is raw CBOR to the
+          // indexer: only the wallet's `tari_getSubstate` decodes it. So the
+          // addresses are listed and every financial field is the explicit
+          // unavailable marker rather than a number this app did not read.
+          <div className="table-wrap">
+            <table className="table">
+              <caption className="sr-only">Pool components discovered on chain</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Pool component</th>
+                  <th scope="col">Template</th>
+                  <th scope="col">Version</th>
+                  <th scope="col">Pair / reserves</th>
+                </tr>
+              </thead>
+              <tbody>
+                {candidates.map((candidate) => (
+                  <tr key={candidate.componentAddress}>
+                    <td className="mono truncate" style={{ maxWidth: 320 }}>
+                      {candidate.componentAddress}
+                    </td>
+                    <td className="mono truncate">{candidate.templateAddress}</td>
+                    <td className="num">{candidate.version}</td>
+                    <td className="right">{UNAVAILABLE}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <p className="hint" style={{ padding: 'var(--s-3) var(--s-4)' }}>
+              Reserves, fee and LP supply are read from your wallet at the authoritative reread, never from this list. Discovery only says which pool components exist.
+            </p>
+          </div>
+        ) : (
+          <EmptyState title="No pools to show" detail="Discovery returned no pools for this deployment. No pool list is fabricated." />
         )}
       </Card>
 

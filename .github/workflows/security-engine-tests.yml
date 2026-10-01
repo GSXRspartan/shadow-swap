@@ -1,8 +1,12 @@
 name: Security Engine Tests
 
-# Executes the REAL Ootle engine test suite (audit_engine_tests) on Linux, where the v0.41.1
+# Executes the REAL Ootle engine test suite (audit_engine_tests) on Linux, where the v0.42.0
 # engine's wasmer/Cranelift backend actually compiles (it does not on Windows). This is the
 # authoritative runtime evidence for the SECURITY_AUDIT_OPUS findings and OPUS-08.
+#
+# This job is the ONLY place the real engine suites run: on a Windows developer machine
+# `wasmer-compiler-cranelift` fails with `compile_error!`, which is a tooling limitation and
+# not a contract limitation. All off-chain suites run on both platforms.
 #
 # The job MUST fail if the engine suite cannot compile or any test fails — the engine suite is
 # never skipped.

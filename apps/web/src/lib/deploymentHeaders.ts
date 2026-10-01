@@ -9,29 +9,31 @@
  *
  * EMBEDDING MODEL — why `frame-ancestors` is not `'none'`.
  *
- * This app is NOT a top-level page in its intended deployment. Per
- * docs/TARI_BROWSER_ATOMIC_SWAP_PROVIDER_GAP.md, which records the wallet's
- * observed architecture:
+ * `window.tari` is implemented by BOTH Tari wallets: the Sapient browser
+ * extension, which injects the provider into every page it can reach, and the
+ * Tari Universe web wallet, which runs dApps in a cross-origin iframe inside the
+ * wallet. The published integration model has the dApp include the wallet's
+ * connector script unconditionally, because that script is what makes the wallet
+ * reachable when the dApp IS embedded, and it stands aside when an extension
+ * already owns `window.tari` in an ordinary tab.
  *
- *   "`window.tari` is NOT injected into arbitrary pages: dApps run in a
- *    cross-origin iframe inside the wallet and load
- *    `https://universe.tari.mw/tari-connector.js` (same-page wallet model)."
- *
- * Two consequences follow, and both are load-bearing:
+ * So this app must work in BOTH placements, and that has two consequences:
  *
  *   1. The app MUST be framable by the wallet. `frame-ancestors 'none'` or
- *      `'self'` would make the product non-functional, so the wallet origin is
- *      an exact, non-wildcard allowance.
+ *      `'self'` would make the embedded placement non-functional, so the wallet
+ *      origin is an exact, non-wildcard allowance. It costs nothing when the app
+ *      is opened as a top-level page, which is how the extension placement works.
  *   2. The wallet's connector is a CROSS-ORIGIN script loaded into THIS
  *      document. `script-src 'self'` alone would block it, and with no
- *      `window.tari` the app cannot connect at all. The exact origin is
- *      therefore allowed in `script-src` — narrowly, with no wildcard, and
- *      with no `unsafe-inline` or `unsafe-eval` accepted in exchange.
+ *      `window.tari` the embedded placement could not connect at all. The exact
+ *      origin is therefore allowed in `script-src` — narrowly, with no wildcard,
+ *      and with no `unsafe-inline` or `unsafe-eval` accepted in exchange.
  *
- * The exact injection mechanism (a script element inserted by the frame, versus
- * a postMessage-only bridge) was not observable in this environment, so the
- * `script-src` allowance is a documented requirement of the recorded
- * architecture rather than an observed fact. It is tracked as R-13.
+ * This is a documented, verified property of the official integration model, not
+ * an assumption about an untraced injection mechanism: the published reference
+ * shows the connector being included unconditionally, and the connector's own
+ * source states that the wallet reaches the dApp by loading it into the dApp
+ * document.
  *
  * `X-Frame-Options` is deliberately ABSENT. It cannot express a cross-origin
  * allow-list: `SAMEORIGIN` would block the wallet, and `ALLOW-FROM` is obsolete
@@ -40,8 +42,27 @@
  * single clickjacking control and this header is omitted on purpose.
  */
 
+import { ESMERALDA_INDEXER_URLS } from './networks.js';
+
 /** The wallet dApp frame origin, pinned exactly. Never a wildcard. */
 export const WALLET_DAPP_ORIGIN = 'https://universe.tari.mw';
+
+/**
+ * Origins the app is allowed to connect to, derived from the network table.
+ *
+ * Previously this string was written out by hand here while the endpoints the
+ * app actually used were written out by hand in `services/config.ts`. The two
+ * copies were independent, and when the configured hosts were replaced the CSP
+ * would have kept allowing the dead ones and blocked the live ones. Deriving it
+ * from the same source the client resolves keeps `connect-src` and the
+ * configured indexer structurally incapable of disagreeing.
+ *
+ * Only the public testnet origins are listed. Localnet's `127.0.0.1` default is
+ * deliberately excluded: a production build must not be able to reach a local
+ * endpoint, and adding it would also let the `deployment.test.cjs` private-
+ * address assertion pass for the wrong reason.
+ */
+export const CONNECT_ALLOWED_ORIGINS: readonly string[] = ESMERALDA_INDEXER_URLS;
 
 export const CONTENT_SECURITY_POLICY = [
   "default-src 'self'",
@@ -50,7 +71,7 @@ export const CONTENT_SECURITY_POLICY = [
   `script-src 'self' ${WALLET_DAPP_ORIGIN}`,
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: https:",
-  "connect-src 'self' https://indexer.esmeralda.tari.com https://indexer-fallback.tari.com",
+  `connect-src 'self' ${CONNECT_ALLOWED_ORIGINS.join(' ')}`,
   "frame-src 'none'",
   "object-src 'none'",
   "base-uri 'self'",
@@ -145,4 +166,41 @@ export function renderHeadersFile(): string {
   }
   lines.push('', '/assets/*', '  Cache-Control: public, max-age=31536000, immutable');
   return `${lines.join('\n')}\n`;
+}
+
+/**
+ * Render the SPA fallback in the `_redirects` grammar.
+ *
+ * This app is a single-page app: `/pools`, `/nfts/<id>`, and every other client
+ * route is served the same `index.html`. Cloudflare Pages does fall back to
+ * `index.html` for unmatched paths when no `404.html` exists, but relying on
+ * that default means the SPA's routing behaviour depends on a host default that
+ * is not part of this repository and is not asserted by any test here.
+ *
+ * Emitting the rule explicitly makes the routing contract an artifact of the
+ * build, in the same way `_headers` makes the header policy one.
+ *
+ * The `200` status is a rewrite, not a redirect: the browser URL must stay on
+ * `/pools`, or a reload would 404 and deep links pasted into the wallet's dApp
+ * frame would break. Pages resolves static assets BEFORE applying `_redirects`,
+ * so `/*` cannot shadow `/assets/*`, and the two files are interpreted
+ * independently — this does not weaken any header rule.
+ */
+export function renderRedirectsFile(): string {
+  return [
+    '# SPA fallback for the Ootle Liquidity testnet frontend.',
+    '# Generated by apps/web/scripts/write-deployment-headers.mjs from',
+    '# apps/web/src/lib/deploymentHeaders.ts. Do not edit dist/_redirects by hand.',
+    '#',
+    '# Every client-side route (/pools, /nfts/<id>, /activity, ...) is served the',
+    '# same index.html with a 200 REWRITE, not a redirect, so the browser URL is',
+    '# unchanged and a reload or a pasted deep link keeps working.',
+    '#',
+    '# The security headers live in dist/_headers and apply to the rewritten',
+    '# response exactly as they do to /, because the /* rule there matches every',
+    '# response this host serves.',
+    '',
+    '/*  /index.html  200',
+    '',
+  ].join('\n');
 }

@@ -10,7 +10,7 @@
  *     hard error, not a silent fallback.
  */
 
-import { DEFAULT_NETWORK, checkNetwork, isAllowedNetwork, localEndpointReason, looksLikeMainnet, type FrontendNetworkId } from '../lib/networks.js';
+import { DEFAULT_NETWORK, FRONTEND_NETWORKS, checkNetwork, isAllowedNetwork, localEndpointReason, looksLikeMainnet, type FrontendNetworkId } from '../lib/networks.js';
 import type { EnvBag } from './envSource.js';
 
 export type { EnvBag };
@@ -63,7 +63,11 @@ export function resolveConfig(env: EnvBag): AppConfig {
   const guard = checkNetwork(network);
   if (!guard.ok && guard.reason !== undefined) blocking.push(guard.reason);
 
-  const defaultIndexers = network === 'localnet' ? ['http://127.0.0.1:9113'] : ['https://indexer.esmeralda.tari.com', 'https://indexer-fallback.tari.com'];
+  // The per-network default origins come from the single network table, not from
+  // a second copy here: a second copy is exactly how the configured indexer and
+  // the CSP `connect-src` list drifted apart and left this app pointed at hosts
+  // that no longer resolve.
+  const defaultIndexers = FRONTEND_NETWORKS[network].indexerUrls;
   const configuredIndexer = readString(env, 'VITE_INDEXER_URL');
   const indexerUrls: string[] = [];
   for (const url of [configuredIndexer, ...defaultIndexers]) {

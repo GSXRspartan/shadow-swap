@@ -12,7 +12,8 @@
   "host_permissions": [
     "https://localhost:3000/*",
     "https://*.github.io/*",
-    "https://indexer.esmeralda.tari.com/*"
+    "https://ootle-indexer-a.tari.com/*",
+    "https://ootle-indexer-b.tari.com/*"
   ],
   "background": {
     "service_worker": "service_worker.js"

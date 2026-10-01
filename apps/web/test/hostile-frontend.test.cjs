@@ -126,16 +126,277 @@ test('spoof: getTariProvider throws a typed refusal rather than returning a stub
     tari.getTariProvider({});
   } catch (error) {
     assert.equal(error.code, 'NOT_INJECTED');
-    assert.match(error.message, /tari_getCapabilities/);
+    // The message must name a real remedy and must NOT tell the user the app only
+    // works inside a wallet frame: `window.tari` is implemented by the Sapient
+    // extension too, and an ordinary tab is a first-class placement.
+    assert.match(error.message, /wallet|extension/i);
+    assert.equal(/dApp frame|inside the wallet/i.test(error.message), false, 'the refusal must not require an iframe placement');
   }
 });
 
-test('spoof: a capability reply with no recognisable flag is treated as NOT ADVERTISED', () => {
+// ---------------------------------------------------------------------------
+// Provider compatibility with the live Tari Universe connector
+//
+// Verified 2026-09-28 against the DEPLOYED connector, not a copy of it:
+// https://universe.tari.mw/tari-connector.js
+// ---------------------------------------------------------------------------
+
+const UPSTREAM_METHODS = [
+  'tari_getNetwork',
+  'tari_requestAccounts',
+  'tari_getAccounts',
+  'tari_getWalletAddress',
+  'tari_getCapabilities',
+  'tari_disconnect',
+  'tari_getBalances',
+  'tari_getSubstate',
+  'tari_getTransactionResult',
+  'tari_signAndSubmitTransaction',
+  'tari_createTransactionRequest',
+  'tari_getTransactionRequest',
+  'tari_submitTransactionRequest',
+];
+
+test('provider: every allow-listed method exists in the live upstream connector', () => {
+  // The allow-list is a fail-closed guard, which means an invented method name
+  // is not a harmless typo: it is a method that can never succeed and a denial
+  // reason that would point at the wallet instead of at this repository. This
+  // pins the list to the surface observed on the deployed connector.
+  const upstream = new Set(UPSTREAM_METHODS);
+  for (const method of Object.values(tari.TARI_METHODS)) {
+    assert.ok(upstream.has(method), `allow-listed method "${method}" does not exist in the live Tari Universe connector`);
+  }
+});
+
+test('provider: the private/shielded methods are deliberately NOT called', () => {
+  // The connector also exposes a confidential surface: tari_getViewAccess,
+  // tari_requestViewAccess, tari_revokeViewAccess, tari_getPrivateBalances,
+  // tari_getShieldedOutputs, tari_scanForResourceUtxos,
+  // tari_scanForPrivatePayments, tari_claimPrivatePayment,
+  // tari_signOwnershipChallenge, tari_signWalletOwnershipChallenge.
+  //
+  // None of them are used, and that is the intended state: this is a PUBLIC
+  // constant-product AMM and a public marketplace. Adding any of them would
+  // widen what the app asks a wallet for. Asserted so adding one is deliberate.
+  const used = new Set(Object.values(tari.TARI_METHODS));
+  for (const method of [
+    'tari_getPrivateBalances',
+    'tari_getShieldedOutputs',
+    'tari_claimPrivatePayment',
+    'tari_requestViewAccess',
+    'tari_revokeViewAccess',
+    'tari_getViewAccess',
+    'tari_scanForPrivatePayments',
+    'tari_scanForResourceUtxos',
+    'tari_signOwnershipChallenge',
+    'tari_signWalletOwnershipChallenge',
+  ]) {
+    assert.equal(used.has(method), false, `${method} must not be in the allow-list for a public AMM`);
+  }
+});
+
+test('provider: tari_getSubstate is called with `substateId` and nothing else', async () => {
+  // The contract is `{ substateId, version? }`. Two earlier revisions were wrong:
+  // one sent `{ address }` alone, and the "fix" kept `address` as an identical-
+  // value alias. An undocumented field on an outbound request works by accident
+  // against one bridge and breaks against another, so the alias is gone and a
+  // strict provider double (tari-provider-conformance.test.cjs) now rejects any
+  // parameter the published interface does not define.
+  let seen;
+  const provider = {
+    request: async (envelope) => {
+      seen = envelope;
+      return { substateId: 'component_abc', fields: { reserves: '1' } };
+    },
+  };
+  const view = await tari.readSubstate(provider, 'component_abc');
+  assert.equal(seen.method, 'tari_getSubstate');
+  assert.equal(seen.params.substateId, 'component_abc', 'substateId must be the primary key');
+  assert.deepEqual(Object.keys(seen.params), ['substateId'], 'no undocumented field may be transmitted');
+  assert.equal(view.address, 'component_abc');
+});
+
+test('provider: a substate read does not pin a cached version', async () => {
+  // Pinning a stale version rejects with `Lock failure: Substate …:N is not found
+  // or DOWN`, so the optional field is omitted and the wallet resolves what it
+  // needs. The officially supported explicit-null form is still accepted.
+  let seen;
+  const provider = { request: async (envelope) => { seen = envelope; return { substateId: 'component_abc' }; } };
+  await tari.readSubstate(provider, 'component_abc');
+  assert.equal('version' in seen.params, false, 'an absent version must be omitted, not guessed');
+
+  await tari.readSubstate(provider, 'component_abc', null);
+  assert.equal(seen.params.version, null);
+});
+
+test('provider: a present-but-not-embedded provider is ACCEPTED, not refused', async () => {
+  // The corrected behaviour. The previous rule refused any provider reporting
+  // `isEmbedded === false`, which refused the Sapient browser extension outright:
+  // `window.tari` is implemented by BOTH the extension and the Tari Universe web
+  // wallet, the published type marks `isEmbedded` optional and specific to the
+  // embedded provider, and the reference is explicit that a dApp "never detects
+  // which wallet it has". Whether the object can answer is a separate question,
+  // settled by `probeAvailability` with a real call.
+  let called = 0;
+  const provider = {
+    isEmbedded: false,
+    request: async () => {
+      called += 1;
+      return 'esmeralda';
+    },
+  };
+  assert.equal(tari.getTariProvider({ tari: provider }), provider);
+  assert.equal((await tari.fetchNetwork(provider)).network, 'esmeralda');
+  assert.equal(called, 1);
+});
+
+test('provider: a provider that does not publish isEmbedded still works', () => {
+  // Both directions are exercised: the extension form, which omits the field
+  // entirely, and the embedded form, which publishes it.
+  const provider = { request: async () => ({}) };
+  assert.equal(tari.getTariProvider({ tari: provider }), provider);
+  assert.equal(tari.getTariProvider({ tari: { ...provider, isEmbedded: true } }).isEmbedded, true);
+  assert.equal(tari.getTariProvider({ tari: { ...provider, isEmbedded: false } }).isEmbedded, false);
+});
+
+test('provider: presence is not availability, and the two states are distinct', async () => {
+  // The official connector is documented as safe to include unconditionally, and
+  // on a page it cannot serve it still publishes a provider object whose calls
+  // reject. `Boolean(window.tari)` is therefore neither "a wallet is present"
+  // nor "a wallet is usable", and the two failures have different remedies.
+  const dead = { isTariWallet: true, isEmbedded: false, request: async () => { throw new Error('this page is not running inside a Tari Universe'); } };
+  const state = await tari.probeAvailability({ tari: dead });
+  assert.equal(state.available, false);
+  assert.equal(state.reason, 'unavailable', 'a present-but-dead provider is not "absent"');
+
+  const absent = await tari.probeAvailability({});
+  assert.equal(absent.reason, 'absent');
+
+  // A live provider: the probe is a non-interactive, connection-independent read.
+  const live = { request: async (envelope) => { calls.push(envelope.method); return 'esmeralda'; } };
+  const calls = [];
+  const ok = await tari.probeAvailability({ tari: live });
+  assert.equal(ok.available, true);
+  assert.equal(ok.network, 'esmeralda');
+  assert.deepEqual(calls, ['tari_getNetwork'], 'the probe must not prompt and must not require a connection');
+});
+
+test('conformance: a resource address is validated as a resource, never as an amount', () => {
+  // A pre-existing defect class, found while building the browser conformance
+  // matrix: a resolver's RESOURCE field was passed through
+  // `asRawExecutionAmount`, which requires `^\d+$`. A resource address is
+  // `otl_…`, so the guard threw on EVERY call and the swap quote — and with it
+  // the authoritative readback that issues `tari_getSubstate` — could never run
+  // in a browser. It failed safe, but the feature was dead.
+  //
+  // The two guards are not interchangeable, and the error type is how a future
+  // regression of this kind shows up.
+  const { asRawExecutionAmount, asResourceAddress, asDisplayOnly, ExecutionBoundaryViolation } = require('../build-test/lib/tradeBoundary.js');
+
+  // A resource address is accepted by the RESOURCE guard and REFUSED by the
+  // amount guard. That refusal is the defect: a resolver request carrying a
+  // resource field guarded by the amount function could never be constructed.
+  assert.equal(asResourceAddress('otl_canonical_tari', 'inputResource'), 'otl_canonical_tari');
+  assert.throws(() => asRawExecutionAmount('otl_canonical_tari', 'inputResource'), /inputResource/);
+
+  // A raw amount is accepted by the amount guard, which is the one that requires
+  // `^\d+$`. The resource guard is deliberately the looser of the two — it only
+  // rejects a display value and an empty string — so it is NOT asserted to reject
+  // a digit string here; what matters is that the two are never swapped.
+  assert.equal(asRawExecutionAmount('1000000', 'rawInputAmount'), '1000000');
+  assert.throws(() => asResourceAddress('', 'inputResource'));
+
+  // BOTH still refuse a market-data display value: the trust boundary is
+  // unchanged, and it is the property that actually matters here.
+  assert.throws(() => asRawExecutionAmount(asDisplayOnly('1.00', 'chart'), 'x'), ExecutionBoundaryViolation);
+  assert.throws(() => asResourceAddress(asDisplayOnly('1.00', 'chart'), 'x'), ExecutionBoundaryViolation);
+});
+
+test('conformance: no resolver call guards a resource address as an amount', () => {
+  // The source-level guard for the defect above, so it cannot come back in a
+  // component that builds a resolver request.
+  const fsx2 = require('node:fs');
+  const pathx2 = require('node:path');
+  const offenders = [];
+  const walk = (dir) => {
+    for (const entry of fsx2.readdirSync(dir, { withFileTypes: true })) {
+      const full = pathx2.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(full);
+        continue;
+      }
+      if (!/\.tsx?$/.test(entry.name)) continue;
+      const text = fsx2.readFileSync(full, 'utf8');
+      // `asRawExecutionAmount(<expr>.resourceAddress, …)` and the marketplace
+      // equivalent: a field named `*Resource`/`*ResourceAddress` is an address.
+      for (const m of text.matchAll(/asRawExecutionAmount\(\s*([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)\s*,/g)) {
+        if (/[Rr]esource$/.test(m[1])) offenders.push(`${pathx2.basename(full)}: ${m[0]}`);
+      }
+      for (const m of text.matchAll(/asRawExecutionAmount\(\s*(quoteResource|collectionResource|nftResource|inputAsset|outputAsset)\b/g)) {
+        offenders.push(`${pathx2.basename(full)}: ${m[0]}`);
+      }
+    }
+  };
+  walk(pathx2.join(srcRootX, 'components'));
+  assert.deepEqual(offenders, [], `a resource address is validated as an amount:\n${offenders.join('\n')}`);
+});
+
+test('spoof: a capability reply with no documented boolean is treated as NOT ADVERTISED', () => {
   // A provider that returns an empty object must not be read as "supports
-  // nothing, so everything is fine".
+  // nothing, so everything is fine", and neither must one that answers with the
+  // camelCase names this repository previously invented: those are not capability
+  // names in the published contract, and recognising them would let a provider
+  // that advertises nothing recognisable look capable.
   assert.equal(tari.mapCapabilities({}), undefined);
   assert.equal(tari.mapCapabilities({ unrelated: true }), undefined);
-  assert.notEqual(tari.mapCapabilities({ l1Balance: true }), undefined);
+  assert.equal(tari.mapCapabilities({ l1Balance: true, l2HtlcFund: true, l1ShaInit: true, l1ShaClaim: true }), undefined);
+  const types = require('../build-test/services/tariDappTypes.js');
+  const full = Object.fromEntries(types.TARI_CAPABILITY_KEYS.map((key) => [key, true]));
+  assert.notEqual(tari.mapCapabilities(full), undefined);
+  for (const key of types.TARI_CAPABILITY_KEYS) {
+    assert.equal(tari.mapCapabilities(full)[key], true, `${key} must be read from the published set`);
+  }
+});
+
+test('spoof: a capability with no published counterpart cannot be advertised as supported', () => {
+  // The published capability set has NO L1 SHA atomic-swap flag, so those legs
+  // cannot be claimed. This is what keeps the browser XTM atomic route honestly
+  // blocked: there is no capability to map it from, and inventing one would be
+  // a claim the wallet never made.
+  const types = require('../build-test/services/tariDappTypes.js');
+  const full = Object.fromEntries(types.TARI_CAPABILITY_KEYS.map((key) => [key, true]));
+  const legs = tari.mapLegCapabilities(tari.mapCapabilities(full));
+  assert.equal(legs.l1ShaInit, false);
+  assert.equal(legs.l1ShaInspect, false);
+  assert.equal(legs.l1ShaClaim, false);
+  assert.equal(legs.l1ShaRefund, false);
+  assert.equal(legs.l1Balance, false);
+  // The L2 HTLC leg does have documented counterparts and does map.
+  assert.equal(legs.l2HtlcFund, true);
+  assert.equal(legs.l2HtlcClaim, true);
+  assert.equal(legs.l2HtlcRefund, true);
+});
+
+test('errors: the documented provider code is the only discriminator, never the message', async () => {
+  // Classifying by matching the message against /reject|denied|declined|user/i
+  // was wrong in both directions: an internal failure whose text happened to
+  // contain one of those words became a clean user rejection (so the UI would
+  // tell the user nothing went wrong), and a genuine 4001 worded differently
+  // became an unknown fault.
+  for (const [code, expected] of [[4001, 'REJECTED'], [4100, 'NOT_CONNECTED'], [4200, 'UNSUPPORTED_METHOD'], [-32603, 'INTERNAL']]) {
+    const error = Object.assign(new Error('whatever'), { code });
+    assert.equal(tari.normalizeProviderError(error, 'm').code, expected, `code ${code} must be ${expected}`);
+  }
+  const wordy = Object.assign(new Error('The user rejected this transaction'), { code: -32603 });
+  assert.equal(tari.normalizeProviderError(wordy, 'm').code, 'INTERNAL', 'the code wins over the wording');
+  const terse = Object.assign(new Error('nope'), { code: 4001 });
+  assert.equal(tari.normalizeProviderError(terse, 'm').code, 'REJECTED', 'the code wins over a terse message');
+  // An unknown code, a missing code, and a non-Error throw are all preserved as
+  // unknown/internal rather than being turned into a deterministic verdict.
+  for (const thrown of [Object.assign(new Error('rejected by the user'), { code: -32000 }), new Error('rejected by the user'), { code: '4001' }, 'rejected', 42, null]) {
+    assert.notEqual(tari.normalizeProviderError(thrown, 'm').code, 'REJECTED', `must not be a rejection: ${String(thrown)}`);
+  }
+  assert.equal(tari.normalizeProviderError(Object.assign(new Error('x'), { code: -32000 }), 'm').providerCode, -32000, 'an unknown code is preserved for display');
 });
 
 test('spoof: a balance reply with a non-integer amount is refused', async () => {
@@ -1015,22 +1276,52 @@ test('signing: the reviewed request is required and is sent verbatim, not re-der
   const start = service.indexOf('async signAndSubmitReviewed(');
   assert.notEqual(start, -1, 'the bridge must expose a signing path that takes the reviewed request');
   const body = service.slice(start, service.indexOf('\n  async ', start + 10));
-  // The payload sent to the provider is the reviewed request itself.
+  // The reviewed INSTRUCTIONS are what reach the provider.
   assert.match(body, /reviewedRequest/, 'the reviewed request must reach the provider call');
+  assert.match(body, /requireReviewedInstructions/, 'the signing path must read the reviewed instruction list');
   assert.equal(
     /\{\s*method:\s*preview\.method,\s*args:\s*preview\.args/.test(body),
     false,
     'the signing path must not rebuild a {method,args,component} payload from the preview',
   );
-  // And an absent reviewed request is a refusal, not a silent fallback.
-  assert.match(body, /Refusing to sign/, 'signing without a reviewed request must be refused');
+  // And an absent reviewed request is a refusal, not a silent fallback. The
+  // refusal lives in the helper the signing path calls, so both are checked.
+  assert.match(body, /requireReviewedInstructions/, 'the signing path must go through the reviewed-request guard');
+  const serviceSource = fsx.readFileSync(pathx.join(srcRootX, 'services', 'walletService.ts'), 'utf8');
+  const guardStart = serviceSource.indexOf('function requireReviewedInstructions(');
+  assert.notEqual(guardStart, -1, 'a reviewed-request guard must exist');
+  const guard = serviceSource.slice(guardStart, serviceSource.indexOf('\n}', guardStart));
+  assert.match(guard, /Refusing to sign/, 'signing without a reviewed request must be refused');
+  assert.match(guard, /Object\.isFrozen/, 'a mutable reviewed request must be refused at signing time');
+});
+
+test('signing: only the official instructions cross the wallet boundary', () => {
+  // The contract for `tari_signAndSubmitTransaction` is
+  // `{ instructions, maxFee?, inputs?, dryRun? }`. The previous implementation
+  // sent `{ transaction, display }`, where NEITHER name is a documented parameter
+  // and the wallet-side `instructions` array was simply absent.
+  const service = fsx.readFileSync(pathx.join(srcRootX, 'services', 'walletService.ts'), 'utf8');
+  const submit = service.slice(service.indexOf('return signAndSubmit(this.provider'));
+  assert.equal(/transaction\s*:/.test(submit.slice(0, 200)), false, 'no `transaction` member may be constructed for the wire');
+  assert.equal(/display\s*:/.test(submit.slice(0, 200)), false, 'no `display` member may be constructed for the wire');
+
+  const boundary = fsx.readFileSync(pathx.join(srcRootX, 'services', 'tariWindow.ts'), 'utf8');
+  const wireStart = boundary.indexOf('const wire: { instructions: unknown[]');
+  assert.notEqual(wireStart, -1, 'the boundary must build the documented parameter object');
+  const wire = boundary.slice(wireStart, boundary.indexOf('};', wireStart));
+  assert.match(wire, /instructions/, 'instructions is the documented parameter');
+  assert.equal(/transaction/.test(wire), false, 'no undocumented `transaction` parameter');
+  assert.equal(/display/.test(wire), false, 'no undocumented `display` parameter');
 });
 
 test('signing: execution passes the reviewed request and requires it to be frozen', () => {
   const execution = fsx.readFileSync(pathx.join(srcRootX, 'services', 'execution.ts'), 'utf8');
   // The reviewed request reaches the wallet through a typed parameter.
   assert.match(execution, /reviewedRequest: Readonly<Record<string, unknown>>/, 'the signing seam must require the reviewed request');
-  assert.match(execution, /wallets\.signAndSubmit\(envelope\.preview, input\.context, input\.review\.walletRequest\)/);
+  assert.match(execution, /input\.review\.walletRequest/, 'the reviewed request itself must be passed');
+  // The durable operation id travels with it so the wallet's transaction-request
+  // id can be bound to the durable record, which is what makes a reload resumable.
+  assert.match(execution, /operationId: input\.recordInput\.operationId/, 'the operation id must be threaded to the wallet boundary');
   // The old cast smuggled an untyped field onto a preview and was dropped by
   // every downstream consumer, so the reviewed request never reached the signer.
   assert.equal(/request:\s*input\.review\.walletRequest\s*\}\s*as TransactionPreview/.test(execution), false, 'the reviewed request must not be smuggled onto a preview via a cast');
@@ -1083,14 +1374,15 @@ test('review: a marketplace intent is diffed with the marketplace rules', () => 
 
 test('review: a marketplace differential rejects a review bound to the wrong account', () => {
   const { createReview, diffReviewAgainstMarketplaceIntent, isMarketplaceIntent } = require('../build-test/lib/review.js');
-  const identity = { nonce: 'n1', providerRef: {}, providerFingerprint: 'p', expectedNetwork: 'esmeralda', providerNetwork: 'esmeralda', account: 'otl_account_A', capabilityFingerprint: 'c', capturedAtUnixMs: 0 };
+  const identity = { nonce: 'n1', providerRef: {}, providerFingerprint: 'p', expectedNetwork: 'esmeralda', providerNetwork: 'esmeralda', account: 'component_account_B', capabilityFingerprint: 'c', capturedAtUnixMs: 0 };
   const intent = {
     operation: 'buy_listing',
     target: { componentOrOrderId: 'component_listing_1', nftResource: 'otl_nft_1', nftId: 'series#7', quoteResource: 'otl_wstable_0001', amount: '1000' },
     calls: [{ method: 'buy_listing', args: [], componentAddress: 'component_listing_1' }],
     instructions: [
-      { kind: 'withdraw_non_fungible', accountAddress: 'otl_account_B', nftResource: 'otl_nft_1', nftId: 'series#7' },
-      { kind: 'withdraw_fungible', accountAddress: 'otl_account_B', resourceAddress: 'otl_wstable_0001', amount: '1000' },
+      { kind: 'withdraw_non_fungible', accountAddress: 'component_account_B', nftResource: 'otl_nft_1', nonFungibleId: 'series#7', output: { kind: 'workspace_bucket', name: 'nft' } },
+      { kind: 'withdraw_fungible', accountAddress: 'component_account_B', resourceAddress: 'otl_wstable_0001', amount: '1000', output: { kind: 'workspace_bucket', name: 'payment' } },
+      { kind: 'call_method', componentAddress: 'component_listing_1', method: 'buy_listing', args: [{ kind: 'workspace_bucket', name: 'payment' }], resourcesInvolved: ['otl_wstable_0001'] },
     ],
   };
   assert.equal(isMarketplaceIntent(intent), true);
@@ -1101,6 +1393,7 @@ test('review: a marketplace differential rejects a review bound to the wrong acc
       network: 'esmeralda',
       account,
       identity,
+      instructions: intent.instructions,
       legs: [
         {
           operation: 'buy_listing',
@@ -1116,29 +1409,38 @@ test('review: a marketplace differential rejects a review bound to the wrong acc
 
   // The account the intent settles from is the buyer's, so a review bound to
   // anyone else must be rejected.
-  const wrong = diffReviewAgainstMarketplaceIntent(build('otl_account_A'), intent);
+  const wrong = diffReviewAgainstMarketplaceIntent(build('component_account_A'), intent);
   assert.equal(wrong.ok, false);
   assert.ok(wrong.mismatches.some((m) => m.includes('account')), 'a review bound to a different account must be rejected');
 
-  const right = diffReviewAgainstMarketplaceIntent(build('otl_account_B'), intent);
+  const right = diffReviewAgainstMarketplaceIntent(build('component_account_B'), intent);
   assert.equal(right.ok, true, `expected a matching review to pass, got: ${right.mismatches.join('; ')}`);
 });
 
 test('review: a marketplace differential rejects a tampered amount', () => {
   const { createReview, diffReviewAgainstMarketplaceIntent } = require('../build-test/lib/review.js');
-  const identity = { nonce: 'n1', providerRef: {}, providerFingerprint: 'p', expectedNetwork: 'esmeralda', providerNetwork: 'esmeralda', account: 'otl_account_B', capabilityFingerprint: 'c', capturedAtUnixMs: 0 };
+  const identity = { nonce: 'n1', providerRef: {}, providerFingerprint: 'p', expectedNetwork: 'esmeralda', providerNetwork: 'esmeralda', account: 'component_account_B', capabilityFingerprint: 'c', capturedAtUnixMs: 0 };
   const intent = {
     operation: 'buy_listing',
     target: { componentOrOrderId: 'component_listing_1', nftResource: 'otl_nft_1', nftId: 'series#7', quoteResource: 'otl_wstable_0001', amount: '1000' },
     calls: [{ method: 'buy_listing', args: [], componentAddress: 'component_listing_1' }],
-    instructions: [{ kind: 'withdraw_fungible', accountAddress: 'otl_account_B', resourceAddress: 'otl_wstable_0001', amount: '1000' }],
+    instructions: [
+      { kind: 'withdraw_fungible', accountAddress: 'component_account_B', resourceAddress: 'otl_wstable_0001', amount: '1000', output: { kind: 'workspace_bucket', name: 'payment' } },
+      { kind: 'call_method', componentAddress: 'component_listing_1', method: 'buy_listing', args: [{ kind: 'workspace_bucket', name: 'payment' }], resourcesInvolved: ['otl_wstable_0001'] },
+    ],
   };
-  // The review shows a different amount than the intent moves.
+  // The review shows a different amount than the intent moves — and carries the
+  // tampered amount in the instructions too, so the display record is internally
+  // consistent and only a comparison against the INTENT can catch it.
   const review = createReview({
     operationId: 'nft-2',
     network: 'esmeralda',
-    account: 'otl_account_B',
+    account: 'component_account_B',
     identity,
+    instructions: [
+      { kind: 'withdraw_fungible', accountAddress: 'component_account_B', resourceAddress: 'otl_wstable_0001', amount: '1', output: { kind: 'workspace_bucket', name: 'payment' } },
+      { kind: 'call_method', componentAddress: 'component_listing_1', method: 'buy_listing', args: [{ kind: 'workspace_bucket', name: 'payment' }], resourcesInvolved: ['otl_wstable_0001'] },
+    ],
     legs: [
       {
         operation: 'buy_listing',
@@ -1153,20 +1455,64 @@ test('review: a marketplace differential rejects a tampered amount', () => {
   assert.ok(diff.mismatches.some((m) => m.includes('1000') || m.includes('does not state that amount')));
 });
 
-test('review: a marketplace differential rejects a review for a different order', () => {
+test('review: an amount in the DISPLAY record but not the INSTRUCTIONS is rejected', () => {
+  // The strongest form of "shown == signed": a review whose readable record names
+  // an amount its instructions do not carry is a review whose signed transaction
+  // differs from what the user saw. The differential must catch it even though
+  // every display-side field agrees with the review.
   const { createReview, diffReviewAgainstMarketplaceIntent } = require('../build-test/lib/review.js');
-  const identity = { nonce: 'n1', providerRef: {}, providerFingerprint: 'p', expectedNetwork: 'esmeralda', providerNetwork: 'esmeralda', account: 'otl_account_B', capabilityFingerprint: 'c', capturedAtUnixMs: 0 };
+  const identity = { nonce: 'n1', providerRef: {}, providerFingerprint: 'p', expectedNetwork: 'esmeralda', providerNetwork: 'esmeralda', account: 'component_account_B', capabilityFingerprint: 'c', capturedAtUnixMs: 0 };
   const intent = {
     operation: 'buy_listing',
     target: { componentOrOrderId: 'component_listing_1', nftResource: 'otl_nft_1', nftId: 'series#7', quoteResource: 'otl_wstable_0001', amount: '1000' },
     calls: [{ method: 'buy_listing', args: [], componentAddress: 'component_listing_1' }],
-    instructions: [{ kind: 'withdraw_fungible', accountAddress: 'otl_account_B', resourceAddress: 'otl_wstable_0001', amount: '1000' }],
+    instructions: [
+      { kind: 'withdraw_fungible', accountAddress: 'component_account_B', resourceAddress: 'otl_wstable_0001', amount: '1000', output: { kind: 'workspace_bucket', name: 'payment' } },
+      { kind: 'call_method', componentAddress: 'component_listing_1', method: 'buy_listing', args: [{ kind: 'workspace_bucket', name: 'payment' }], resourcesInvolved: ['otl_wstable_0001'] },
+    ],
+  };
+  const review = createReview({
+    operationId: 'nft-split',
+    network: 'esmeralda',
+    account: 'component_account_B',
+    identity,
+    // The signed instructions move 1, not the 1000 the record states.
+    instructions: [
+      { kind: 'withdraw_fungible', accountAddress: 'component_account_B', resourceAddress: 'otl_wstable_0001', amount: '1', output: { kind: 'workspace_bucket', name: 'payment' } },
+      { kind: 'call_method', componentAddress: 'component_listing_1', method: 'buy_listing', args: [{ kind: 'workspace_bucket', name: 'payment' }], resourcesInvolved: ['otl_wstable_0001'] },
+    ],
+    legs: [
+      {
+        operation: 'buy_listing',
+        componentAddress: 'component_listing_1',
+        method: 'buy_listing',
+        amounts: [{ resourceAddress: 'otl_wstable_0001', amountRaw: '1000', role: 'OUTPUT' }],
+      },
+    ],
+  });
+  const diff = diffReviewAgainstMarketplaceIntent(review, intent);
+  assert.equal(diff.ok, false, 'a review whose signed instructions omit the displayed amount must be rejected');
+  assert.ok(
+    diff.mismatches.some((m) => m.includes('instructions the provider will sign')),
+    `expected an instruction-level mismatch, got: ${diff.mismatches.join('; ')}`,
+  );
+});
+
+test('review: a marketplace differential rejects a review for a different order', () => {
+  const { createReview, diffReviewAgainstMarketplaceIntent } = require('../build-test/lib/review.js');
+  const identity = { nonce: 'n1', providerRef: {}, providerFingerprint: 'p', expectedNetwork: 'esmeralda', providerNetwork: 'esmeralda', account: 'component_account_B', capabilityFingerprint: 'c', capturedAtUnixMs: 0 };
+  const intent = {
+    operation: 'buy_listing',
+    target: { componentOrOrderId: 'component_listing_1', nftResource: 'otl_nft_1', nftId: 'series#7', quoteResource: 'otl_wstable_0001', amount: '1000' },
+    calls: [{ method: 'buy_listing', args: [], componentAddress: 'component_listing_1' }],
+    instructions: [{ kind: 'withdraw_fungible', accountAddress: 'component_account_B', resourceAddress: 'otl_wstable_0001', amount: '1000', output: { kind: 'workspace_bucket', name: 'payment' } }],
   };
   const review = createReview({
     operationId: 'nft-3',
     network: 'esmeralda',
-    account: 'otl_account_B',
+    account: 'component_account_B',
     identity,
+    instructions: [{ kind: 'withdraw_fungible', accountAddress: 'component_account_B', resourceAddress: 'otl_wstable_0001', amount: '1000', output: { kind: 'workspace_bucket', name: 'payment' } }],
     legs: [
       {
         operation: 'buy_listing',
@@ -1236,97 +1582,16 @@ function recordingProvider(reply) {
   };
 }
 
-test('F-02: the provider receives the reviewed request itself, byte for byte', async () => {
-  const provider = recordingProvider(() => ({ transactionId: 'tx_provider_boundary_1', epoch: '900' }));
+/**
+ * The reviewed request, exactly as `buildWalletRequest` produces it from a
+ * review: the official `instructions` array, plus the human-readable record
+ * beside it.
+ */
+function reviewedRequestFrom(review) {
+  return review.walletRequest;
+}
 
-  // The reviewed request, exactly as buildWalletRequest produces it from a
-  // review: nested legs, per-resource amounts, and a minimum output.
-  const reviewedRequest = Object.freeze({
-    transaction: Object.freeze({
-      operationId: 'nft-boundary-1',
-      network: 'esmeralda',
-      account: 'otl_account_A',
-      legs: Object.freeze([
-        Object.freeze({
-          operation: 'buy_listing',
-          componentAddress: 'component_listing_1',
-          method: 'buy_listing',
-          args: Object.freeze([
-            Object.freeze({ resourceAddress: 'otl_nft_1', amountRaw: '0', role: 'INPUT', nftId: 'series#7' }),
-            Object.freeze({ resourceAddress: 'otl_wstable_0001', amountRaw: '1000000', role: 'OUTPUT' }),
-          ]),
-          minOutputRaw: '1000000',
-          maxEpochRaw: '950',
-        }),
-      ]),
-    }),
-    display: Object.freeze({
-      operation: 'buy_listing',
-      network: 'esmeralda',
-      account: 'otl_account_A',
-      assets: ['1000000 of otl_wstable_0001'],
-    }),
-  });
-
-  await tari.signAndSubmit(provider, reviewedRequest.transaction, {
-    assets: reviewedRequest.display.assets,
-    operation: 'buy_listing',
-    network: 'esmeralda',
-    poolOrDestination: 'component_listing_1',
-  });
-
-  assert.equal(provider.seen.length, 1);
-  const envelope = provider.seen[0];
-  assert.equal(envelope.method, 'tari_signAndSubmitTransaction');
-
-  // The transaction the provider was asked to sign IS the reviewed transaction:
-  // nothing added, removed, or recomputed. `buildWalletRequest` produces
-  // `{ transaction, display }`, which is already the provider's envelope, so
-  // the signed body is `transaction` and the human context is `display`.
-  assert.deepEqual(envelope.params.transaction, reviewedRequest.transaction);
-
-  // There must be no double nesting: `transaction.transaction` is not a shape
-  // any wallet is documented to accept.
-  assert.equal(envelope.params.transaction.transaction, undefined, 'the signed transaction must not be wrapped twice');
-
-  // Specifically the fields the old {method, args, component} reconstruction
-  // lost: the component, the per-resource amounts, the NFT id, and the floor.
-  const leg = envelope.params.transaction.legs[0];
-  assert.equal(leg.componentAddress, 'component_listing_1');
-  assert.equal(leg.minOutputRaw, '1000000');
-  assert.deepEqual(leg.args, [
-    { resourceAddress: 'otl_nft_1', amountRaw: '0', role: 'INPUT', nftId: 'series#7' },
-    { resourceAddress: 'otl_wstable_0001', amountRaw: '1000000', role: 'OUTPUT' },
-  ]);
-  assert.ok(envelope.params.display.assets.includes('1000000 of otl_wstable_0001'));
-});
-
-test('F-02: the lossy preview reconstruction is measurably different at the boundary', async () => {
-  const provider = recordingProvider(() => ({ transactionId: 'tx_provider_boundary_2', epoch: '900' }));
-  // This is the shape the old code built: a method/args/component triple with no
-  // legs, no resource addresses, and no minimum output.
-  const lossy = { method: 'buy_listing', args: ['0', '1000000'], component: 'component_listing_1' };
-
-  await tari.signAndSubmit(provider, lossy, {
-    assets: ['otl_wstable_0001'],
-    operation: 'buy_listing',
-    network: 'esmeralda',
-    poolOrDestination: 'component_listing_1',
-  });
-
-  // The difference is observable at the provider, which is the point: had the
-  // old shape been signed, nothing in the envelope would have stated which
-  // resource moved, or the floor the user accepted.
-  const sent = provider.seen[0].params.transaction;
-  assert.equal(sent.legs, undefined);
-  assert.equal(sent.method, 'buy_listing');
-  assert.deepEqual(sent.args, ['0', '1000000']);
-  const serialised = JSON.stringify(sent);
-  assert.equal(/otl_wstable_0001/.test(serialised), false, 'the reconstruction names no resource address');
-  assert.equal(/minOutput/.test(serialised), false, 'the reconstruction states no minimum output');
-});
-
-test('F-02: the request is derived from the review, so the numbers have one source', () => {
+function buildReviewedBuyListingRequest() {
   const reviewLib = require('../build-test/lib/review.js');
   const identity = {
     nonce: 'n-boundary',
@@ -1334,44 +1599,135 @@ test('F-02: the request is derived from the review, so the numbers have one sour
     providerFingerprint: 'p',
     expectedNetwork: 'esmeralda',
     providerNetwork: 'esmeralda',
-    account: 'otl_account_A',
+    account: 'component_account_A',
     capabilityFingerprint: 'c',
     capturedAtUnixMs: 0,
   };
   const review = reviewLib.createReview({
-    operationId: 'amm-boundary-1',
+    operationId: 'nft-boundary-1',
     network: 'esmeralda',
-    account: 'otl_account_A',
+    account: 'component_account_A',
     identity,
+    // The on-chain expiry the intent carries must be bound into the signed
+    // transaction, or a signature stays valid indefinitely after market state
+    // moves. Passing it to the review is how it reaches the instructions.
+    maxEpoch: '950',
+    instructions: [
+      { kind: 'withdraw_fungible', accountAddress: 'component_account_A', resourceAddress: 'otl_wstable_0001', amount: '1000000', output: { kind: 'workspace_bucket', name: 'payment' } },
+      { kind: 'call_method', componentAddress: 'component_listing_1', method: 'buy_listing', args: [{ kind: 'workspace_bucket', name: 'payment' }], resourcesInvolved: ['otl_wstable_0001'] },
+    ],
     legs: [
       {
-        operation: 'swap',
-        componentAddress: 'component_pool_1',
-        method: 'swap',
+        operation: 'NFT_BUY_NOW',
+        componentAddress: 'component_listing_1',
+        method: 'buy_listing',
         amounts: [
-          { resourceAddress: 'otl_canonical_tari', amountRaw: '1000000', role: 'INPUT' },
-          { resourceAddress: 'otl_wstable_0001', amountRaw: '4000000', role: 'OUTPUT' },
+          { resourceAddress: 'otl_nft_1', amountRaw: '0', role: 'INPUT', nftId: 'series#7' },
+          { resourceAddress: 'otl_wstable_0001', amountRaw: '1000000', role: 'OUTPUT' },
         ],
-        minOutputRaw: '3900000',
+        minOutputRaw: '1000000',
+        maxEpochRaw: '950',
       },
     ],
   });
+  return review;
+}
 
-  const leg = review.walletRequest.transaction.legs[0];
-  assert.equal(leg.componentAddress, review.legs[0].componentAddress);
-  assert.equal(leg.method, review.legs[0].method);
-  assert.equal(leg.minOutputRaw, review.legs[0].minOutputRaw);
-  for (const arg of leg.args) {
-    const stated = review.legs[0].amounts.find((a) => a.resourceAddress === arg.resourceAddress);
-    assert.notEqual(stated, undefined, `the request names ${arg.resourceAddress} but the review does not`);
-    assert.equal(arg.amountRaw, stated.amountRaw);
+test('F-02: the provider receives the reviewed INSTRUCTIONS, byte for byte', async () => {
+  const provider = recordingProvider((envelope) =>
+    envelope.method === 'tari_signAndSubmitTransaction' ? { transactionId: 'tx_provider_boundary_1', epoch: '900' } : { transactionId: 'req_1' },
+  );
+  provider.request = async function request(envelope) {
+    provider.seen.push(JSON.parse(JSON.stringify(envelope)));
+    if (envelope.method === 'tari_getCapabilities') return { transactionRequests: false };
+    return envelope.method === 'tari_signAndSubmitTransaction' ? { transactionId: 'tx_provider_boundary_1', epoch: '900' } : { requestId: 'req_1' };
+  };
+
+  const review = buildReviewedBuyListingRequest();
+  const reviewedRequest = reviewedRequestFrom(review);
+
+  await tari.signAndSubmit(provider, { instructions: reviewedRequest.instructions });
+
+  assert.equal(provider.seen.length, 1);
+  const envelope = provider.seen[0];
+  assert.equal(envelope.method, 'tari_signAndSubmitTransaction');
+
+  // The instructions the provider is asked to sign ARE the reviewed instructions:
+  // nothing added, removed, or recomputed.
+  assert.deepEqual(envelope.params.instructions, reviewedRequest.instructions);
+  assert.deepEqual(Object.keys(envelope.params).sort(), ['instructions'], 'only documented parameters may be transmitted');
+
+  // There must be no double nesting, and no undocumented wrapper members: the
+  // contract defines `instructions`, `maxFee`, `inputs` and `dryRun` and nothing
+  // else, so the `transaction`/`display` review record must not reach the wire.
+  assert.equal('transaction' in envelope.params, false, 'the review record must not be transmitted');
+  assert.equal('display' in envelope.params, false, 'the review record must not be transmitted');
+  assert.equal(envelope.params.instructions.transaction, undefined, 'the instructions must not be wrapped twice');
+
+  // Specifically the fields the old {method, args, component} reconstruction
+  // lost: the component, the per-resource amount, and the expiry bound.
+  const serialised = JSON.stringify(envelope.params.instructions);
+  assert.match(serialised, /component_listing_1/, 'the order component must be named');
+  assert.match(serialised, /1000000/, 'the amount must be carried');
+  assert.match(serialised, /950/, 'the on-chain expiry must be bound');
+});
+
+test('F-02: the lossy preview reconstruction is measurably different at the boundary', async () => {
+  const provider = recordingProvider(() => ({ transactionId: 'tx_provider_boundary_2' }));
+  // This is the shape the old code built: a method/args/component triple with no
+  // instructions, no resource addresses, and no minimum output.
+  const lossy = { method: 'buy_listing', args: ['0', '1000000'], component: 'component_listing_1' };
+
+  await tari.signAndSubmit(provider, { instructions: [lossy] });
+
+  // The difference is observable at the provider, which is the point: had the
+  // old shape been signed, nothing in the envelope would have stated which
+  // resource moved, or the floor the user accepted.
+  const sent = JSON.stringify(provider.seen[0].params.instructions);
+  assert.equal(/otl_wstable_0001/.test(sent), false, 'the reconstruction names no resource address');
+  assert.equal(/minOutput/.test(sent), false, 'the reconstruction states no minimum output');
+});
+
+test('F-02: the request is derived from the review, so the numbers have one source', () => {
+  const review = buildReviewedBuyListingRequest();
+  const leg = review.legs[0];
+
+  // The DISPLAY record beside the instructions.
+  const displayLeg = review.walletRequest.transaction.legs[0];
+  assert.equal(displayLeg.componentAddress, leg.componentAddress);
+  assert.equal(displayLeg.method, leg.method);
+  assert.equal(displayLeg.minOutputRaw, leg.minOutputRaw);
+
+  // …and the INSTRUCTIONS, which are what the wallet actually signs.
+  const serialised = JSON.stringify(review.walletRequest.instructions);
+  for (const amount of leg.amounts) {
+    if (amount.role === 'FEE') continue;
+    assert.ok(serialised.includes(amount.amountRaw), `the instructions must carry ${amount.amountRaw} of ${amount.resourceAddress}`);
   }
 
   // Frozen all the way down, so it cannot drift between approval and signing.
   assert.equal(Object.isFrozen(review.walletRequest), true);
+  assert.equal(Object.isFrozen(review.walletRequest.instructions), true);
+  assert.equal(Object.isFrozen(review.walletRequest.instructions[0]), true);
   assert.equal(Object.isFrozen(review.walletRequest.transaction), true);
-  assert.equal(Object.isFrozen(review.walletRequest.transaction.legs[0]), true);
-  assert.equal(Object.isFrozen(review.walletRequest.transaction.legs[0].args[0]), true);
+});
+
+test('F-02: a review with no instruction list is refused, not signed as nothing', () => {
+  // Otherwise a user could "approve" a transaction that does nothing.
+  const reviewLib = require('../build-test/lib/review.js');
+  const identity = { nonce: 'n-empty', providerRef: {}, providerFingerprint: 'p', expectedNetwork: 'esmeralda', providerNetwork: 'esmeralda', account: 'component_a', capabilityFingerprint: 'c', capturedAtUnixMs: 0 };
+  assert.throws(
+    () =>
+      reviewLib.createReview({
+        operationId: 'empty-1',
+        network: 'esmeralda',
+        account: 'component_a',
+        identity,
+        instructions: [],
+        legs: [{ operation: 'AMM_SWAP', componentAddress: 'component_pool_1', method: 'swap', amounts: [{ resourceAddress: 'otl_r', amountRaw: '1', role: 'INPUT' }] }],
+      }),
+    /empty instruction list|instruction list/,
+  );
 });
 
 test('F-02: the signing gate requires a frozen review, and the requirement is asserted', () => {
@@ -1382,39 +1738,14 @@ test('F-02: the signing gate requires a frozen review, and the requirement is as
   assert.match(executionSrc, /Object\.isFrozen\(input\.review\)/);
   assert.match(executionSrc, /Object\.isFrozen\(input\.review\.walletRequest\)/);
 
-  // And the freeze itself is real: mutation of a nested arg must throw in
-  // strict mode rather than silently succeeding.
-  const reviewLib = require('../build-test/lib/review.js');
-  const identity = {
-    nonce: 'n-frozen',
-    providerRef: {},
-    providerFingerprint: 'p',
-    expectedNetwork: 'esmeralda',
-    providerNetwork: 'esmeralda',
-    account: 'otl_account_A',
-    capabilityFingerprint: 'c',
-    capturedAtUnixMs: 0,
-  };
-  const review = reviewLib.createReview({
-    operationId: 'amm-frozen-1',
-    network: 'esmeralda',
-    account: 'otl_account_A',
-    identity,
-    legs: [
-      {
-        operation: 'swap',
-        componentAddress: 'component_pool_1',
-        method: 'swap',
-        amounts: [{ resourceAddress: 'otl_canonical_tari', amountRaw: '1000000', role: 'INPUT' }],
-        minOutputRaw: '3900000',
-      },
-    ],
-  });
+  // And the freeze itself is real: mutation of a nested instruction must throw
+  // in strict mode rather than silently succeeding.
+  const review = buildReviewedBuyListingRequest();
   assert.throws(() => {
     'use strict';
-    review.walletRequest.transaction.legs[0].args[0].amountRaw = '999999999';
+    review.walletRequest.instructions[0].CallMethod.call.Address = 'component_attacker';
   }, TypeError);
-  assert.equal(review.walletRequest.transaction.legs[0].args[0].amountRaw, '1000000');
+  assert.equal(review.walletRequest.instructions[0].CallMethod.call.Address, 'component_account_A');
 });
 
 // ===========================================================================
@@ -1451,7 +1782,7 @@ test('provider liveness: a signing request is never given a deadline', async () 
   };
   // If signing were raced against a timer, this would reject within milliseconds.
   const pending = tari
-    .signAndSubmit(silent, { transaction: {} }, { assets: ['TARI'], operation: 'swap', network: 'esmeralda', poolOrDestination: 'p' })
+    .signAndSubmit(silent, { instructions: [{ CallMethod: { call: { Address: 'component_a' }, method: 'swap', args: [] } }] })
     .then(() => {
       settled = true;
     })
@@ -1463,14 +1794,32 @@ test('provider liveness: a signing request is never given a deadline', async () 
   void pending;
 });
 
+test('provider liveness: polling an open approval is never given a deadline either', async () => {
+  // `tari_getTransactionRequest` polls an approval popup that may already be
+  // open, so bounding it would manufacture a spurious failure on a request the
+  // user is still reading.
+  let settled = false;
+  const silent = { request: () => new Promise(() => {}) };
+  const pending = tari
+    .pollTransactionRequest(silent, 'req_1')
+    .then(() => {
+      settled = true;
+    })
+    .catch(() => {
+      settled = true;
+    });
+  await new Promise((resolve) => setTimeout(resolve, 250));
+  assert.equal(settled, false, 'polling an open approval must stay pending');
+  void pending;
+});
+
 test('provider liveness: a read that answers in time is unaffected by the deadline', async () => {
   const good = {
     request: async ({ method }) => {
-      if (method === 'tari_getNetwork') return { network: 'esmeralda', epoch: '7' };
+      if (method === 'tari_getNetwork') return 'esmeralda';
       return {};
     },
   };
   const view = await tari.fetchNetwork(good);
   assert.equal(view.network, 'esmeralda');
-  assert.equal(view.epoch, '7');
 });

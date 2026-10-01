@@ -8,7 +8,7 @@ pinned upstream revisions, with exact source paths. Updated: 2026-09-25, branch
 
 | Repo | Local path | Revision | Role |
 |---|---|---|---|
-| tari-ootle (L2) | `C:\tmp-tari` | `2d6083e6cc7c98cde93dacebe2fb76b17703f588` (development HEAD, workspace 0.41.1) | L2 engine + walletd — FULLY TRACED |
+| tari-ootle (L2) | `C:\tmp-tari` | `2d6083e6cc7c98cde93dacebe2fb76b17703f588` (development HEAD, workspace 0.41.1); **re-pinned 2026-10-01 to tag `v0.42.0` = `a43773e600b9503ed3fadcd3f0048f86131e3644`** | L2 engine + walletd — FULLY TRACED |
 | tari L1 (Minotari) | `C:\tmp-tari-l1` | tag `v6.0.0`, commit `97aa59ecfaf70d8334f14e71d8f7afd6bd40e5e3` (`chore: v6.0.0 release`) | L1 HTLC primitive — FULLY TRACED |
 
 ## VERIFIED L2: Ootle stealth ScriptPath HTLC (interop-grade)

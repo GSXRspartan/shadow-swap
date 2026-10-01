@@ -28,7 +28,7 @@ import { normalizeError, type NormalizedError } from '../lib/errorMessage.js';
 import { buildPoolIdentity, presentSafety, type AssetChip } from '../lib/assetIdentity.js';
 import { formatBps, formatUnits, UNAVAILABLE } from '../lib/format.js';
 import { DEFAULT_SLIPPAGE_BPS, SLIPPAGE_PRESETS, validateSlippageInput } from '../lib/slippage.js';
-import { asRawExecutionAmount } from '../lib/tradeBoundary.js';
+import { asRawExecutionAmount, asResourceAddress } from '../lib/tradeBoundary.js';
 import { atomicSwapAvailability } from '../lib/capabilities.js';
 import { RoutePanel } from './RoutePanel.js';
 import { Badge, DataRow, Field, Notice } from './primitives.js';
@@ -113,8 +113,8 @@ export function SwapCard({ pool }: { pool: PoolDescriptor }) {
       void (async () => {
         const request: SwapRequest = {
           poolComponent: pool.poolComponent,
-          inputResource: asRawExecutionAmount(from.resourceAddress, 'inputResource'),
-          outputResource: asRawExecutionAmount(to.resourceAddress, 'outputResource'),
+          inputResource: asResourceAddress(from.resourceAddress, 'inputResource'),
+          outputResource: asResourceAddress(to.resourceAddress, 'outputResource'),
           rawInputAmount: asRawExecutionAmount(amountRaw, 'rawInputAmount'),
           slippage: { slippageBps: asRawExecutionAmount(slippage.bps, 'slippageBps') },
           maxEpoch: MAX_EPOCH,

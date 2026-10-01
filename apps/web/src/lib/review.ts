@@ -22,6 +22,7 @@
 
 import type { ExecutionIdentity } from './executionIdentity.js';
 import { asRawExecutionAmount, asResourceAddress } from './tradeBoundary.js';
+import { buildSignableInstructions, type TariInstruction } from './instructions.js';
 
 export type ReviewOperation = 'AMM_SWAP' | 'AMM_ADD_LIQUIDITY' | 'AMM_REMOVE_LIQUIDITY' | 'NFT_BUY_NOW' | 'NFT_SELL_NOW' | 'NFT_ACCEPT_ITEM_OFFER';
 
@@ -57,10 +58,23 @@ export interface TransactionReview {
   readonly legs: readonly ReviewLeg[];
   readonly createdAtUnixMs: number;
   /**
-   * The exact serialized payload handed to the provider. Built from the review,
-   * so it cannot describe a different transaction.
+   * The EXACT operation handed to the provider.
+   *
+   * Built from the review, so it cannot describe a different transaction. The
+   * `instructions` member is the official `TariSignAndSubmitParams.instructions`
+   * payload — the array the wallet is asked to sign — and it is frozen, so the
+   * object that was reviewed is byte-for-byte the object that is submitted.
    */
   readonly walletRequest: Readonly<Record<string, unknown>>;
+}
+
+/** The reviewed, frozen instruction list. This is what the wallet signs. */
+export function reviewedInstructions(review: TransactionReview): readonly unknown[] {
+  const request = review.walletRequest as { instructions?: unknown };
+  if (!Array.isArray(request.instructions)) {
+    throw new ReviewViolationError('the reviewed request carries no instruction list');
+  }
+  return request.instructions;
 }
 
 function freezeDeep<T>(value: T): T {
@@ -88,10 +102,27 @@ function validateAmounts(amounts: readonly ReviewAmount[], operation: string): r
 }
 
 /**
- * Build the wallet request FROM the review. The provider sees exactly the
- * amounts the user was shown, because both come from the same object.
+ * Build the wallet request FROM the review.
+ *
+ * The provider sees exactly the amounts the user was shown, because both come
+ * from the same object.
+ *
+ * The `instructions` member is what actually crosses the wallet boundary. The
+ * official contract types it `unknown[]`; `buildSignableInstructions` turns the
+ * adapter's signer-agnostic intent into the externally-tagged Ootle form the
+ * reference documents, resolving symbolic buckets to the integer workspace ids
+ * the contract requires for instructions we build ourselves, and carrying the
+ * intent's `with_max_epoch` bound.
+ *
+ * The `transaction`/`display` members remain as the human-readable review
+ * record. They are NOT sent to the provider: the contract defines no such
+ * parameters, and adding undocumented fields to an outbound request is exactly
+ * the kind of thing that works by accident against one bridge and breaks against
+ * another.
  */
-export function buildWalletRequest(review: Omit<TransactionReview, 'walletRequest'>): Readonly<Record<string, unknown>> {
+export function buildWalletRequest(
+  review: Omit<TransactionReview, 'walletRequest'> & { instructions?: readonly unknown[]; maxEpoch?: string },
+): Readonly<Record<string, unknown>> {
   const transaction = {
     operationId: review.operationId,
     network: review.network,
@@ -110,15 +141,26 @@ export function buildWalletRequest(review: Omit<TransactionReview, 'walletReques
       maxEpochRaw: leg.maxEpochRaw,
     })),
   };
-  // Machine-readable context for a wallet that supports it, so a signing prompt
-  // can be more than an opaque blob.
+  // Machine-readable context for a signing prompt to be more than an opaque blob.
+  // This is a REVIEW record for this app, not a wire parameter.
   const display = {
     operation: review.legs.map((leg) => `${leg.operation} on ${leg.componentAddress}`).join('; '),
     network: review.network,
     account: review.account,
     assets: review.legs.flatMap((leg) => leg.amounts.map((amount) => `${amount.amountRaw} of ${amount.resourceAddress}`)),
   };
-  return Object.freeze({ transaction: freezeDeep(transaction), display: freezeDeep(display) });
+
+  if (review.instructions === undefined) {
+    // No instructions to sign. Refuse rather than hand a wallet an empty request,
+    // which would let a user "approve" a transaction that does nothing.
+    throw new ReviewViolationError('a review must carry the instruction list that will be signed');
+  }
+  const instructions: TariInstruction[] = buildSignableInstructions({
+    instructions: review.instructions,
+    maxEpoch: review.maxEpoch,
+  });
+
+  return Object.freeze({ instructions: freezeDeep(instructions), transaction: freezeDeep(transaction), display: freezeDeep(display) });
 }
 
 export function createReview(input: {
@@ -127,6 +169,10 @@ export function createReview(input: {
   account: string;
   identity: ExecutionIdentity;
   legs: ReviewLeg[];
+  /** The signer-agnostic intent, serialised into the official instructions form. */
+  instructions: readonly unknown[];
+  /** The raw `with_max_epoch` bound, carried into the signed transaction. */
+  maxEpoch?: string;
   createdAtUnixMs?: number;
 }): TransactionReview {
   if (input.network.trim() === '') throw new ReviewViolationError('a review must name the network it is bound to');
@@ -149,12 +195,14 @@ export function createReview(input: {
     }),
   );
 
-  const base: Omit<TransactionReview, 'walletRequest'> = {
+  const base: Omit<TransactionReview, 'walletRequest'> & { instructions: readonly unknown[]; maxEpoch?: string } = {
     operationId: input.operationId,
     network: input.network,
     account: input.account,
     identity: input.identity,
     legs,
+    instructions: input.instructions,
+    maxEpoch: input.maxEpoch,
     createdAtUnixMs: input.createdAtUnixMs ?? Date.now(),
   };
   return Object.freeze({ ...base, walletRequest: buildWalletRequest(base) });
@@ -234,6 +282,11 @@ export function reviewFromAmmIntent(input: {
     network: input.network,
     account: intent.settlement.accountAddress,
     identity: input.identity,
+    // The intent's own signer-agnostic instructions are what gets signed. The
+    // max_epoch bound the adapter attached is carried with it, so the signed
+    // transaction cannot outlive its own validity window.
+    instructions: intent.instructions,
+    maxEpoch: input.maxEpochRaw,
     legs: [
       {
         operation: AMM_OPERATION[intent.operation],
@@ -244,7 +297,8 @@ export function reviewFromAmmIntent(input: {
         maxEpochRaw: input.maxEpochRaw,
       },
     ],
-  });}
+  });
+}
 
 // ---------------------------------------------------------------------------
 // Differential test helper
@@ -306,8 +360,56 @@ export function diffReviewAgainstIntent(review: TransactionReview, intent: AmmIn
       }
     }
   }
+  mismatches.push(...checkInstructionsCarryAmounts(review, leg.amounts));
 
   return { ok: mismatches.length === 0, mismatches };
+}
+
+/**
+ * The reviewed amounts must appear in the SERIALISED instruction list, not only
+ * in the human-readable record beside it.
+ *
+ * This is the check that actually closes "shown == signed" at the wallet
+ * boundary. `review.walletRequest.instructions` is the array the provider is
+ * asked to sign; if an amount the user approved is absent from it, the
+ * transaction that reaches the wallet is not the one that was reviewed, however
+ * consistent the display record is. The display record is a by-product; the
+ * instruction list is the payload.
+ *
+ * Every match is an exact string comparison on a raw integer, so no display
+ * scaling can bridge a difference.
+ */
+function checkInstructionsCarryAmounts(review: TransactionReview, amounts: readonly ReviewAmount[]): string[] {
+  const mismatches: string[] = [];
+  const request = review.walletRequest as { instructions?: unknown };
+  if (!Array.isArray(request.instructions) || request.instructions.length === 0) {
+    return ['the reviewed request carries no instruction list for the provider to sign'];
+  }
+  const serialised = JSON.stringify(request.instructions);
+  for (const amount of amounts) {
+    if (amount.role === 'FEE') continue;
+    if (!serialised.includes(amount.amountRaw)) {
+      mismatches.push(`the instructions the provider will sign do not carry ${amount.amountRaw} of ${amount.resourceAddress}`);
+    }
+  }
+  if (legMentionsComponent(request.instructions, review.legs[0]?.componentAddress) === false) {
+    mismatches.push('the instructions the provider will sign do not name the reviewed component');
+  }
+  return mismatches;
+}
+
+/** Whether any `CallMethod` in the serialised list targets this component. */
+function legMentionsComponent(instructions: readonly unknown[], componentAddress: string | undefined): boolean | undefined {
+  if (componentAddress === undefined) return undefined;
+  for (const entry of instructions) {
+    if (entry === null || typeof entry !== 'object') continue;
+    const bag = entry as Record<string, Record<string, unknown>>;
+    const call = bag.CallMethod;
+    if (call === undefined) continue;
+    const address = (call.call as { Address?: unknown } | undefined)?.Address;
+    if (address === componentAddress) return true;
+  }
+  return false;
 }
 
 // ===========================================================================
@@ -426,6 +528,7 @@ export function diffReviewAgainstMarketplaceIntent(review: TransactionReview, in
       }
     }
   }
+  mismatches.push(...checkInstructionsCarryAmounts(review, leg.amounts));
 
   return { ok: mismatches.length === 0, mismatches };
 }

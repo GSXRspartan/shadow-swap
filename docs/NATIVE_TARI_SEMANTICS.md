@@ -1,17 +1,52 @@
 # NATIVE TARI SEMANTICS IN AMM
 
-Source reference: upstream tari-ootle (`C:\tmp-tari`), commit `2d6083e6cc7c98cde93dacebe2fb76b17703f588`
-Workspace version: `0.41.1`
+Source reference: upstream tari-ootle **tag `v0.42.0`**, commit
+`a43773e600b9503ed3fadcd3f0048f86131e3644`
+Workspace version: `0.42.0`
+
+> Re-verified 2026-10-01 against the v0.42.0 tag **and** against live post-reset
+> Esmeralda. The token's identity did **not** change across the reset — only the node
+> software was upgraded. `docs/LIVE_TESTNET_EVIDENCE.md` §0.3 records the live read.
 
 ## Exact upstream constant
-File: `crates/template_lib_types/src/constants.rs` (line 63)
+File: `crates/template_lib_types/src/constants.rs`
 ```
 pub const STEALTH_TARI_RESOURCE_ADDRESS: ResourceAddress =
     ResourceAddress::new(ObjectKey::from_array([1u8; ObjectKey::LENGTH]));
+
+/// Shorthand version of the `STEALTH_TARI_RESOURCE_ADDRESS` constant
+pub const TARI_TOKEN: ResourceAddress = STEALTH_TARI_RESOURCE_ADDRESS;
+#[deprecated(since = "0.24.5", note = "Use TARI_TOKEN instead")]
+pub const XTR: ResourceAddress = STEALTH_TARI_RESOURCE_ADDRESS;
 ```
-Alias: `TARI_TOKEN`. Deprecated alias: `XTR`.
+Which resolves to the literal address:
+```
+resource_0101010101010101010101010101010101010101010101010101010101010101
+```
 Divisibility: 6 (from `constants.rs` comment: "divisibility of 6, meaning smallest unit is 0.000001 TARI").
 Unit definition: `pub const TARI: u64 = 1_000_000;` (1 TARI = 1,000,000 micro-tari).
+
+### Live confirmation (2026-10-01, post-reset Esmeralda)
+
+`GET https://ootle-indexer-a.tari.com/resources/tari`:
+
+| Property | Value |
+| --- | --- |
+| `resource_type` | **`Stealth`** |
+| `metadata.SYMBOL` | `tTARI` |
+| `divisibility` | `6` |
+| `owner_rule` | `None` |
+| access rules | `mint`/`burn`/`recall`/`freeze` = `DenyAll`; `withdraw`/`deposit` = `AllowAll` |
+| `version` | `0` (post-reset genesis state) |
+
+### Identity rule
+
+Canonical TARI is bound to the **ADDRESS**, never to the ticker. `tTARI` is a
+symbol and `XTR` is a deprecated alias; neither is an identity, because any
+issuer can print `tTARI` on a worthless token. `apps/web/src/services/ootleIndexer.ts`
+pins `CANONICAL_TARI_RESOURCE` to the exact address and
+`apps/web/test/ootleV042Contract.test.cjs` asserts that a symbol lookalike never
+classifies as canonical.
 
 ## Resource type
 Native Tari is a `ResourceType::Stealth` (per `resource_type.rs` and TariSwap validation). The TariSwap template accepts `Stealth` through:

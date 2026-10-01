@@ -1,88 +1,147 @@
-# Tari Ootle Liquidity Protocol
+<div align="center">
+
+# Tari/Ootle Liquidity Protocol
+
+**A noncustodial liquidity and market protocol for Tari Ootle — AMM pools, LP markets, NFT trading, market data, browser-based trading, and composable multi-asset routing.**
 
 [![Node Tests](https://github.com/GSXRspartan/tari-ootle-liquidity-protocol/actions/workflows/node-tests.yml/badge.svg)](https://github.com/GSXRspartan/tari-ootle-liquidity-protocol/actions/workflows/node-tests.yml)
 [![Security Engine Tests](https://github.com/GSXRspartan/tari-ootle-liquidity-protocol/actions/workflows/security-engine-tests.yml/badge.svg)](https://github.com/GSXRspartan/tari-ootle-liquidity-protocol/actions/workflows/security-engine-tests.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](#licensing)
 
-A non-custodial trading and liquidity protocol built primarily around **Tari Ootle L2**, with an
-experimental **Minotari L1 ↔ Ootle L2** atomic-swap route. It combines a permissionless constant-product
-AMM, an NFT marketplace, a browser trading frontend, an informational market-data pipeline, and a
-cross-layer coordination layer that treats chain rereads — never discovery data — as settlement
-authority.
+`Swift` `TypeScript` `Rust` · **Esmeralda testnet** · **mainnet disabled**
 
+</div>
+
+> [!WARNING]
 > **TESTNET / EXPERIMENTAL.** Mainnet is intentionally disabled in every layer of this build.
 > Do not use funds you cannot afford to lose. Nothing in this repository is an audit, a
-> guarantee, or production readiness. See [Status](#current-status) and
-> [Security](#security) for what has and has not been verified.
+> guarantee, or a claim of production readiness — see
+> [Current status](#current-status) and [Security](#security) for exactly what has and has
+> not been verified.
 
-## What this is
+---
 
-- **Public fungible AMM** on Ootle — constant-product pools with LP shares, LP trading fees,
-  and strict on-chain access rules (no admin withdrawal, no upgrade keys, no owner).
+**Jump to** — [Status](#current-status) · [Screenshots](#screenshots) · [Capabilities](#capabilities) ·
+[Architecture](#architecture) · [Trust model](#trust-model) · [The AMM](#the-amm) ·
+[NFT marketplace](#nft-marketplace) · [Cross-layer routing](#experimental-cross-layer-routing) ·
+[Market data](#market-data) · [Frontend](#frontend) · [Wallet](#wallet-architecture) ·
+[Security](#security) · [Development](#development) · [Testnet status](#testnet-status) ·
+[Roadmap](#roadmap)
+
+<div align="center">
+
+### Pool market · desktop
+
+<img src="docs/screenshots/pool-market.png" alt="Pool market page on desktop: market header, candlestick and volume chart, swap card, liquidity panel, route panel, and pool activity." width="760">
+
+<table>
+  <tr>
+    <td align="center"><em>NFT collection · desktop</em><br><img src="docs/screenshots/nft-marketplace.png" alt="NFT marketplace: collection header with listings, offers, bids, and quote-book tabs." width="380"></td>
+    <td align="center"><em>Pool market · mobile</em><br><img src="docs/screenshots/mobile-pool.png" alt="Pool market page at mobile width." width="170"></td>
+  </tr>
+</table>
+
+</div>
+
+*Sampled from the shipped production bundle driven against the same deterministic indexer
+fixtures the browser security suite uses. These show the **interface, not live market state** —
+the disconnected state is exactly what renders (no wallet, no synthetic balances). They are not
+evidence of live-chain activity. Reproduce with `pnpm --filter @tari-ootle/web run screenshots`.*
+
+---
+
+## Current status
+
+Status vocabulary:
+
+| Marker | Meaning |
+| --- | --- |
+| ✅ `IMPLEMENTED` | The code path exists, is exercised by this repository's own suites, and has no known fund-loss path under the tested model. **Not** a claim of live-chain exercise. |
+| 🧪 `EXPERIMENTAL` | Built and unit-tested, but gated off by default or not yet exercised end to end against a live chain. |
+| 🚧 `BLOCKED_EXTERNAL` | Depends on a capability that does not exist upstream today. Not fixable in this repository. |
+| ⚙️ `CONFIGURED_NOT_LIVE` | The configuration exists and is tested; no live deployment has been observed serving it. |
+| 🔒 `DISABLED` | Refused unconditionally, by design, in every layer. |
+
+### Core protocol
+
+| Capability | Status |
+| --- | --- |
+| Public fungible AMM (constant product) | ✅ `IMPLEMENTED` |
+| Add / remove liquidity with LP accounting | ✅ `IMPLEMENTED` |
+| LP trading fees (30 bps default, 100% to LPs) | ✅ `IMPLEMENTED` |
+| TARI markets | ✅ `IMPLEMENTED` |
+| Public fungible markets | ✅ `IMPLEMENTED` |
+| wSTABLE (issuer-controlled quote asset) markets | ✅ `IMPLEMENTED`, with explicit issuer-risk disclosure |
+| Routing / multi-hop composition | ✅ `IMPLEMENTED` |
+| First-depositor and permanent LP-lock protections | ✅ `IMPLEMENTED` |
+| On-chain `min_output` slippage enforcement | ✅ `IMPLEMENTED` |
+
+### Marketplace and data
+
+| Capability | Status |
+| --- | --- |
+| NFT fixed-price listings | ✅ `IMPLEMENTED` |
+| NFT Buy Now | ✅ `IMPLEMENTED` |
+| NFT item offers | ✅ `IMPLEMENTED` |
+| NFT collection bids (partial fills) | ✅ `IMPLEMENTED` |
+| Sell Now (fill a collection bid) | ✅ `IMPLEMENTED` |
+| Durable operation history | ✅ `IMPLEMENTED` |
+| `UNKNOWN` reconciliation (no blind resubmit) | ✅ `IMPLEMENTED` |
+| Market data (trades, OHLCV, pool metrics) | ✅ `IMPLEMENTED` — informational only, never execution authority |
+
+### Frontend and hosting
+
+| Capability | Status |
+| --- | --- |
+| Browser trading frontend (React 19 + Vite 6) | ✅ `IMPLEMENTED` |
+| Browser wallet abstraction + `shown == signed` gate | ✅ `IMPLEMENTED` |
+| Live Esmeralda endpoint discovery + identity gate | ✅ `IMPLEMENTED` |
+| Cloudflare Pages deployment (security headers) | ⚙️ `CONFIGURED_NOT_LIVE` — R-1 open, no credentials available |
+| GitHub Pages deployment | 🔒 `DISABLED` as an interactive target — cannot serve the security policy |
+
+### Cross-layer liquidity routing (experimental)
+
+| Capability | Status |
+| --- | --- |
+| `FAST_XTM_TARI` coordinator | 🧪 `EXPERIMENTAL` — protocol complete, real submit gated OFF by default |
+| `XTM → TARI → AMM` route composition | ✅ `IMPLEMENTED`, 🚧 externally gated behind the hop-1 settlement proof |
+| Browser L1 SHA atomic-swap primitives | 🚧 `BLOCKED_EXTERNAL` — no upstream browser wallet capability |
+| Real cross-layer submission | 🔒 `DISABLED` by default (`TARI_LIQUIDITY_ENABLE_REAL_CROSSCHAIN_SUBMIT`) |
+| Reverse route (`TARI → XTM`) | 🚧 `BLOCKED_EXTERNAL` — no L1 amount-authority API |
+| Mainnet | 🔒 `DISABLED` at every layer |
+
+## Capabilities
+
+- **Public fungible AMM** on Ootle — constant-product pools with LP shares, LP trading fees, and
+  strict on-chain access rules (no admin withdrawal, no upgrade keys, no owner).
 - **NFT marketplace** — fixed-price listings, item-specific offers, collection-wide bids, and
-  Sell Now, all settled against an exact `(ResourceAddress, NonFungibleId)` identity with an
-  authoritative reread before anything is signed.
-- **Market data** — canonical trade/activity records, exact rational prices, OHLCV candles,
-  pool metrics, and an honest outage/degraded model. Strictly informational.
+  Buy Now / Sell Now, all settled against an exact `(ResourceAddress, NonFungibleId)` identity
+  with an authoritative reread before anything is signed.
+- **Market data** — canonical trade/activity records, exact rational prices, OHLCV candles, pool
+  metrics, and an honest outage/degraded model. Strictly informational.
 - **Browser trading frontend** — pool discovery, market pages with candlestick/volume charts,
   swap, add/remove liquidity, NFT marketplace, activity history with reconciliation, wallet
-  state, and mobile-responsive layout.
-- **Experimental cross-layer route** — `XTM → TARI → AMM` composed through the
-  `FAST_XTM_TARI` coordinator: a Minotari L1 SHA-256 HTLC leg, an Ootle L2 hashlock leg, a
-  terminal settlement proof, and a state machine that fails closed at every irreversible step.
-- **Durable operation history** — persisted display state that can never satisfy an
-  authoritative reread, with `UNKNOWN` treated as a reconciliation state, never as failure.
+  state, and mobile-responsive layout down to 360 px.
+- **Provider-backed liquidity infrastructure** — a single `window.tari` integration boundary,
+  a wallet adapter that reviews every request before signing, and a browser-first path that does
+  not require `walletd`, a console wallet, or a local clone.
+- **Experimental cross-layer liquidity routing** using noncustodial atomic settlement primitives —
+  `XTM → TARI → AMM` composed through the `FAST_XTM_TARI` coordinator: a Minotari L1 SHA-256 HTLC
+  leg, an Ootle L2 hashlock leg, a terminal settlement proof, and a state machine that fails
+  closed at every irreversible step. This is an underlying routing primitive, not the product's
+  identity; see [Cross-layer routing](#experimental-cross-layer-routing).
 
-## What this is not
+### What this is not
 
 - Not a custody service, an exchange, or a yield product. Keys stay with the user.
+- Not a browser atomic-swap frontend and not a replacement for a dedicated peer-to-peer atomic
+  swap application. The cross-layer path here is one routing primitive among several, and it is
+  the least proven of them.
 - Not a private or confidential AMM. Pool reserves and trade amounts are public by design;
   stealth/confidential assets are out of scope for the public pools (see
   [docs/ROUTE_MATRIX.md](docs/ROUTE_MATRIX.md)).
 - Not audited, not production ready, not mainnet ready, and not a guaranteed legal safe harbour.
 - Not a repository that will ever claim those things without evidence.
-
-## Screenshots
-
-Sampled from the shipped production bundle running against the same deterministic indexer
-fixtures the browser security suite uses. They show the interface, **not** live market state —
-the disconnected state is exactly what renders (no wallet, no synthetic balances).
-
-| Pool market page (desktop) | NFT collection (desktop) | Mobile pool page |
-| --- | --- | --- |
-| ![Pool market page](docs/screenshots/pool-market.png) | ![NFT marketplace](docs/screenshots/nft-marketplace.png) | ![Mobile pool page](docs/screenshots/mobile-pool.png) |
-
-Reproduce with `pnpm --filter @tari-ootle/web run screenshots`.
-
-## Current status
-
-Feature status as of the current branch. `IMPLEMENTED` means the code path exists, is exercised
-by the repository's own suites, and has no known fund-loss path under the tested model — it does
-**not** mean it has been exercised against a live chain (see
-[Testnet status](#testnet-status)).
-
-| Feature | Status |
-| --- | --- |
-| Public fungible AMM (constant product) | IMPLEMENTED |
-| Add / remove liquidity with LP accounting | IMPLEMENTED |
-| LP trading fees (30 bps default, 100% to LPs) | IMPLEMENTED |
-| TARI / public-token markets | IMPLEMENTED |
-| wSTABLE (issuer-controlled quote asset) markets | IMPLEMENTED, with explicit issuer-risk disclosure |
-| NFT fixed-price listings | IMPLEMENTED |
-| NFT item offers | IMPLEMENTED |
-| NFT collection bids (partial fills) | IMPLEMENTED |
-| Sell Now (fill a collection bid) | IMPLEMENTED |
-| Durable operation history | IMPLEMENTED |
-| UNKNOWN reconciliation (no blind resubmit) | IMPLEMENTED |
-| Market data (trades, OHLCV, pool metrics) | IMPLEMENTED (informational only) |
-| Browser frontend (React 19 + Vite 6) | IMPLEMENTED |
-| Browser wallet abstraction + shown == signed gate | IMPLEMENTED |
-| `FAST_XTM_TARI` cross-layer coordinator | EXPERIMENTAL — protocol complete, real submit gated OFF |
-| `XTM → TARI → AMM` route composition | IMPLEMENTED, EXTERNALLY GATED behind hop-1 proof |
-| Browser L1 SHA atomic-swap primitives | BLOCKED_EXTERNAL (upstream wallet capability) |
-| Reverse route (`TARI → XTM`) | BLOCKED_EXTERNAL (no L1 amount-authority API) |
-| Cloudflare Pages deployment (security headers) | CONFIGURED, NOT LIVE — R-1 open |
-| GitHub Pages deployment | Intentionally NOT a supported interactive target (cannot serve the security policy) |
-| Mainnet | DISABLED at every layer |
 
 ## Architecture
 
@@ -104,6 +163,8 @@ flowchart TB
         MD --> UI
     end
 ```
+
+## Trust model
 
 **Market data is not execution authority.** Discovery responses may be hostile or stale; every
 swap, liquidity, marketplace, and cross-layer action re-reads the authoritative component state
@@ -160,7 +221,13 @@ Deeper material: [docs/FIRST_DEPOSIT_AUDIT.md](docs/FIRST_DEPOSIT_AUDIT.md),
 
 Deeper material: [docs/NFT_DESIGN.md](docs/NFT_DESIGN.md).
 
-## FAST_XTM_TARI — experimental cross-layer route
+## Experimental cross-layer routing
+
+> **Framing.** This is **experimental cross-layer liquidity routing using noncustodial atomic
+> settlement primitives**. It is an underlying routing capability of the protocol, not the
+> product's headline, and not a replacement for a dedicated peer-to-peer atomic swap
+> application. It is also the least proven part of this repository: the two load-bearing
+> upstream gaps below are real and unchanged. Read the limitations before reading the design.
 
 Conceptually:
 
@@ -204,8 +271,14 @@ these load-bearing properties:
 3. **Real submission is gated OFF.** Testnet real submission requires the explicit environment
    gate described below; mainnet never passes.
 
+**These three limitations are unchanged by any of the work in this repository**, and no attempt
+was made to force browser XTM execution. `CLAIM_ARMED`, amount authority, settlement-proof
+revalidation, terminal proof requirements, restart recovery, `UNKNOWN` handling, and preimage
+custody are all still enforced and still independently tested.
+
 Deeper material: [docs/FAST_XTM_TARI_ARCHITECTURE.md](docs/FAST_XTM_TARI_ARCHITECTURE.md),
-[docs/MINOTARI_ATOMIC_SWAP_API.md](docs/MINOTARI_ATOMIC_SWAP_API.md).
+[docs/MINOTARI_ATOMIC_SWAP_API.md](docs/MINOTARI_ATOMIC_SWAP_API.md),
+[security/MINOTARI_AUTHORITY_MODEL.md](security/MINOTARI_AUTHORITY_MODEL.md).
 
 ## Multi-hop: XTM → TARI → AMM
 
@@ -278,15 +351,44 @@ Web app → wallet adapter → browser Tari provider → self-custodial wallet
 - Normal users are **not** expected to need a console wallet, `walletd`, a shell, a cloned
   backend, or a localhost service — those exist as development/reference paths only
   (`VITE_ENABLE_DEV_PROVIDERS` requires a development build).
-- The adapter interface exposes extension/embedded/wallet-daemon adapters; the Sapient adapter
-  is an explicit-unsupported seam pending a stable upstream dApp API.
+- The frontend references `window.tari` in exactly one place
+  (`apps/web/src/services/tariWindow.ts`), which allow-lists every method it will call and codes
+  every request and reply against the **published contract**
+  ([`tari-dapp.d.ts`](https://universe.tari.mw/integration/tari-dapp.d.ts)), not against a
+  reverse-engineered copy of one wallet's bridge. The connector's confidential/shielded methods
+  are deliberately *not* called: this is a public AMM, and asking a wallet for more than the app
+  needs is a cost, not a feature.
+- **`window.tari` is one interface implemented by both Tari wallets** — the Sapient browser
+  extension and the Tari Universe web wallet — and the app **never detects which one it has**.
+  Feature decisions come from `tari_getCapabilities` and from nothing else. A provider is never
+  refused for not running in an iframe; the connector is included unconditionally, exactly as the
+  official model requires, and it stands aside when an extension already owns `window.tari`.
+- **Provider presence is not wallet availability.** A truthy `window.tari` is neither: the
+  connector still publishes a provider object on a page it cannot serve. Availability is
+  established by a real, connection-independent call (`tari_getNetwork`), and "no wallet", "a
+  wallet is present but cannot answer here" and "connected" are three distinct states with three
+  different remedies.
+- Provider detection is by **object identity** at authorization time. `tari#initialized` and
+  `tari:announceProvider` are treated as hints to re-read, never as authority, because an event is
+  another thing a hostile page can emit. A provider appearing *after* the app starts is normal
+  initialisation and is accepted; a provider *replaced mid-session* invalidates the session and
+  every review bound to it.
 - Every financial operation goes through the review gate: a differential diff between the
   reviewed transaction and the built intent, identity re-verification at authorization time
-  (provider object identity, network, account), and the reviewed request forwarded verbatim to
-  the signer.
+  (provider object identity, network, account, capabilities), and the reviewed, deep-frozen
+  instructions forwarded verbatim to the signer. Where the account supports
+  `capabilities.transactionRequests`, submission goes through the create → approve → submit trio,
+  which takes **only a `requestId`** — so no payload can be re-derived between approval and
+  broadcast.
+- **Honest capability states.** A capability the connected account does not advertise is reported
+  as unavailable, and an account that advertises nothing is treated as advertising nothing. There
+  is deliberately no silent `walletd` fallback and no placeholder provider, so "the browser cannot
+  do this" is visible rather than papered over.
 
-Deeper material: [docs/FRONTEND_TRUST_BOUNDARIES.md](docs/FRONTEND_TRUST_BOUNDARIES.md),
-[docs/FRONTEND_SECURITY_MODEL.md](docs/FRONTEND_SECURITY_MODEL.md).
+Deeper material: [docs/TARI_WALLET_INTEGRATION_CONFORMANCE.md](docs/TARI_WALLET_INTEGRATION_CONFORMANCE.md),
+[docs/FRONTEND_TRUST_BOUNDARIES.md](docs/FRONTEND_TRUST_BOUNDARIES.md),
+[docs/FRONTEND_SECURITY_MODEL.md](docs/FRONTEND_SECURITY_MODEL.md),
+[docs/TARI_BROWSER_ATOMIC_SWAP_PROVIDER_GAP.md](docs/TARI_BROWSER_ATOMIC_SWAP_PROVIDER_GAP.md).
 
 ## Operations and recovery
 
@@ -321,6 +423,9 @@ What has been exercised (non-exhaustively):
 
 Selected retained evidence:
 
+<details>
+<summary><strong>Security evidence index</strong> — attack matrices, invariants, and audits (11 documents)</summary>
+
 | Document | What it covers |
 | --- | --- |
 | [security/PIXEL_CANARY_FULL_ATTACK_MATRIX.md](security/PIXEL_CANARY_FULL_ATTACK_MATRIX.md) | The whole-repository independent adversarial pass (68 classified rows) |
@@ -329,9 +434,22 @@ Selected retained evidence:
 | [security/MULTIHOP_ATTACK_MATRIX.md](security/MULTIHOP_ATTACK_MATRIX.md) / [security/MULTIHOP_INVARIANTS.md](security/MULTIHOP_INVARIANTS.md) | Route-composition audit and invariants |
 | [security/LP_HOSTILE_AUDIT_REPORT.md](security/LP_HOSTILE_AUDIT_REPORT.md) / [security/LP_INVARIANTS.md](security/LP_INVARIANTS.md) | AMM/LP hostile audit and invariants |
 | [security/FRONTEND_HOSTILE_AUDIT_REPORT.md](security/FRONTEND_HOSTILE_AUDIT_REPORT.md) / [security/FRONTEND_RESIDUAL_RISKS.md](security/FRONTEND_RESIDUAL_RISKS.md) | Frontend/hostile-browser audit and residual risks |
+| [security/FRONTEND_ATTACK_MATRIX.md](security/FRONTEND_ATTACK_MATRIX.md) / [security/FRONTEND_INVARIANTS.md](security/FRONTEND_INVARIANTS.md) | Frontend attack matrix and enforced invariants |
+| [security/LP_HISTORICAL_ATTACK_MATRIX.md](security/LP_HISTORICAL_ATTACK_MATRIX.md) | Historical LP findings, retained as evidence rather than rewritten |
 | [security/MINOTARI_AUTHORITY_MODEL.md](security/MINOTARI_AUTHORITY_MODEL.md) | Field-by-field L1 amount authority classification |
-| [security/DEPLOYMENT_SECURITY_MATRIX.md](security/DEPLOYMENT_SECURITY_MATRIX.md) | Deployment/hosting security posture |
+| [security/DEPLOYMENT_SECURITY_MATRIX.md](security/DEPLOYMENT_SECURITY_MATRIX.md) | Deployment/hosting security posture, every row classified |
 | [docs/SECURITY_AUDIT_OPUS.md](docs/SECURITY_AUDIT_OPUS.md) | Template-level audit (OPUS) including the resource-recall limitation |
+
+The full inventory is in [security/](security/) and [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md).
+The current open-risk register, with the reason each risk is *not* closed, is
+[security/FRONTEND_RESIDUAL_RISKS.md](security/FRONTEND_RESIDUAL_RISKS.md).
+
+</details>
+
+The honest summary is: **no known issue under the tested model**, on the tested platforms, against
+the threat model in [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md). That is a statement about coverage,
+not about the code. Historical attack matrices are kept as historical records and are never rewritten
+to suggest that a past condition never existed.
 
 ## Testing and CI
 
@@ -344,10 +462,18 @@ Two GitHub Actions workflows gate every push to this branch:
 - **Security Engine Tests** — the Rust crates and the Ootle engine test suite on Linux
   (`pool_math`, `pool_ref_model`, `protocol_types`, `audit_engine_tests`).
 
-Exact counts drift with the branch; prefer the badge. As of `72e29de`: protocol-client 201/201,
-wallet-adapter 21/21, web node 221/221, Chromium e2e 98/98 (desktop + mobile), hosting suite
-17/17, engine suite green in CI. The fuzz/property suites include 100k-transition state-machine
-fuzzing and 50k structured script mutations.
+Exact counts drift with the branch; prefer the badge. As of `35e3f81`: protocol-client 201/201,
+wallet-adapter 21/21, web node 247/247, Chromium e2e 98/98 (desktop + mobile), hosting suite
+17/17, Firefox e2e 49/49 observed passing locally, engine suite green in CI. The fuzz/property
+suites include 100k-transition state-machine fuzzing and 50k structured script mutations.
+
+Two of those numbers moved during the live-testnet pass, and both are worth stating plainly: the
+node suite grew from 221 to 247 as new adversarial cases were added, and the Chromium suite went
+**red** mid-pass and had to be fixed rather than adjusted. The failure was a duplicated
+`connect-src` — a meta CSP in `index.html` alongside the response header, with the effective policy
+being their intersection — which the browser suite caught and a code review had not. It is recorded
+in [security/FRONTEND_HOSTILE_AUDIT_REPORT.md](security/FRONTEND_HOSTILE_AUDIT_REPORT.md) § 8
+rather than quietly repaired.
 
 ## Development
 
@@ -413,29 +539,76 @@ variables.
 
 ## Testnet status
 
-Network availability is a property of the *week*, not of the architecture — this section states
-the distinction:
+Network availability is a property of the *week*, not of the architecture — this section states the
+distinction, and records what was actually observed rather than what was assumed.
 
-- **Esmeralda/Ootle availability (checked 2026-09-27, read-only):** the configured indexer
-  endpoints (`indexer.esmeralda.tari.com`, `indexer-fallback.tari.com`, `esmeralda.tari.com`)
-  were authoritative DNS failures (NXDOMAIN via the local resolver, Google DNS, and Cloudflare
-  DNS), so no discovery, read, or integration could be executed from this environment.
-  `ootle.tari.com` (the Ootle Playground/docs site) was reachable and now publishes indexer API
-  documentation for `tari_indexer 0.41.0`, which is consistent with the ecosystem moving again —
-  but no live indexer endpoint was discoverable. The application's honest outage state is what
-  renders under this condition, and it is tested for.
-- **Feature status** (the tables above) is independent of this snapshot: implemented features
-  are exercised by deterministic suites, not by live uptime.
+### Verified live, read-only (2026-10-01, post-reset)
 
-Real funds are not used anywhere in this repository's tests, and the real-submit gate stays OFF.
+Ootle **v0.42.0** (released 2026-09-30, commit `a43773e600b9503ed3fadcd3f0048f86131e3644`)
+is *"the testnet reset release"*: every network restarts at `ProtocolVersion::V0` with wiped
+state and no storage migration, so **no on-chain state from before the reset survives**. This
+repository never had a live deployment, so there was nothing to migrate — and the four templates
+remain unpublished.
+
+The previously configured endpoints were **stale configuration, not a dead network**. The current
+public Esmeralda indexers were found from official Tari tooling source
+(`tari-project/ootle.ts`, `defaultIndexerUrl(Network.Esmeralda)`) and then read directly. Both
+still serve:
+
+| Observation | Value |
+| --- | --- |
+| Network identifier | `esmeralda` |
+| Network byte | `38` (`0x26` == `Network::Esmeralda` in the v0.42.0 `ootle_network` enum) |
+| Indexer origins | `https://ootle-indexer-a.tari.com`, `https://ootle-indexer-b.tari.com` |
+| Indexer version | `tari_indexer` **0.42.0**, both hosts, same epoch |
+| Epoch at capture | **11714** |
+| API shape | **REST** (`GET /info`, `/network`, `/resources/tari`, `/templates/catalogue`, `/templates/{addr}`, `/transaction-receipts`, `/substates/{id}`, `POST /substates/fetch`, `/transactions/recent`, `/events` SSE). **No GraphQL endpoint** — `/graphql` answers `404`, and the published OpenAPI spec has no GraphQL path. |
+| v0.42.0 removal | **`/templates/cached` is gone** (live host answers `HTTP 400`); `/templates/catalogue` replaces it |
+| Browser-safe | `access-control-allow-origin: *` on both origins — direct cross-origin `fetch` from the browser works |
+| Transport | HTTPS, `strict-transport-security`, `x-content-type-options: nosniff` |
+| Canonical TARI | `resource_0101…0101`, `resource_type: Stealth`, `SYMBOL: tTARI`, divisibility 6 — **identity unchanged by the reset** |
+| Explorer | <https://explorer.tari.mw/> (third-party; reads the same public indexer) |
+
+The **endpoint works**. What does **not** exist yet is our own deployment on it:
+
+- This repository's four templates (`fungible_pool`, `nft_marketplace`, `nft_item_offer`,
+  `nft_collection_bid`) are **not published**. `GET /templates/catalogue` returns 19+ builtin and
+  community templates — including `TwoResourceLiquidityPool`, whose name *contains* `Pool` — but
+  none is named exactly `Pool`, `FixedPriceListing`, `ItemOffer` or `CollectionBid`. An exact-name
+  match is required, so the builtin cannot be mistaken for ours.
+- Therefore there are **no live pools of ours to discover**, and no live NFT collections. This is
+  an **empty protocol deployment, not an indexer outage** — and the two are now separated in code,
+  in five states: `INDEXER_UNAVAILABLE`, `WRONG_NETWORK`, `PROTOCOL_NOT_DEPLOYED`,
+  `PROTOCOL_DEPLOYED_EMPTY`, `PROTOCOL_AVAILABLE`.
+
+One v0.42.0 finding shapes the architecture: the indexer returns a component's `body.state` as
+**raw tagged CBOR**, not decoded field names, so it genuinely cannot supply a pool's pair or
+reserves. Discovery therefore establishes *which* pools exist, and only the wallet's
+`tari_getSubstate` supplies *what* they hold — which keeps "discovery is informational, execution
+rereads are authoritative" structurally true rather than merely intended.
+
+### Not yet verified live
+
+| Item | Status | Blocker |
+| --- | --- | --- |
+| Template WASM builds | ✅ `IMPLEMENTED` | All four compile to `wasm32-unknown-unknown --release` (196–243 KB) |
+| Templates published on Esmeralda | — | **The next step.** Requires a human publication action; documented in [docs/TESTNET_RUNBOOK.md](docs/TESTNET_RUNBOOK.md) |
+| Cloudflare Pages deployment + response headers | ⚙️ `CONFIGURED_NOT_LIVE` (R-1 open) | No Cloudflare credentials in this environment |
+| Live ordinary L2 swap / LP / NFT flows | — | Requires the publication step, then a funded browser wallet |
+| Browser provider, both wallet forms (embedded and non-embedded) | 🧪 | No Tari wallet binary is installed here. The **interface** is verified against the published contract (`tari-dapp.d.ts`) and exercised in a real browser against a double implementing it; the runtime is not |
+
+**Feature status** (the tables above) is independent of this snapshot: implemented features are
+exercised by deterministic suites, not by live uptime. Real funds are not used anywhere in this
+repository's tests, and the real-submit gate stays OFF.
 
 ## Roadmap
 
 In rough order:
 
-1. Live Cloudflare deployment and observation of the real response headers (closes R-1).
-2. Read-only integration validation against a reachable Ootle/Esmeralda indexer.
-3. Real browser-wallet validation: connect, preview, sign, confirm a small flow.
+1. Publish `fungible_pool` and the marketplace templates to Esmeralda, so there is a protocol
+   deployment to discover. *(Unblocks 4–6.)*
+2. Live Cloudflare deployment and observation of the real response headers — closes R-1.
+3. Real browser-wallet validation: connect, read account, discover canonical TARI, sign.
 4. First live ordinary L2 swap end-to-end on testnet.
 5. Live LP add/remove cycle on testnet.
 6. Live NFT marketplace flows (list, buy, offer, fill) on testnet.

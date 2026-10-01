@@ -94,7 +94,16 @@ async function requestJson(url: string, init: RequestInit, options: JsonFetchOpt
         ...init,
         credentials: 'omit',
         referrerPolicy: 'no-referrer',
-        headers: { 'Content-Type': 'application/json', Accept: 'application/json', ...(init.headers ?? {}) },
+        headers: {
+          // `Content-Type` describes a request BODY. Sending it on a bodyless
+          // GET makes the request non-simple, which forces the browser into a
+          // CORS preflight round-trip for a request that has nothing to say.
+          // That is a real cost on every network-identity check, and it makes
+          // discovery depend on preflight support it does not otherwise need.
+          ...(init.body === undefined ? {} : { 'Content-Type': 'application/json' }),
+          Accept: 'application/json',
+          ...(init.headers ?? {}),
+        },
         signal: controller.signal,
       });
     } catch (error) {

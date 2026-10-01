@@ -14,6 +14,20 @@ export interface Balance {
   resourceAddress: string;
   amount: string; // decimal string for precision
   resourceType: 'fungible' | 'confidential' | 'stealth' | 'non_fungible';
+  /**
+   * DISPLAY ONLY. Raw units above stay exact and are never divided by this for
+   * settlement math; it exists so a human-readable amount can be rendered.
+   */
+  divisibility?: number;
+  /**
+   * DISPLAY ONLY, and NEVER an identity.
+   *
+   * The asset-safety policy classifies a resource by its exact ADDRESS. A
+   * symbol is a label an issuer picks, and any issuer can print `tTARI` on a
+   * worthless token, so nothing that decides routing, eligibility or safety may
+   * read this field.
+   */
+  symbol?: string;
 }
 
 export interface ResourceInfo {

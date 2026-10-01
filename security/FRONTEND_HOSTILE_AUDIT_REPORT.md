@@ -1,5 +1,15 @@
 # Frontend and browser hostile audit report
 
+> **PROVIDER SECTION PARTIALLY SUPERSEDED (2026-09-29).** The findings about the
+> `window.tari` provider were derived by reverse-engineering
+> `tari-connector.js`. Tari has since published the dApp integration contract
+> (<https://universe.tari.mw/integration/tari-dapp.d.ts>), and the provider
+> boundary has been recoded against it. Several conclusions below were wrong —
+> most importantly, a non-embedded provider was being REFUSED, which would have
+> blocked the Sapient browser extension entirely. The authoritative record is
+> [`docs/TARI_WALLET_INTEGRATION_CONFORMANCE.md`](../docs/TARI_WALLET_INTEGRATION_CONFORMANCE.md).
+> Everything outside the provider boundary is unaffected and still stands.
+
 **Scope.** The entire browser/client surface of the Tari Ootle Liquidity Protocol
 frontend: the shipped bundle, everything it loads, the wallet provider boundary,
 the execution and approval path, persistence, presentation, the deployment
@@ -225,9 +235,15 @@ Stated plainly, because an audit that hides its gaps is worse than no audit.
 - **No clickjacking exploit against a deployed URL.** The same test run against
   the local enforcing server proves the policy semantics; only a real host proves
   delivery.
-- **No real wallet.** `window.tari` cannot exist outside the wallet's own dApp
-  frame. Connection, capabilities, account, network, disconnect, and account /
-  network switching were all exercised with an injected provider double.
+- **No real wallet.** At the time of this report, `window.tari` was only
+  evidenced inside the wallet's own dApp frame. Connection, capabilities,
+  account, network, disconnect, and account / network switching were all exercised
+  with an injected provider double.
+  **CORRECTED 2026-09-29:** the published contract confirms `window.tari` is also
+  injected by the Sapient browser extension into any page it can reach, so an
+  ordinary top-level tab is a supported placement and not a degraded one. Both
+  provider forms are now exercised in a real browser. See
+  `docs/TARI_WALLET_INTEGRATION_CONFORMANCE.md`.
 - **No real Ootle indexer.** `indexer.esmeralda.tari.com` and
   `indexer-fallback.tari.com` do not resolve from this environment, verified by
   DNS failure rather than assumed. Real pool discovery, pool state, candles,
@@ -290,3 +306,74 @@ on a file rather than on a response. Both are the same mistake: proving a
 *component* rather than proving a *delivery path*. Any future security control
 should be treated as absent until an end-to-end check observes it taking effect
 where it actually runs.
+
+## 8. Addendum — 2026-09-28, live testnet productization
+
+**This section is an addendum. Sections 1–7 above are the original audit record
+and are deliberately left unedited**, including the statements above that are now
+outdated. They are kept because they are the historical evidence of what was and
+was not checked at `56928de`. This addendum records only what changed, and states
+plainly which earlier statements no longer hold.
+
+### 8.1 Two earlier statements no longer hold
+
+- **"No real Ootle indexer … do not resolve from this environment."** The DNS
+  observation was correct. The conclusion drawn from it was not. Those hosts are
+  stale configuration, not a dead network: Esmeralda was and is serving. The
+  current origins (`https://ootle-indexer-a.tari.com`,
+  `https://ootle-indexer-b.tari.com`) were taken from official Tari tooling source
+  and read live — `tari_indexer` 0.41.4, network `esmeralda`, byte `38`, epoch
+  `11602`. The `connect-src` line quoted in section 5 is therefore superseded; see
+  `docs/LIVE_TESTNET_EVIDENCE.md`.
+- **"The wallet connector's injection mechanism is not observed" (R-13).** Now
+  observed. The deployed connector's own source states the wallet loads it as a
+  cross-origin script into the dApp document, so the `script-src` allowance is
+  required rather than assumed.
+
+### 8.2 Two defects this pass found
+
+- **`tari_getSubstate` parameter name.** The connector accepts
+  `{ substateId, version }`; this app sent `{ address }`. This is the
+  **authoritative readback port**, so a real wallet would have failed every
+  resolver reread. The failure mode is safe — resolvers fail closed rather than
+  settling on unvouchable state — but the product would have been non-functional
+  while presenting as a wallet problem. Fixed; `address` kept as an
+  identical-value alias.
+  **CORRECTED 2026-09-29:** that "fix" itself was wrong. An undocumented outbound
+  field works by accident against one bridge and breaks against another, so the
+  `address` alias was **removed** and the payload is now exactly
+  `{ substateId }`, which is what `tari-dapp.d.ts` defines. A strict provider
+  double that rejects any undefined parameter now prevents a regression. The
+  same audit found the signing parameter object was wrong too:
+  `tari_signAndSubmitTransaction` received `{ transaction, display }`, neither of
+  which is a documented member, and carried no `instructions` at all. See
+  `docs/TARI_WALLET_INTEGRATION_CONFORMANCE.md`.
+- **Two hand-maintained copies of `connect-src`.** `index.html` carried its own
+  meta policy while `deploymentHeaders.ts` carried the response header. A browser
+  enforces both and the effective policy is their intersection, so after the
+  origins moved the *header* was correct and every cross-origin discovery read
+  still failed with `TypeError: Failed to fetch`. This was caught by the Chromium
+  suite, not by inspection. The header list is now derived from one table, and a
+  test asserts the meta tag, the response header, the built artifact, and the
+  extension manifest all name the same origins.
+
+Both are recorded here rather than silently fixed, because a second reader
+comparing section 5 against the current code needs to see that the discrepancy
+existed and how it was found.
+
+### 8.3 Still not tested, at this addendum
+
+Everything in section 6 still holds with one exception: the **read** path to a real
+chain is now proven (identity, epoch, canonical TARI, transactions). Unchanged:
+
+- **no real wallet.** `window.tari` was read from the deployed connector source,
+  never exercised at runtime. Connection, capabilities, account switching,
+  approvals, rejections, and provider replacement are still all doubles.
+- **no real pool.** The templates are unpublished on Esmeralda, so there is
+  nothing of ours to discover. This is an empty deployment, and is now classified
+  as such rather than as an outage.
+- **no real transaction of any kind**, and none attempted.
+- **no deployed HTTPS origin**, so R-1 stays OPEN. The deployment path is prepared
+  and the verification tool exists, but delivery is unproven.
+- no Rust engine tests on this platform, no WebKit, no real device, no screen
+  reader, no axe pass, no third-party review.

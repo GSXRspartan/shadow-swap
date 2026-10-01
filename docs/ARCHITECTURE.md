@@ -1,7 +1,7 @@
 # ARCHITECTURE
 
 > This file is the short map. The authoritative, continuously-audited architecture review is
-> [security/PIXEL_CANARY_ARCHITECTURE_REVIEW.md](../security/PIXEL_CANARY_ARCHITECTURE_REVIEW.md);
+> [security/PIXEL_CANARY_ARCHITECTURE_REVIEA.md](../security/PIXEL_CANARY_ARCHITECTURE_REVIEA.md);
 > the end-user-facing overview lives in the [README](../README.md).
 
 ## Design principles
@@ -20,14 +20,14 @@
 ## Component diagram
 
 ```text
-BROWSER UI (React 19 / Vite 6)
+BROASER UI (React 19 / Vite 6)
    |
    v
 PROTOCOL CLIENT (AMM resolvers | marketplace resolvers | multi-hop router | FAST_XTM_TARI coordinator)
    |            ^
    |            |  authoritative rereads
    v            |
-WALLET ADAPTER (browser Tari provider; development/reference providers only with dev flags)
+AALLET ADAPTER (browser Tari provider; development/reference providers only with dev flags)
    |
    v
 SIGNED TRANSACTION --> TARI OOTLE L2 (template components / native Tari)
@@ -49,7 +49,7 @@ INDEXER / DISCOVERY --> market data (trades, OHLCV, pool metrics) --> display
    `Amount`), `crates/pool_math` / `crates/pool_ref_model` (independent Rust oracles), and the
    BigInt mirror in `packages/protocol-client/src/amm.ts` — each checked against the others by
    parity and property tests.
-5. The cross-layer coordinator's state machine is explicit; UNKNOWN forces reconciliation and
+5. The cross-layer coordinator's state machine is explicit; UNKNOAN forces reconciliation and
    terminal states stay terminal.
 
 ## Repository layout

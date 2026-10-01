@@ -20,7 +20,7 @@ import { createReview } from '../lib/review.js';
 import { normalizeError } from '../lib/errorMessage.js';
 import { marketplaceRouteBuilder, toMarketplacePreview, type MarketplaceTransactionIntent } from '@tari-ootle/wallet-adapter';
 import { formatAddress, formatUnits, UNAVAILABLE } from '../lib/format.js';
-import { asRawExecutionAmount } from '../lib/tradeBoundary.js';
+import { asRawExecutionAmount, asResourceAddress } from '../lib/tradeBoundary.js';
 import { Badge, Card, CardHeader, DataRow, EmptyState, Notice } from './primitives.js';
 
 /**
@@ -98,7 +98,7 @@ export function NftDetailPanel({
       const outcome = await resolveBuyNow<MarketplaceTransactionIntent>(
         {
           listing: { listingAddress: item.listingAddress },
-          expectedQuoteResource: asRawExecutionAmount(quoteResource, 'expectedQuoteResource'),
+          expectedQuoteResource: asResourceAddress(quoteResource, 'expectedQuoteResource'),
           ...(item.priceRaw === undefined ? {} : { expectedPrice: asRawExecutionAmount(item.priceRaw, 'expectedPrice') }),
           buyerAccount: wallet.account ?? '',
         },
@@ -134,9 +134,9 @@ export function NftDetailPanel({
     try {
       const outcome = await resolveSellNow<MarketplaceTransactionIntent>(
         {
-          collectionResource: asRawExecutionAmount(collectionResource, 'collectionResource'),
+          collectionResource: asResourceAddress(collectionResource, 'collectionResource'),
           nftId: asRawExecutionAmount(nftId, 'nftId'),
-          quoteResource: asRawExecutionAmount(quoteResource, 'quoteResource'),
+          quoteResource: asResourceAddress(quoteResource, 'quoteResource'),
           sellerAccount: wallet.account ?? '',
         },
         {
@@ -192,6 +192,14 @@ export function NftDetailPanel({
       network: wallet.networkId ?? 'unknown',
       account: settlementAccount,
       identity,
+      // The intent's own signer-agnostic instructions are what gets signed, and
+      // the order's expiry (a raw epoch) is carried with them so the signed
+      // transaction cannot outlive the listing it settles.
+      instructions: outcome.route.builderIntent.instructions,
+      maxEpoch:
+        outcome.route.builderIntent.target.expiryEpoch === undefined || outcome.route.builderIntent.target.expiryEpoch === 0
+          ? undefined
+          : String(outcome.route.builderIntent.target.expiryEpoch),
       legs: [
         {
           operation: outcome.route.routeKind,

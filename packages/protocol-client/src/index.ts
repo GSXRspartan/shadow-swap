@@ -31,9 +31,16 @@ export interface IndexerResponse<T> {
 }
 
 export class ProtocolClientConfig {
-  primaryIndexer: IndexerProvider = { url: 'https://indexer.esmeralda.tari.com', networkName: 'esmeralda' };
+  // Verified 2026-09-28 against the live Esmeralda `tari_indexer` (0.41.4):
+  // both answer `GET /info` with `"network":"esmeralda"`, `"network_byte":38`
+  // (0x26 == `Network.Esmeralda`). The `-a` origin is the default returned by
+  // `defaultIndexerUrl(Network.Esmeralda)` in `tari-project/ootle.ts`, which
+  // mirrors `default_indexer_url()` in the Rust `ootle-rs` crate. The previous
+  // hosts (`indexer.esmeralda.tari.com`, `indexer-fallback.tari.com`) are
+  // authoritative NXDOMAIN: stale configuration, not a dead network.
+  primaryIndexer: IndexerProvider = { url: 'https://ootle-indexer-a.tari.com', networkName: 'esmeralda' };
   fallbackIndexers: IndexerProvider[] = [
-    { url: 'https://indexer-fallback.tari.com', networkName: 'esmeralda' },
+    { url: 'https://ootle-indexer-b.tari.com', networkName: 'esmeralda' },
   ];
   timeoutMs: number = 5000;
   maxRetries: number = 3;

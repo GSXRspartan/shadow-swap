@@ -1,5 +1,23 @@
 # SECURITY AUDIT — Tari Ootle Fungible Liquidity Pool (Opus run)
 
+> **HISTORICAL — DO NOT READ AS CURRENT COHORT FACTS.**
+>
+> This audit was performed against Ootle `4732f65` (tag **v0.41.1**) and every version,
+> revision and pin it names is a **historical** record of that cohort. It is retained
+> unmodified as audit evidence and is deliberately **not** rewritten: the testnet reset and the
+> v0.42.0 upgrade on 2026-09-30 do not retroactively change what was true then.
+>
+> Current cohort: tag **`v0.42.0`**, commit `a43773e600b9503ed3fadcd3f0048f86131e3644`
+> (`tari_template_lib` 0.33, `tari_template_abi` 0.20.1, `tari_crypto` 0.23.4). See
+> `docs/ESMERALDA_VERSION_TARGET.md` and `security/LP_BASELINE.md`.
+>
+> The findings still describe the same code: the four templates compile **unchanged** against
+> v0.42.0 with no warnings, so no access-rule, ownership or accounting reasoning here has been
+> invalidated. In particular **OPUS-08 is not closed by the upgrade** — the v0.42.0 template ABI
+> still exposes no access-rule introspection for a foreign resource, so that recall/freeze
+> exposure remains a live, disclosed, in-code-mitigated residual risk
+> (`security/LP_RESIDUAL_RISKS.md` RR-01).
+
 > Adversarial, hostile audit. Nothing here is trusted because a previous agent, a
 > comment, or a passing test said so. Every finding below is tied to specific source
 > and, where the environment allowed, to real engine execution (blocked here — see that section).

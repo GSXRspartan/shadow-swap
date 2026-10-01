@@ -11,6 +11,8 @@ const appRoot = path.resolve(__dirname, '..');
 const srcRoot = path.join(appRoot, 'src');
 const distDir = path.join(appRoot, 'dist');
 const built = require('../build-test/lib/deploymentHeaders.js');
+const networks = require('../build-test/lib/networks.js');
+const config = require('../build-test/services/config.js');
 
 function sourceFiles(dir, extensions) {
   const out = [];
@@ -36,22 +38,6 @@ function bundleText() {
 // CSP
 // ===========================================================================
 
-test('csp: the meta policy in index.html carries the load-bearing directives', () => {
-  const html = fs.readFileSync(path.join(appRoot, 'index.html'), 'utf8');
-  const match = /http-equiv="Content-Security-Policy"\s+content="([^"]+)"/.exec(html);
-  assert.ok(match, 'index.html must declare a CSP');
-  const csp = match[1];
-  for (const directive of ["default-src 'self'", "script-src 'self'", "object-src 'none'", "base-uri 'self'", "form-action 'none'", "frame-src 'none'"]) {
-    assert.ok(csp.includes(directive), `the meta CSP must contain "${directive}"`);
-  }
-  // Inline script and eval must be absent, or the meta policy is theatre.
-  assert.equal(/script-src[^;]*'unsafe-inline'/.test(csp), false, 'no inline script may be permitted');
-  assert.equal(/script-src[^;]*'unsafe-eval'/.test(csp), false, 'no eval may be permitted');
-  assert.equal(/unsafe-eval/.test(csp), false);
-  // A wildcard would defeat the whole point.
-  assert.equal(/default-src[^;]*\*/.test(csp), false, 'no wildcard source may be permitted');
-});
-
 test('csp: connect-src cannot be widened to a wildcard or a private address', () => {
   const csp = built.CONTENT_SECURITY_POLICY;
   const connect = /connect-src ([^;]+)/.exec(csp);
@@ -60,6 +46,168 @@ test('csp: connect-src cannot be widened to a wildcard or a private address', ()
     assert.match(origin, /^https:\/\/[a-z0-9.-]+(?::\d+)?$/, `connect-src origin must be an explicit https host, got ${origin}`);
     assert.equal(/^(127\.0\.0\.1|localhost|\[::1\]|0\.0\.0\.0|10\.|192\.168\.)/.test(origin), false, `private address in connect-src: ${origin}`);
     assert.equal(/mainnet/.test(origin), false);
+  }
+});
+
+test('csp: connect-src covers exactly the configured esmeralda indexer origins', () => {
+  // The regression this guards is real: `connect-src` and the configured endpoint
+  // used to be two independent hand-written strings, and when the configured
+  // hosts were replaced on 2026-09-28 the CSP would have kept allowing the dead
+  // origins and blocked the live ones. They are now derived from one table.
+  const connect = /connect-src ([^;]+)/.exec(built.CONTENT_SECURITY_POLICY);
+  assert.ok(connect, 'connect-src must be declared');
+  const allowed = connect[1].split(/\s+/).filter((entry) => entry !== "'self'").sort();
+  assert.deepEqual(allowed, [...networks.ESMERALDA_INDEXER_URLS].sort());
+  // And the resolved production config must not name an origin outside it.
+  const resolved = config.resolveConfig({ MODE: 'production', DEV: false });
+  assert.deepEqual(resolved.blocking, []);
+  for (const url of resolved.indexerUrls) {
+    assert.ok(allowed.includes(url.replace(/\/+$/, '')), `configured origin ${url} is not permitted by connect-src`);
+  }
+});
+
+test('csp: every configured esmeralda origin is https and non-local', () => {
+  for (const url of networks.ESMERALDA_INDEXER_URLS) {
+    assert.match(url, /^https:\/\//, `production indexer origin must be https: ${url}`);
+    assert.equal(networks.localEndpointReason(url, false), undefined, `${url} must be usable outside a development build`);
+  }
+  assert.equal(networks.NETWORK_BYTES.esmeralda, 0x26, 'Esmeralda is network byte 38, matching the live /info');
+});
+
+test('csp: the meta tag and the response header name the SAME connect origins', () => {
+  // A browser enforces the meta policy AND the response policy, and the
+  // effective policy is their intersection. So this is a second independent copy
+  // of `connect-src`, and a stale one silently blocks a correct deployment.
+  //
+  // That is not hypothetical: when the indexer origins changed on 2026-09-28 the
+  // response header was updated and this meta tag was missed. The header was
+  // right, the browser suite went red, and every cross-origin discovery read
+  // failed with `TypeError: Failed to fetch`.
+  const html = fs.readFileSync(path.join(appRoot, 'index.html'), 'utf8');
+  const meta = /http-equiv="Content-Security-Policy"\s+content="([^"]+)"/.exec(html);
+  assert.ok(meta, 'index.html must declare a CSP');
+
+  const originsOf = (policy) => {
+    const match = /connect-src ([^;]+)/.exec(policy);
+    assert.ok(match, `connect-src must be declared in: ${policy.slice(0, 60)}`);
+    return match[1].trim().split(/\s+/).sort();
+  };
+  assert.deepEqual(
+    originsOf(meta[1]),
+    originsOf(built.CONTENT_SECURITY_POLICY),
+    'the meta CSP and the response CSP must name identical connect origins, or the effective policy is the intersection of the two',
+  );
+
+  // And the shipped artifact must carry the same list as the source, so a stale
+  // dist cannot pass a test that only reads index.html.
+  const builtHtml = fs.readFileSync(path.join(distDir, 'index.html'), 'utf8');
+  const builtMeta = /http-equiv="Content-Security-Policy"\s+content="([^"]+)"/.exec(builtHtml);
+  assert.ok(builtMeta, 'the built index.html must carry the meta CSP');
+  assert.deepEqual(originsOf(builtMeta[1]), originsOf(built.CONTENT_SECURITY_POLICY));
+});
+
+test('csp: the meta tag and the response header name the SAME script origins', () => {
+  // The same intersection trap, for the wallet connector. The response header
+  // carried `script-src 'self' https://universe.tari.mw` while the meta tag said
+  // `script-src 'self'`, so the EFFECTIVE policy blocked the connector and the
+  // Tari Universe iframe placement could never have connected — the header being
+  // correct is not sufficient when a second, narrower policy is also enforced.
+  const html = fs.readFileSync(path.join(appRoot, 'index.html'), 'utf8');
+  const meta = /http-equiv="Content-Security-Policy"\s+content="([^"]+)"/.exec(html);
+  assert.ok(meta, 'index.html must declare a CSP');
+
+  const sourcesOf = (policy) => {
+    const match = /script-src ([^;]+)/.exec(policy);
+    assert.ok(match, `script-src must be declared in: ${policy.slice(0, 60)}`);
+    return match[1].trim().split(/\s+/).sort();
+  };
+  assert.deepEqual(
+    sourcesOf(meta[1]),
+    sourcesOf(built.CONTENT_SECURITY_POLICY),
+    'the meta CSP and the response CSP must name identical script sources, or the narrower one silently blocks the wallet connector',
+  );
+
+  const builtHtml = fs.readFileSync(path.join(distDir, 'index.html'), 'utf8');
+  const builtMeta = /http-equiv="Content-Security-Policy"\s+content="([^"]+)"/.exec(builtHtml);
+  assert.ok(builtMeta, 'the built index.html must carry the meta CSP');
+  assert.deepEqual(sourcesOf(builtMeta[1]), sourcesOf(built.CONTENT_SECURITY_POLICY));
+});
+
+test('the wallet connector is included unconditionally, as the official model requires', () => {
+  // The published integration model says to include it always: it is what makes
+  // the wallet reachable when the dApp is embedded in Tari Universe, and it
+  // stands aside when an extension already owns `window.tari` in a tab.
+  //
+  // Two things are therefore wrong and both are checked here:
+  //   - the script tag being ABSENT, which makes the embedded placement unable
+  //     to connect at all;
+  //   - the tag being CONDITIONAL (behind a wallet check, a user agent test, or
+  //     a runtime branch), which is the wallet-detection the documentation
+  //     forbids and would race the provider's own initialisation.
+  const html = fs.readFileSync(path.join(appRoot, 'index.html'), 'utf8');
+  const tags = html.match(/<script\b[^>]*>/g) ?? [];
+  const connectors = tags.filter((tag) => tag.includes('universe.tari.mw/tari-connector.js'));
+
+  assert.equal(connectors.length, 1, 'the connector must be included exactly once');
+  const [connector] = connectors;
+  assert.match(connector, /src="https:\/\/universe\.tari\.mw\/tari-connector\.js"/, 'the connector origin must be exact, not interpolated');
+  assert.equal(/async|defer/.test(connector), false, 'the connector must not be deferred; it publishes the provider on script load');
+  assert.equal(/type="module"/.test(connector), false, 'the connector is a classic script');
+  // No `data-tari-*` / `id` gate or inline conditional wrapper.
+  assert.equal(/<script[^>]*\bif\b/i.test(connector), false, 'the connector tag must be unconditional');
+  assert.equal(tags.filter((tag) => /if\s*\(/.test(tag)).length, 0, 'no script tag may be wrapped in a wallet-detection conditional');
+
+  // The same must be true of the SHIPPED artifact, not only the source.
+  const builtHtml = fs.readFileSync(path.join(distDir, 'index.html'), 'utf8');
+  const builtConnectors = (builtHtml.match(/<script\b[^>]*>/g) ?? []).filter((tag) => tag.includes('universe.tari.mw/tari-connector.js'));
+  assert.equal(builtConnectors.length, 1, 'the built page must include the connector exactly once');
+});
+
+test('csp: the meta policy in index.html carries the load-bearing directives', () => {
+  const html = fs.readFileSync(path.join(appRoot, 'index.html'), 'utf8');
+  const meta = /http-equiv="Content-Security-Policy"\s+content="([^"]+)"/.exec(html);
+  assert.ok(meta, 'index.html must declare a CSP');
+  const csp = meta[1];
+  for (const directive of ["default-src 'self'", "script-src 'self'", "object-src 'none'", "base-uri 'self'", "form-action 'none'", "frame-src 'none'"]) {
+    assert.ok(csp.includes(directive), `the meta CSP must contain "${directive}"`);
+  }
+  // The wallet connector origin must be permitted by the meta policy too, since
+  // the effective policy is the intersection of the meta and header policies.
+  assert.match(csp, /script-src[^;]*https:\/\/universe\.tari\.mw/, 'the meta CSP must allow the wallet connector origin');
+  assert.equal(/\*/.test(csp), false, 'the meta CSP must not use a wildcard source');
+  // Inline script and eval must be absent, or the meta policy is theatre.
+  assert.equal(/script-src[^;]*'unsafe-inline'/.test(csp), false, 'no inline script may be permitted');
+  assert.equal(/script-src[^;]*'unsafe-eval'/.test(csp), false, 'no eval may be permitted');
+});
+
+test('csp: no retired indexer host survives anywhere in the shipped frontend', () => {
+  // Both of the pre-2026-09-28 origins are authoritative NXDOMAIN. Leaving one
+  // in a policy or a permission list is not harmless: an allow-list that names
+  // only dead hosts fails closed, and one that names both dead and live hosts
+  // is misleading to whoever reads it during an incident.
+  const retired = ['indexer.esmeralda.tari.com', 'indexer-fallback.tari.com'];
+  const files = sourceFiles(appRoot, ['.ts', '.tsx', '.html', '.mjs', '.cjs']);
+  for (const file of files) {
+    const text = fs.readFileSync(file, 'utf8');
+    for (const host of retired) {
+      // Comments and evidence documents may name them historically; a policy,
+      // a permission list, or a fetch target may not. Identify those by shape.
+      assert.equal(
+        /["'`][^"'`\n]*(?:connect-src|host_permissions|page\.route|fetch\()[^"'`\n]*["'`][^"'`\n]*" ?\+? ?[^\n]*https?:\/\/[^"'`\n]*\/[^"'`\n]*$/.test(text) && text.includes(host),
+        false,
+        `${path.relative(appRoot, file)} appears to reference the retired origin ${host}`,
+      );
+    }
+  }
+  // The two policy strings themselves must not contain it, checked directly
+  // rather than by the heuristic above.
+  assert.equal(/indexer\.esmeralda\.tari\.com/.test(built.CONTENT_SECURITY_POLICY), false);
+  const html = fs.readFileSync(path.join(appRoot, 'index.html'), 'utf8');
+  assert.equal(/indexer\.esmeralda\.tari\.com/.test(html), false);
+  assert.equal(/indexer-fallback\.tari\.com/.test(html), false);
+  const manifest = JSON.parse(fs.readFileSync(path.join(appRoot, '..', 'extension', 'manifest.json'), 'utf8'));
+  for (const pattern of manifest.host_permissions ?? []) {
+    assert.equal(/indexer\.esmeralda\.tari\.com|indexer-fallback\.tari\.com/.test(pattern), false, `extension host permission still names a retired origin: ${pattern}`);
   }
 });
 
@@ -175,6 +323,54 @@ test('csp: the build emitted the headers and the source-map policy', () => {
   assert.ok(fs.existsSync(path.join(distDir, 'SOURCE_MAP_POLICY.txt')), 'the source-map decision must be recorded');
 });
 
+// ===========================================================================
+// SPA routing
+// ===========================================================================
+
+test('spa: the build emits an explicit SPA fallback as a 200 rewrite, not a redirect', () => {
+  // A 30x here would be a functional bug rather than a security one: the browser
+  // URL would change, so reloading /pools would land on / and a deep link pasted
+  // into the wallet's dApp frame would not round-trip. That is exactly the deep
+  // route the clickjacking test relies on existing, so it is asserted.
+  if (!fs.existsSync(distDir)) assert.fail('production build not found');
+  const redirects = path.join(distDir, '_redirects');
+  assert.ok(fs.existsSync(redirects), 'the build must emit dist/_redirects');
+  const rules = fs
+    .readFileSync(redirects, 'utf8')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line !== '' && !line.startsWith('#'));
+  assert.deepEqual(rules, ['/*  /index.html  200']);
+  for (const rule of rules) {
+    assert.equal(/\s3\d\d\s/.test(rule), false, `the SPA fallback must not be a redirect: ${rule}`);
+  }
+});
+
+test('spa: the redirects file carries no header rules, so it cannot weaken the policy', () => {
+  // `_redirects` and `_headers` are separate grammars. A header smuggled into
+  // `_redirects` would either be silently ignored by the host or, worse, be read
+  // as a rule that changes which asset a path resolves to. The security policy
+  // must live in exactly one file.
+  const text = built.renderRedirectsFile();
+  assert.doesNotMatch(text, /content-security-policy/i);
+  assert.doesNotMatch(text, /x-frame-options/i);
+  assert.doesNotMatch(text, /cross-origin/i);
+  assert.doesNotMatch(text, /permissions-policy/i);
+  assert.match(text, /#/, 'the generated file must explain itself in comments');
+});
+
+test('live-headers verifier: it refuses a non-https origin, because R-1 needs HTTPS', () => {
+  // The verifier is the instrument used to close R-1. If it silently accepted an
+  // http:// origin it would produce evidence that does not satisfy the risk.
+  const script = path.join(appRoot, 'scripts', 'verify-live-headers.mjs');
+  assert.ok(fs.existsSync(script), 'the live-header verifier must exist');
+  const text = fs.readFileSync(script, 'utf8');
+  assert.match(text, /\/\^https:\\\/\\\/\/i\.test\(base\)/, 'the verifier must require an https origin');
+  assert.match(text, /\/pools/, 'the verifier must probe a deep client-side route, not only /');
+  assert.match(text, /X-Frame-Options|DELIBERATELY_OMITTED_HEADERS/, 'the verifier must check the deliberate omissions');
+  assert.doesNotMatch(text, /method:\s*'POST'/, 'the verifier must stay read-only');
+});
+
 test('csp: no untrusted value can reach a style attribute', () => {
   // `style-src 'unsafe-inline'` is required because React sets layout styles.
   // That is only safe if no untrusted value ever becomes a style value, so the
@@ -277,10 +473,29 @@ test('secrets: preimage names may appear only as rejection rules, never with a v
     const occurrences = text.split(name).length - 1;
     assert.ok(occurrences <= 2, `${name} appears ${occurrences} times in the bundle; expected at most the denylist entries`);
   }
-  // A denylist entry is a bare string. A value would be a hex secret, and no
-  // 32-byte hex literal may be compiled into the artifact at all.
-  const hexSecret = /[0-9a-fA-F]{64}/.exec(text);
-  assert.equal(hexSecret, null, 'no 32-byte hex literal may be baked into the bundle');
+  // A denylist entry is a bare string. A value would be a hex secret, so no
+  // 32-byte hex literal may be compiled into the artifact.
+  //
+  // EXACTLY ONE is legitimate and required: the canonical native TARI resource
+  // address, `STEALTH_TARI_RESOURCE_ADDRESS` in
+  // `crates/template_lib_types/src/constants.rs` at Ootle v0.42.0, whose object
+  // key is 32 bytes of 0x01. The frontend must pin that exact address, because
+  // the asset-safety policy binds the `CANONICAL_TARI` class to resource
+  // identity rather than to a symbol — and a public chain constant is not
+  // secret material.
+  //
+  // The rule below is therefore stated as "every 64-hex literal is that one
+  // public constant", which is TIGHTER than "there is no literal": a second,
+  // different literal still fails, wherever it appears.
+  const hexLiterals = text.match(/[0-9a-fA-F]{64}/g) ?? [];
+  const CANONICAL_TARI_OBJECT_KEY = '01'.repeat(32);
+  for (const literal of new Set(hexLiterals)) {
+    assert.equal(
+      literal,
+      CANONICAL_TARI_OBJECT_KEY,
+      `only the public canonical TARI object key may appear as a 64-hex literal in the bundle; found ${literal}`,
+    );
+  }
   const barePreimageAssignment = /preimage\w*\s*[:=]\s*["'][0-9a-zA-Z]{16,}["']/.exec(text);
   assert.equal(barePreimageAssignment, null, 'a preimage field must never be initialised with a literal value');
 });
