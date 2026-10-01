@@ -44,7 +44,7 @@ function jsonResponse(payload, headers = {}) {
  * every request no longer models an endpoint at all. These helpers keep the
  * outage tests testing what they mean to test.
  */
-const IDENTITY_OK = { version: '0.41.4', network: 'esmeralda', network_byte: 38, current_epoch: 11602 };
+const IDENTITY_OK = { version: '0.42.0', network: 'esmeralda', network_byte: 38, current_epoch: 11714 };
 
 /** Routes by URL: `/info` answers the identity, anything else answers `payload`. */
 function endpointFetch(payload, identity = IDENTITY_OK) {
@@ -54,8 +54,104 @@ function endpointFetch(payload, identity = IDENTITY_OK) {
 /** The production discovery base, so the identity path is `/info` on it. */
 const LIVE_BASE = 'https://ootle-indexer-a.tari.com';
 // Production passes the bare origin (`config.indexerUrls[0]`), so the identity
-// preflight resolves to `{origin}/info` and the discovery query POSTs to `{origin}`.
+// preflight resolves to `{origin}/info` and discovery then reads the real
+// `tari_indexer` REST endpoints under `{origin}`.
 const DISCOVERY_URL = LIVE_BASE;
+
+// ---------------------------------------------------------------------------
+// Real v0.42.0 indexer protocol stubs.
+//
+// The shapes below are the responses read live from
+// https://ootle-indexer-a.tari.com on 2026-10-01. Discovery used to speak an
+// invented `POST {base} {"query":"pool_discovery"}` envelope that a real indexer
+// answers with 404; these stubs replace it so the outage tests exercise the
+// protocol the app actually sends.
+// ---------------------------------------------------------------------------
+
+/** A catalogue with `name` published at `templateAddress`. */
+function catalogue(name, templateAddress) {
+  return {
+    entries: [
+      {
+        template_address: templateAddress ?? 'ab'.repeat(32),
+        template_name: name,
+        author_public_key: '00'.repeat(32),
+        binary_hash: 'cd'.repeat(32),
+        at_epoch: 11714,
+      },
+    ],
+  };
+}
+
+/** Receipts carrying one committed component creation, in the real envelope. */
+function receiptsWithComponent(substateId) {
+  return {
+    receipts: [
+      [
+        'ee'.repeat(32),
+        {
+          outcome: 'Commit',
+          diff_summary: {
+            upped: [{ substate_id: substateId, version: 0, value_hash: '11'.repeat(32) }],
+            downed: [],
+          },
+          fee_withdrawals: [],
+          events: [],
+          fee_receipt: { total_fee_payment: 13247, total_fees_paid: 13247 },
+        },
+      ],
+    ],
+  };
+}
+
+/** The batch substate read: a component's header names the template that made it. */
+function componentSubstates(substateId, templateAddress) {
+  return {
+    substates: [
+      {
+        substate_id: substateId,
+        version: 0,
+        substate: {
+          Component: {
+            header: { template_address: templateAddress, owner_rule: { ByPublicKey: '22'.repeat(32) }, access_rules: { method_access: {}, default: 'DenyAll' }, entity_id: '1' },
+            // `body.state` is raw tagged CBOR to the indexer, NOT decoded fields.
+            // That is precisely why discovery cannot read a pool's reserves.
+            body: { state: [{ '@cbor': 'map', entries: [] }, {}] },
+          },
+        },
+      },
+    ],
+  };
+}
+
+/**
+ * A fetch stub modelling the real indexer across the three discovery endpoints.
+ * `options.templateName`/`options.templateAddress`/`options.componentId` control
+ * whether the deployment is empty or has a pool.
+ */
+function realIndexerFetch(options = {}) {
+  const templateAddress = options.templateAddress ?? 'ab'.repeat(32);
+  const componentId = options.componentId ?? 'component_ff'.repeat(1) + '00'.repeat(31);
+  const seen = [];
+  const stub = async (url) => {
+    const parsed = new URL(url);
+    seen.push(`${parsed.pathname}${parsed.search}`);
+    if (parsed.pathname === '/info') return jsonResponse(options.identity ?? IDENTITY_OK);
+    if (parsed.pathname === '/templates/catalogue') {
+      if (options.templates === 'none') return jsonResponse({ entries: [] });
+      return jsonResponse(catalogue(options.templateName ?? 'Pool', templateAddress));
+    }
+    if (parsed.pathname === '/transaction-receipts') {
+      return jsonResponse(options.receipts ?? receiptsWithComponent(componentId));
+    }
+    if (parsed.pathname === '/substates/fetch') {
+      return jsonResponse(componentSubstates(componentId, templateAddress));
+    }
+    return jsonResponse({}, { 'content-type': 'application/json' });
+  };
+  stub.seen = seen;
+  return stub;
+}
 
 function hangingFetch() {
   return (_url, init) =>
@@ -179,23 +275,19 @@ test('outage: a malformed configured endpoint fails closed instead of throwing',
 // 4. DISCOVERY INTEGRATION
 // ---------------------------------------------------------------------------
 
-test('outage: a healthy discovery response is still parsed into pools', async () => {
-  globalThis.fetch = endpointFetch([
-    {
-      poolComponent: 'component_pool_1',
-      resourceA: 'otl_canonical_tari',
-      resourceB: 'otl_wstable_1',
-      baseSymbol: 'TARI',
-      quoteSymbol: 'wSTABLE',
-      baseDecimals: '6',
-      quoteDecimals: '6',
-      safetyClass: 'PUBLIC_IMMUTABLE_OR_VETTED',
-    },
-  ]);
-  const source = new pools.IndexerPoolDiscovery(DISCOVERY_URL);
-  const result = await source.discover();
-  assert.equal(result.pools.length, 1);
+test('outage: a healthy discovery response yields the pool component, and no fabricated pool', async () => {
+  // Discovery establishes WHICH pools exist. It must NOT yield a decoded pool:
+  // the indexer returns component state as raw tagged CBOR, so a pool whose pair
+  // and reserves were never read authoritatively must not be described here.
+  const stub = realIndexerFetch();
+  globalThis.fetch = stub;
+  const result = await new pools.IndexerPoolDiscovery(DISCOVERY_URL).discover();
+  assert.equal(result.state, 'PROTOCOL_AVAILABLE');
+  assert.equal(result.candidates.length, 1);
+  assert.equal(result.candidates[0].templateAddress, 'ab'.repeat(32));
   assert.equal(result.unavailableReason, undefined);
+  assert.deepEqual(result.pools, [], 'no pool may be described from an unread component state');
+  assert.equal(result.publishedTemplates[0].templateName, 'Pool');
 });
 
 // ---------------------------------------------------------------------------
@@ -300,49 +392,148 @@ test('identity: a malformed configured origin is refused before any request is m
   assert.equal(called, false, 'a malformed origin must not produce a network request');
 });
 
-test('discovery: a wrong-network endpoint never reaches the discovery query', async () => {
+test('discovery: an endpoint that cannot answer at all is INDEXER_UNAVAILABLE', async () => {
   const seen = [];
   globalThis.fetch = async (url) => {
     seen.push(String(url));
-    if (new URL(url).pathname === '/info') {
-      return jsonResponse({ version: '0.41.4', network: 'esmeralda', network_byte: 36 });
-    }
-    // If this is ever reached the test fails, because the discovery query must
-    // not be issued against an endpoint whose identity could not be established.
-    return jsonResponse({ data: [{ poolComponent: 'component_pool_1' }] });
+    return jsonResponse({ version: '0.42.0', network: 'esmeralda', network_byte: 36 });
   };
-  const source = new pools.IndexerPoolDiscovery(DISCOVERY_URL);
-  const result = await source.discover();
+  const result = await new pools.IndexerPoolDiscovery(DISCOVERY_URL).discover();
+  assert.equal(result.state, 'WRONG_NETWORK');
   assert.equal(result.pools.length, 0);
+  assert.equal(result.candidates.length, 0);
   assert.match(result.unavailableReason, /restricted to "esmeralda"/);
   assert.deepEqual(seen, [`${LIVE_BASE}/info`], 'only the identity preflight may be issued');
 });
 
-test('discovery: an unidentified endpoint is an explicit refusal, not an empty list', async () => {
-  globalThis.fetch = endpointFetch({ data: [{ poolComponent: 'component_pool_1' }] }, { version: '0.41.4' });
+test('discovery: a wrong-network endpoint is WRONG_NETWORK, a distinct state from an outage', async () => {
+  const stub = realIndexerFetch({ identity: { version: '0.42.0', network: 'esmeralda', network_byte: 36 } });
+  globalThis.fetch = stub;
   const result = await new pools.IndexerPoolDiscovery(DISCOVERY_URL).discover();
+  assert.equal(result.state, 'WRONG_NETWORK');
+  // The chain was READ and answered. No discovery content may have been requested.
+  assert.deepEqual(stub.seen, ['/info']);
+});
+
+test('discovery: an unidentified endpoint is an explicit refusal, not an empty list', async () => {
+  const stub = realIndexerFetch({ identity: { version: '0.42.0' } });
+  globalThis.fetch = stub;
+  const result = await new pools.IndexerPoolDiscovery(DISCOVERY_URL).discover();
+  assert.equal(result.state, 'INDEXER_UNAVAILABLE');
   assert.equal(result.pools.length, 0);
   assert.match(result.unavailableReason, /could not be identified/i);
+  assert.deepEqual(stub.seen, ['/info'], 'content must never be requested from an unidentified endpoint');
 });
 
 test('discovery: a 200 that is not JSON never reads as zero pools', async () => {
   globalThis.fetch = async (url) =>
     new URL(url).pathname === '/info'
       ? { ok: true, status: 200, headers: new Headers(), text: async () => '<html>captive portal</html>' }
-      : jsonResponse([]);
+      : jsonResponse({ entries: [] });
   const result = await new pools.IndexerPoolDiscovery(DISCOVERY_URL).discover();
+  assert.equal(result.state, 'INDEXER_UNAVAILABLE');
   assert.equal(result.pools.length, 0);
   assert.match(result.unavailableReason, /not valid JSON/);
 });
 
-test('discovery: a verified endpoint returning a real empty list is an empty list, not a refusal', async () => {
-  // The distinction the endpoint evidence requires: our templates are
-  // unpublished on Esmeralda, which is an EMPTY deployment, not an indexer
-  // outage. The gate must not flatten those two into the same state.
-  globalThis.fetch = endpointFetch({ data: [] });
+test('discovery: templates unpublished is PROTOCOL_NOT_DEPLOYED, NOT an outage', async () => {
+  // This is the exact post-reset Esmeralda reality: the chain answers, reports
+  // no published `Pool` template, and that is an EMPTY deployment. It must not
+  // be rendered as "indexer down" and never as "no liquidity".
+  const stub = realIndexerFetch({ templates: 'none' });
+  globalThis.fetch = stub;
   const result = await new pools.IndexerPoolDiscovery(DISCOVERY_URL).discover();
+  assert.equal(result.state, 'PROTOCOL_NOT_DEPLOYED');
   assert.equal(result.pools.length, 0);
-  assert.equal(result.unavailableReason, undefined, 'a verified empty list is not a failure and must not be dressed as one');
+  assert.equal(result.candidates.length, 0);
+  assert.equal(result.unavailableReason, undefined, 'a reachable network with nothing published is not a failure and must not be dressed as one');
+  assert.match(result.detail, /network is reachable/i);
+  assert.equal(stub.seen.includes('/transaction-receipts'), false, 'nothing is published, so no receipt scan may run');
+});
+
+test('discovery: published but never instantiated is PROTOCOL_DEPLOYED_EMPTY, distinct from unpublished', async () => {
+  const stub = realIndexerFetch({ receipts: { receipts: [] } });
+  globalThis.fetch = stub;
+  const result = await new pools.IndexerPoolDiscovery(DISCOVERY_URL).discover();
+  assert.equal(result.state, 'PROTOCOL_DEPLOYED_EMPTY');
+  assert.equal(result.unavailableReason, undefined);
+  assert.equal(result.publishedTemplates.length, 1, 'the published template must still be reported');
+  assert.match(result.detail, /published/i);
+});
+
+test('discovery: the removed /templates/cached endpoint is never requested', async () => {
+  // v0.42.0 removed it (`refactor!` in the changelog) and the live host answers
+  // HTTP 400. Requesting it would make every deployment look unpublished.
+  const stub = realIndexerFetch();
+  globalThis.fetch = stub;
+  await new pools.IndexerPoolDiscovery(DISCOVERY_URL).discover();
+  assert.equal(stub.seen.some((path) => path.startsWith('/templates/cached')), false);
+  assert.equal(stub.seen.some((path) => path.startsWith('/templates/catalogue')), true);
+});
+
+test('discovery: a substring catalogue match does not admit a different template', async () => {
+  // `name_filter` is a SUBSTRING filter. The builtin `TwoResourceLiquidityPool`
+  // contains "Pool", so an exact-name requirement is what stops it being mistaken
+  // for our `Pool` template.
+  const stub = realIndexerFetch({ templateName: 'TwoResourceLiquidityPool' });
+  globalThis.fetch = stub;
+  const result = await new pools.IndexerPoolDiscovery(DISCOVERY_URL).discover();
+  assert.equal(result.state, 'PROTOCOL_NOT_DEPLOYED');
+  assert.equal(result.publishedTemplates.length, 0);
+});
+
+test('discovery: only components whose own header names our template are kept', async () => {
+  const otherTemplate = '9f'.repeat(32);
+  const stub = realIndexerFetch({ receipts: receiptsWithComponent('component_' + 'ab'.repeat(32)) });
+  const inner = stub;
+  globalThis.fetch = async (url, init) => {
+    const parsed = new URL(url);
+    if (parsed.pathname === '/info') return jsonResponse(IDENTITY_OK);
+    if (parsed.pathname === '/templates/catalogue') return jsonResponse(catalogue('Pool', 'ab'.repeat(32)));
+    if (parsed.pathname === '/transaction-receipts') return jsonResponse(receiptsWithComponent('component_' + 'ab'.repeat(32)));
+    if (parsed.pathname === '/substates/fetch') return jsonResponse(componentSubstates('component_' + 'ab'.repeat(32), otherTemplate));
+    void init;
+    return inner(url);
+  };
+  const result = await new pools.IndexerPoolDiscovery(DISCOVERY_URL).discover();
+  assert.equal(result.candidates.length, 0, 'a component from another template must not be presented as a pool');
+  assert.equal(result.state, 'PROTOCOL_DEPLOYED_EMPTY');
+});
+
+test('discovery: a downed substate is not a live pool component', async () => {
+  // v0.42.0 added `diff_summary.downed` for substates a transaction SPENT. A
+  // spent substate must never be surfaced as a live pool.
+  const stub = async (url) => {
+    const parsed = new URL(url);
+    if (parsed.pathname === '/info') return jsonResponse(IDENTITY_OK);
+    if (parsed.pathname === '/templates/catalogue') return jsonResponse(catalogue('Pool', 'ab'.repeat(32)));
+    if (parsed.pathname === '/transaction-receipts') {
+      return jsonResponse({
+        receipts: [['ee'.repeat(32), { outcome: 'Commit', diff_summary: { upped: [], downed: [{ substate_id: 'component_' + 'ab'.repeat(32), version: 3 }] }, fee_withdrawals: [], events: [] }]],
+      });
+    }
+    return jsonResponse({ substates: [] });
+  };
+  globalThis.fetch = stub;
+  const result = await new pools.IndexerPoolDiscovery(DISCOVERY_URL).discover();
+  assert.equal(result.candidates.length, 0);
+});
+
+test('discovery: an aborted transaction contributes no components', async () => {
+  const stub = async (url) => {
+    const parsed = new URL(url);
+    if (parsed.pathname === '/info') return jsonResponse(IDENTITY_OK);
+    if (parsed.pathname === '/templates/catalogue') return jsonResponse(catalogue('Pool', 'ab'.repeat(32)));
+    if (parsed.pathname === '/transaction-receipts') {
+      const committed = receiptsWithComponent('component_' + 'ab'.repeat(32));
+      committed.receipts[0][1].outcome = 'Abort';
+      return jsonResponse(committed);
+    }
+    return jsonResponse({ substates: [] });
+  };
+  globalThis.fetch = stub;
+  const result = await new pools.IndexerPoolDiscovery(DISCOVERY_URL).discover();
+  assert.equal(result.candidates.length, 0);
 });
 
 test('outage: a failed marketplace query is distinguishable from zero collections', async () => {

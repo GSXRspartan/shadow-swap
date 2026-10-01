@@ -473,10 +473,29 @@ test('secrets: preimage names may appear only as rejection rules, never with a v
     const occurrences = text.split(name).length - 1;
     assert.ok(occurrences <= 2, `${name} appears ${occurrences} times in the bundle; expected at most the denylist entries`);
   }
-  // A denylist entry is a bare string. A value would be a hex secret, and no
-  // 32-byte hex literal may be compiled into the artifact at all.
-  const hexSecret = /[0-9a-fA-F]{64}/.exec(text);
-  assert.equal(hexSecret, null, 'no 32-byte hex literal may be baked into the bundle');
+  // A denylist entry is a bare string. A value would be a hex secret, so no
+  // 32-byte hex literal may be compiled into the artifact.
+  //
+  // EXACTLY ONE is legitimate and required: the canonical native TARI resource
+  // address, `STEALTH_TARI_RESOURCE_ADDRESS` in
+  // `crates/template_lib_types/src/constants.rs` at Ootle v0.42.0, whose object
+  // key is 32 bytes of 0x01. The frontend must pin that exact address, because
+  // the asset-safety policy binds the `CANONICAL_TARI` class to resource
+  // identity rather than to a symbol — and a public chain constant is not
+  // secret material.
+  //
+  // The rule below is therefore stated as "every 64-hex literal is that one
+  // public constant", which is TIGHTER than "there is no literal": a second,
+  // different literal still fails, wherever it appears.
+  const hexLiterals = text.match(/[0-9a-fA-F]{64}/g) ?? [];
+  const CANONICAL_TARI_OBJECT_KEY = '01'.repeat(32);
+  for (const literal of new Set(hexLiterals)) {
+    assert.equal(
+      literal,
+      CANONICAL_TARI_OBJECT_KEY,
+      `only the public canonical TARI object key may appear as a 64-hex literal in the bundle; found ${literal}`,
+    );
+  }
   const barePreimageAssignment = /preimage\w*\s*[:=]\s*["'][0-9a-zA-Z]{16,}["']/.exec(text);
   assert.equal(barePreimageAssignment, null, 'a preimage field must never be initialised with a literal value');
 });

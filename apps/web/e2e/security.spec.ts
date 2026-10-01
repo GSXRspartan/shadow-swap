@@ -55,9 +55,14 @@ function swapControl(page: Page) {
 // 1-2. Pool load, market header, and simple swap review
 // ---------------------------------------------------------------------------
 
+// The indexer says WHICH pools exist; the WALLET says WHAT they hold, because
+// the indexer serves component state as raw tagged CBOR and cannot decode a
+// pool's fields. So a pool becomes describable only once a wallet is connected
+// and the authoritative read has resolved.
 test('pool discovery renders both pools with the full metric set', async ({ page }) => {
   await mockIndexer(page);
   await open(page, '/pools');
+  await connectWallet(page);
   await expect(badge(page, 'TARI / wSTABLE')).toBeVisible();
   await expect(badge(page, 'AAA / BBB')).toBeVisible();
   for (const column of ['Pair', 'Price', '24h change', '24h volume', 'Liquidity', '24h LP fees', 'Market data', 'Asset safety']) {
@@ -79,9 +84,21 @@ test('an indexer outage produces an explicit unavailable state, not an empty lis
   await expect(badge(page, /0 pools/)).toHaveCount(0);
 });
 
+test('unpublished templates read as a reachable network with nothing deployed', async ({ page }) => {
+  // The post-reset Esmeralda reality: the chain answers, reports no published
+  // `Pool` template, and that is an EMPTY DEPLOYMENT. It must not be dressed up
+  // as an outage and never as "no liquidity".
+  await mockIndexer(page, { unpublished: true });
+  await open(page, '/pools');
+  await expect(badge(page, /Network reachable, protocol not yet deployed/)).toBeVisible();
+  await expect(badge(page, /Pool discovery unavailable/)).toHaveCount(0);
+  await expect(badge(page, /network is reachable/i)).toBeVisible();
+});
+
 test('the market header and swap card render on a real pool page', async ({ page }) => {
   await mockIndexer(page);
   await open(page, `/pools/${POOL_COMPONENT}`);
+  await connectWallet(page);
   await expect(badge(page, /TARI/)).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Swap' })).toBeVisible();
   // The issuer-controlled asset warning must be present before any action.
@@ -95,12 +112,15 @@ test('the market header and swap card render on a real pool page', async ({ page
 test('a hostile discovery payload cannot inject script or break the layout', async ({ page }) => {
   await mockIndexer(page, { hostile: true });
   await open(page, '/pools');
+  await connectWallet(page);
   // Malformed records are dropped; the well-formed ones still render.
   await expect(badge(page, 'TARI / wSTABLE')).toBeVisible();
   const pwned = await page.evaluate(() => (window as unknown as { __pwned?: boolean }).__pwned);
   expect(pwned).toBeUndefined();
   // An unknown safety classification must not be treated as vetted.
   await expect(badge(page, /Unclassified|Unknown/)).toHaveCount(0);
+  // A hostile substate id is never rendered as a pool.
+  await expect(page.getByText('__pwned')).toHaveCount(0);
 });
 
 test('a hostile market-data price cannot reach the swap control', async ({ page }) => {
@@ -194,6 +214,7 @@ test('a rapid double submit cannot create two durable operations', async ({ page
 test('the multi-hop route panel shows the two-hop chain and the browser blocker', async ({ page }) => {
   await mockIndexer(page);
   await open(page, `/pools/${POOL_COMPONENT}`);
+  await connectWallet(page);
   for (const node of ['XTM', 'Fast XTM / TARI', 'TARI', 'AMM', 'Destination asset']) {
     await expect(badge(page, node)).toBeVisible();
   }
@@ -251,6 +272,7 @@ test('the mobile layout has no horizontal overflow at 390px', async ({ page }) =
   await page.setViewportSize({ width: 390, height: 844 });
   await mockIndexer(page);
   await open(page, `/pools/${POOL_COMPONENT}`);
+  await connectWallet(page);
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(1);
 });
@@ -270,6 +292,7 @@ test('the mobile layout still has no overflow under wider font metrics', async (
     document.addEventListener('DOMContentLoaded', () => document.head.append(style));
   });
   await open(page, `/pools/${POOL_COMPONENT}`);
+  await connectWallet(page);
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(1);
 });
@@ -301,6 +324,7 @@ test('the skip link is the first focus stop', async ({ page }) => {
 test('critical status is not colour-only', async ({ page }) => {
   await mockIndexer(page);
   await open(page, `/pools/${POOL_COMPONENT}`);
+  await connectWallet(page);
   // The issuer warning carries text, so it survives greyscale and screen readers.
   const warning = badge(page, /Issuer controlled asset in this pool/);
   await expect(warning).toBeVisible();
@@ -365,6 +389,7 @@ test('mainnet is never offered as a network anywhere in the UI', async ({ page }
 test('the real-submit gate is displayed as off and cannot be set from the URL', async ({ page }) => {
   await mockIndexer(page);
   await open(page, `/pools/${POOL_COMPONENT}?TARI_LIQUIDITY_ENABLE_REAL_CROSSCHAIN_SUBMIT=1&network=mainnet`);
+  await connectWallet(page);
   await expect(badge(page, /gated OFF/)).toBeVisible();
   await expect(badge(page, 'Esmeralda Testnet')).toBeVisible();
 });
@@ -379,6 +404,7 @@ test('a query parameter cannot change the displayed network', async ({ page }) =
 test('the browser SHA swap blocker is shown, not a working button', async ({ page }) => {
   await mockIndexer(page);
   await open(page, `/pools/${POOL_COMPONENT}`);
+  await connectWallet(page);
   await expect(badge(page, 'Wallet upgrade required for atomic XTM swaps')).toBeVisible();
   await expect(badge(page, /does not fall back to a local wallet service/)).toBeVisible();
 });
