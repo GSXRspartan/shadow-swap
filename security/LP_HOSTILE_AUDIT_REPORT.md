@@ -1,5 +1,13 @@
 # LP HOSTILE AUDIT REPORT — fungible liquidity pool
 
+> **HISTORICAL — the binary/runtime table below is a historical record.** This report was
+> produced against Ootle `4732f65` (tag v0.41.1) and the WASM hash it names is not the current
+> artifact. Current cohort: tag **`v0.42.0`**, commit
+> `a43773e600b9503ed3fadcd3f0048f86131e3644`; current artifact sizes and hashes are in
+> `security/LP_BASELINE.md`. The template source did **not** change in the cohort move — all
+> four templates compile unchanged with no warnings — so the hostile conclusions still apply to
+> the same code. This report is retained as evidence and is not rewritten.
+
 Scope: try to DRAIN or BREAK the pool. This is a security phase report, not a feature report.
 The pool is NOT claimed to be unhackable; conclusions are bounded to the tested model below.
 

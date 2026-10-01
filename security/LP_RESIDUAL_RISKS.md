@@ -4,8 +4,17 @@ Risks that remain after the hostile-security phase, with owner and mitigation. T
 NOT contract-level drains under the tested model; they are bounded externalities or
 environment gaps.
 
+> **Re-checked against the v0.42.0 cohort, 2026-10-01.** All conclusions below are frozen to
+> Ootle `a43773e600b9503ed3fadcd3f0048f86131e3644` (tag `v0.42.0`, workspace 0.42.0), the
+> cohort the post-reset Esmeralda validators run. The template source did not change in the
+> cohort move — all four templates compile unchanged with no warnings — so every risk statement
+> still describes the same code. **RR-01 was specifically re-verified and is NOT closed by the
+> upgrade:** the v0.42.0 template ABI still exposes no access-rule introspection for a foreign
+> resource, so the recall/freeze exposure remains a live, disclosed, in-code-mitigated external
+> risk.
+
 ## RR-01 — Issuer-authority tokens pooled by type (OPUS-08 residual) — EXTERNAL_RISK, HIGH
-The v0.41.1 template ABI exposes no access-rule introspection, so a public fungible whose
+The v0.42.0 template ABI (as the v0.41.1 one did) exposes no access-rule introspection, so a public fungible whose
 issuer holds recall or freeze authority passes the on-chain type check. A malicious issuer can
 recall the pool's holdings of that token (demonstrated in `opus08_recall_demo.rs`) or freeze
 the vault (DoS). One side's drain does NOT violate the fee/k invariants of the other side.
@@ -42,7 +51,7 @@ point), set expiry/max epoch, use exact string/BigInt amounts, and treat indexer
 discovery only. The on-chain min_output assert is the authoritative backstop.
 
 ## RR-06 — Runtime pin aging — process risk
-All conclusions are frozen to Ootle `4732f65ec17a96547050989d78fd70a4e3d94113` (v0.41.1-era)
+All conclusions are frozen to Ootle `a43773e600b9503ed3fadcd3f0048f86131e3644` (tag `v0.42.0`)
 and rustc 1.97.1. A future engine upgrade that changes Amount semantics, resource access-rule
 enforcement, or adds resource hooks invalidates ATK-02/03/25 classifications and requires a
 full re-run of this suite plus re-recording `LP_BASELINE.md`.

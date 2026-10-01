@@ -542,35 +542,50 @@ variables.
 Network availability is a property of the *week*, not of the architecture — this section states the
 distinction, and records what was actually observed rather than what was assumed.
 
-### Verified live, read-only (2026-09-28)
+### Verified live, read-only (2026-10-01, post-reset)
+
+Ootle **v0.42.0** (released 2026-09-30, commit `a43773e600b9503ed3fadcd3f0048f86131e3644`)
+is *"the testnet reset release"*: every network restarts at `ProtocolVersion::V0` with wiped
+state and no storage migration, so **no on-chain state from before the reset survives**. This
+repository never had a live deployment, so there was nothing to migrate — and the four templates
+remain unpublished.
 
 The previously configured endpoints were **stale configuration, not a dead network**. The current
 public Esmeralda indexers were found from official Tari tooling source
-(`tari-project/ootle.ts`, `defaultIndexerUrl(Network.Esmeralda)`) and then read directly:
+(`tari-project/ootle.ts`, `defaultIndexerUrl(Network.Esmeralda)`) and then read directly. Both
+still serve:
 
 | Observation | Value |
 | --- | --- |
 | Network identifier | `esmeralda` |
-| Network byte | `38` (`0x26` == `Network.Esmeralda` in the official SDK enum) |
+| Network byte | `38` (`0x26` == `Network::Esmeralda` in the v0.42.0 `ootle_network` enum) |
 | Indexer origins | `https://ootle-indexer-a.tari.com`, `https://ootle-indexer-b.tari.com` |
-| Indexer version | `tari_indexer` **0.41.4**, both hosts, same epoch |
-| Epoch / block height at capture | epoch **11602**, height **928232** |
-| API shape | **REST** (`GET /info`, `/network`, `/epoch-manager/stats`, `/resources/tari`, `/substates/{id}`, `/templates/catalogue`, `/transaction-receipts`, `/transactions/recent`, `/events` SSE). There is **no GraphQL endpoint**; `tari_indexer` 0.41.x serves REST. |
+| Indexer version | `tari_indexer` **0.42.0**, both hosts, same epoch |
+| Epoch at capture | **11714** |
+| API shape | **REST** (`GET /info`, `/network`, `/resources/tari`, `/templates/catalogue`, `/templates/{addr}`, `/transaction-receipts`, `/substates/{id}`, `POST /substates/fetch`, `/transactions/recent`, `/events` SSE). **No GraphQL endpoint** — `/graphql` answers `404`, and the published OpenAPI spec has no GraphQL path. |
+| v0.42.0 removal | **`/templates/cached` is gone** (live host answers `HTTP 400`); `/templates/catalogue` replaces it |
 | Browser-safe | `access-control-allow-origin: *` on both origins — direct cross-origin `fetch` from the browser works |
 | Transport | HTTPS, `strict-transport-security`, `x-content-type-options: nosniff` |
-| Canonical TARI | `resource_type: Stealth`, `SYMBOL: tTARI`, divisibility 6 |
+| Canonical TARI | `resource_0101…0101`, `resource_type: Stealth`, `SYMBOL: tTARI`, divisibility 6 — **identity unchanged by the reset** |
 | Explorer | <https://explorer.tari.mw/> (third-party; reads the same public indexer) |
 
 The **endpoint works**. What does **not** exist yet is our own deployment on it:
 
 - This repository's four templates (`fungible_pool`, `nft_marketplace`, `nft_item_offer`,
-  `nft_collection_bid`) are **not published** on the current Esmeralda. Queried
-  `GET /templates/catalogue?name_filter=…` for each of them at several casings: **zero entries**.
-  The catalogue does contain community templates (including the built-in
-  `TwoResourceLiquidityPool`), so the catalogue itself is healthy.
+  `nft_collection_bid`) are **not published**. `GET /templates/catalogue` returns 19+ builtin and
+  community templates — including `TwoResourceLiquidityPool`, whose name *contains* `Pool` — but
+  none is named exactly `Pool`, `FixedPriceListing`, `ItemOffer` or `CollectionBid`. An exact-name
+  match is required, so the builtin cannot be mistaken for ours.
 - Therefore there are **no live pools of ours to discover**, and no live NFT collections. This is
-  an **empty protocol deployment, not an indexer outage** — the two are now distinguished
-  explicitly in code and in tests.
+  an **empty protocol deployment, not an indexer outage** — and the two are now separated in code,
+  in five states: `INDEXER_UNAVAILABLE`, `WRONG_NETWORK`, `PROTOCOL_NOT_DEPLOYED`,
+  `PROTOCOL_DEPLOYED_EMPTY`, `PROTOCOL_AVAILABLE`.
+
+One v0.42.0 finding shapes the architecture: the indexer returns a component's `body.state` as
+**raw tagged CBOR**, not decoded field names, so it genuinely cannot supply a pool's pair or
+reserves. Discovery therefore establishes *which* pools exist, and only the wallet's
+`tari_getSubstate` supplies *what* they hold — which keeps "discovery is informational, execution
+rereads are authoritative" structurally true rather than merely intended.
 
 ### Not yet verified live
 

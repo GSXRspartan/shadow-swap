@@ -1,9 +1,20 @@
 # Market-data source model
 
 Status: **traced against pinned upstream; discovery-only, never execution authority.**
-Ootle revision: `2d6083e6cc7c98cde93dacebe2fb76b17703f588` (workspace 0.41.1),
-local checkout `C:\tmp-tari`. Tari L1 (Minotari, unrelated to L2 market data):
-`v6.0.0` / `97aa59ecfaf70d8334f14e71d8f7afd6bd40e5e3`.
+Ootle revision (re-pinned 2026-10-01): tag **`v0.42.0`**,
+commit `a43773e600b9503ed3fadcd3f0048f86131e3644` (workspace 0.42.0) — this
+supersedes the earlier `2d6083e6cc7c98cde93dacebe2fb76b17703f588` development
+HEAD (workspace 0.41.1) this document was originally traced against. Tari L1
+(Minotari, unrelated to L2 market data): `v6.0.0` /
+`97aa59ecfaf70d8334f14e71d8f7afd6bd40e5e3` — **unchanged by the L2 reset.**
+
+> **v0.42.0 note for any future event consumer.** This repository reads no
+> template events and emits none, so nothing here needed changing. Two v0.42.0
+> facts are recorded so a future consumer does not assume string payloads:
+> **metadata values are CBOR rather than strings** (read with `get_as::<T>()` /
+> `get_str()`), and **the indexer's event `payload` carries each value's JSON
+> form**, so a text value appears as `{"String": "..."}` rather than a bare
+> string.
 
 Every path below was read from the pinned source, not assumed. Where a capability does not
 exist, that is stated as a finding rather than worked around.

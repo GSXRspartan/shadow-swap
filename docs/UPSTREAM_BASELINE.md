@@ -1,6 +1,19 @@
 # UPSTREAM BASELINE
 
-Inspected on: 2026-09-22 (L2 entries); 2026-09-25 (L1 Minotari pin and SHA trace)
+Inspected on: 2026-09-22 (L2 entries); 2026-09-25 (L1 Minotari pin and SHA trace);
+**2026-10-01 (L2 Ootle pin re-verified against tag `v0.42.0`)**
+
+> **L2 ONLY — 2026-10-01.** The Ootle (L2) pin below was a *development HEAD*
+> (`2d6083e`, workspace 0.41.1) chosen because the local shallow clone could not
+> see tags. That is superseded: the repository now pins the immutable **v0.42.0
+> release tag**, commit `a43773e600b9503ed3fadcd3f0048f86131e3644`, which is the
+> cohort the post-reset Esmeralda validators run (confirmed by `GET /info` from
+> both public indexer origins on 2026-10-01). See `docs/ESMERALDA_VERSION_TARGET.md`.
+>
+> **The L1 Minotari pin below is unaffected.** The reset is an L2 (Ootle) event;
+> it does not change `tari-project/tari`, and no browser SHA atomic-swap
+> capability has appeared as a result of it. The Minotari cross-chain blocker
+> therefore still stands.
 
 ## Minotari L1 (`tari-project/tari`) — SOURCE OF TRUTH FOR THE SHA ATOMIC SWAP
 - Repository: https://github.com/tari-project/tari

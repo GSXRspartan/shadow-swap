@@ -3,6 +3,13 @@
 > wrong in several places: a non-embedded provider is **not** refused, and the
 > `address` compatibility alias is **not** retained. The authoritative record is
 > [`docs/TARI_WALLET_INTEGRATION_CONFORMANCE.md`](TARI_WALLET_INTEGRATION_CONFORMANCE.md).
+>
+> **SUPERSEDED IN PART — 2026-10-01, after the Esmeralda reset.** The observations below were
+> captured on **2026-09-28**, before the testnet reset, against `tari_indexer` **0.41.4**. Section
+> **0** records the current post-reset state observed on **2026-10-01** against
+> `tari_indexer` **0.42.0** and supersedes the version, epoch and API-surface claims in the body.
+> Everything in the body below is retained as a **historical** record: it is what was observed
+> before the reset, and it is not rewritten.
 # Live testnet evidence — Esmeralda endpoints
 
 **Captured:** 2026-09-28, read-only, from a developer machine.
@@ -11,6 +18,156 @@
 
 This document records what was *observed*, and distinguishes it from what was
 *assumed*. Everything below is reproducible with the commands given.
+
+---
+
+## 0. Post-reset observations (2026-10-01, current)
+
+Read-only, same two origins, no transaction constructed or submitted. This
+section supersedes the version/epoch/API rows in the body below, which describe
+the pre-reset network.
+
+### 0.1 The reset
+
+Ootle **v0.42.0** (release 2026-09-30, commit `a43773e600b9503ed3fadcd3f0048f86131e3644`)
+is *"the testnet reset release"*: every network restarts at `ProtocolVersion::V0`
+with wiped state, storage schemas restart with no migration, and every node
+wipes its data before upgrading. **No on-chain state from before the reset
+survives.**
+
+Consequence for this repository: it never had a live deployment, so there is
+nothing to migrate and no pre-reset address to reclassify. Confirmed by
+inspection — the repository contains **no real Tari substate address literal
+anywhere**, in config, env examples, source constants, tests or docs. Every
+address present is a structurally synthetic fixture (`component_pool_…`,
+`otl_…`), and `apps/web/src/lib/addressDomain.ts:33-37` says so explicitly.
+
+### 0.2 Identity — both hosts still current
+
+```
+GET https://ootle-indexer-a.tari.com/info
+{"version":"0.42.0","network":"esmeralda","network_byte":38,"sidechain_id":null,
+ "current_epoch":11714,"transaction_retention_epochs":50,
+ "index_gossiped_transactions":true,"verify_substate_proofs":true,
+ "substate_cache_max_serve_lag_secs":300,"indexes_all_events":true}
+
+GET https://ootle-indexer-b.tari.com/info     -> identical
+```
+
+| Item | Observed 2026-10-01 |
+|---|---|
+| Indexer version | **0.42.0**, both hosts |
+| Network | `esmeralda` |
+| Network byte | **38** = `0x26` = `Network::Esmeralda` in v0.42.0 `crates/ootle_network/src/lib.rs` |
+| Current epoch | **11714** |
+| `/openapi.json` version | `0.42.0` |
+
+The previously verified hosts `ootle-indexer-a` and `ootle-indexer-b` are
+**still the current public Esmeralda origins**. They did not change across the
+reset and did not need replacing.
+
+```
+GET /network   -> {"network":"esmeralda","network_byte":38,"epoch":11714}
+```
+
+### 0.3 Canonical TARI — identity unchanged, re-verified live
+
+```
+GET https://ootle-indexer-a.tari.com/resources/tari
+{"resource":{"resource_type":"Stealth","owner_rule":"None",
+  "access_rules":{"mint":"DenyAll","burn":"DenyAll","recall":"DenyAll",
+                  "withdraw":"AllowAll","deposit":"AllowAll","freeze":"DenyAll",...},
+  "metadata":{"SYMBOL":"tTARI"},"divisibility":6},
+ "version":0,"total_supply":"926922692402"}
+```
+
+| Property | Value | Corroborating source (v0.42.0, tag `a43773e`) |
+|---|---|---|
+| Address | `resource_0101010101010101010101010101010101010101010101010101010101010101` | `STEALTH_TARI_RESOURCE_ADDRESS` / `TARI_TOKEN` in `crates/template_lib_types/src/constants.rs`, object key 32×`0x01` |
+| Type | **Stealth** | live + the constant's doc comment |
+| Divisibility | 6 | live |
+| Symbol | `tTARI` | live |
+| Deprecated alias | `XTR` | `constants.rs` (`#[deprecated(since="0.24.5")]`) |
+| Units | `TARI = 1_000_000` | `constants.rs` |
+| Access rules | mint/burn/recall/freeze `DenyAll`; withdraw/deposit `AllowAll` | live |
+
+**The token did not change identity across the reset — only the node software
+was upgraded.** The `CANONICAL_TARI` class is therefore still bound to the same
+exact address. The safety policy classifies by ADDRESS; `tTARI`/`XTR` are
+symbols and are never treated as identity, because any issuer can print `tTARI`
+on a worthless token.
+
+### 0.4 Template catalogue — our four templates are NOT published
+
+```
+GET /templates/catalogue?name_filter=Pool&limit=100
+-> entry { "template_name": "TwoResourceLiquidityPool", ... }   (builtin, address 00..02)
+```
+
+The catalogue is populated (19 builtin/community templates observed, all
+`at_epoch: 0` or nearby — `Account`, `NftFaucet`, `XtrFaucet`,
+`TwoResourceLiquidityPool`, `BurnRateGovernance`, `PrivateRewards`, `SooonAmmV1`,
+`SooonCurveV12`, `SooonPoolV4`, `Perp`, `TestCoinFactory`, `AtomicSwap`,
+`Organization`, `StealthAssetFaucet`, `TestNftFactory`, `NftSwap`,
+`TariPrivateBallotAnchorV2`, `WunschSwap`, `OotleNameService`). **None is named
+exactly `Pool`, `FixedPriceListing`, `ItemOffer` or `CollectionBid`.**
+
+So the current state is exactly `PROTOCOL_NOT_DEPLOYED`: the network is reachable
+and reports a healthy catalogue, and our templates are simply not on it.
+
+Note the substring trap this creates and how it is handled: `name_filter` is a
+**substring** filter, so `name_filter=Pool` returns `TwoResourceLiquidityPool`.
+Only an **exact** template-name match is accepted, which is why the builtin pool
+cannot masquerade as ours. Both `apps/web/src/services/ootleIndexer.ts` and the
+live mock assert this.
+
+### 0.5 API surface changes at v0.42.0 that affect this repository
+
+| Change | Consequence |
+|---|---|
+| **`/templates/cached` REMOVED**; `/templates/catalogue` replaces it. Live host answers `HTTP 400` to the removed path. | Discovery must use the catalogue. A test asserts the removed path is never requested. |
+| **No endpoint lists components by template.** The public indexer does not expose GraphQL at all (`GET /graphql` → `404`; the OpenAPI spec has no GraphQL path). | Component discovery is receipts → component ids → batch substate read. Proven live: 100 receipts scanned yielded 17 `component_*` substate ids, each then resolved to its `header.template_address` by `GET /substates/<id>`. |
+| **A component's `body.state` is raw tagged CBOR** (`{"@cbor":"map","entries":[…]}`, `{"@cbor":"bytes","hex":…}`, `{"@cbor":"tag","tag":131\|132}`), not decoded field names. | **The indexer genuinely cannot supply a pool's pair or reserves.** Only the wallet's `tari_getSubstate` decodes them. Discovery establishes WHICH pools exist; the authoritative wallet read supplies WHAT they hold. |
+| **Transaction receipts list spent substates**: `diff_summary.downed` is new. | Only `upped` is treated as a creation. A `downed` substate is spent and is never surfaced as a live pool. |
+| **Substate version is `u64`** (`GET /substates/{id}?version=<u64>`). | Versions are carried as decimal strings; a JS number would truncate above 2^53. |
+| **Metadata values are CBOR, not strings**; `std.*` event payloads carry typed amounts and addresses; GraphQL event `payload` carries JSON forms. | Not yet consumed by this repository (it reads no template events); recorded so a future consumer does not assume string payloads. |
+| **Transaction inputs declare read or write intent** (`Transaction::inputs` holds `InputDeclaration`s); a write to a read-declared input aborts. | This repository never sends `inputs` at all — the wallet resolves them — so no action required. Recorded because it is the mechanism a future custom instruction builder would have to respect. |
+| **`/network/stats` nests each validator's snapshot under `snapshot`.** | Not consumed. |
+| **Public testnets start with an EMPTY tTARI faucet.** | Affects the *publication* plan, not discovery. See `docs/TESTNET_RUNBOOK.md`. |
+
+### 0.6 Wallet dApp contract
+
+Re-read `https://universe.tari.mw/integration/tari-dapp.d.ts` on 2026-10-01. **The
+contract this app uses is unchanged** from the recorded conformance pass: the same
+13 methods, the same `TariSignAndSubmitParams` (`instructions`, `maxFee?`,
+`inputs?`, `dryRun?`), the same `instructions` transaction-request operation
+shape, and the same capability names
+(`exactInputSelection`, `stealthWithdraw`, `stealthRedeem`,
+`stealthRedeemPrivateFee`, `htlcFund`, `scriptPathSpend`, `privateSpend`,
+`minimumValuePromise`, `ownershipProof`, `walletOwnershipProof`,
+`privateBalanceView`, `privateViewGranted`, `transactionResultLookup`,
+`transactionRequests`, `walletAddress`, `dryRunIsLocal`).
+
+`tari_getSubstate` is still `{ substateId: string; version?: number | null }` —
+a JS number, unchanged upstream. This app never sends `version` at all, so the
+widening to u64 does not reach it. No wallet-detection logic exists or was added;
+Sapient and Tari Universe remain wallet-agnostic behind `window.tari`.
+
+### 0.7 Commands to reproduce this section
+
+```bash
+curl -sS https://ootle-indexer-a.tari.com/info
+curl -sS https://ootle-indexer-a.tari.com/network
+curl -sS https://ootle-indexer-a.tari.com/resources/tari
+curl -sS 'https://ootle-indexer-a.tari.com/templates/catalogue?name_filter=Pool&limit=100'
+curl -sS 'https://ootle-indexer-a.tari.com/templates/cached?limit=3'   # HTTP 400: removed
+curl -sS https://ootle-indexer-a.tari.com/openapi.json | head -c 300
+curl -sS -X POST -H 'Content-Type: application/json' \
+     -d '{"query":"{__schema{queryType{name}}}"}' \
+     https://ootle-indexer-a.tari.com/graphql                                # HTTP 404
+curl -sS 'https://ootle-indexer-a.tari.com/transaction-receipts?limit=100&ordering=Descending'
+curl -sS https://ootle-indexer-a.tari.com/substates/<component_id>
+```
 
 ---
 

@@ -1,5 +1,13 @@
 # TARISWAP REFERENCE
 
+> **Ootle revision re-pinned 2026-10-01.** This comparison below was traced against
+> `2d6083e6cc7c98cde93dacebe2fb76b17703f588` (a development HEAD, workspace 0.41.1).
+> The repository now targets tag **`v0.42.0`**, commit
+> `a43773e600b9503ed3fadcd3f0048f86131e3644`, which is the cohort the post-reset
+> Esmeralda validators run. The comparison conclusions still hold and were re-checked
+> against that cohort; see `docs/TARISWAP_SECURITY_DIFF.md` for the current statement of
+> each difference, and `security/LP_BASELINE.md` for the resolved pin table.
+
 Source repository: tari-ootle (development branch)
 Upstream commit: 2d6083e6cc7c98cde93dacebe2fb76b17703f588 (cloned to C:\tmp-tari, 2026-09-22)
 Workspace version: 0.41.1
