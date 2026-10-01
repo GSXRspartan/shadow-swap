@@ -72,13 +72,18 @@ Built 2026-10-01 against the v0.42.0 cohort. All four are far below the 1 MiB
 
 | Template | Size (bytes) | SHA256 (first 16) |
 |---|---|---|
-| `fungible_pool` | 243,934 | `70dbff826362bbcf` |
+| `fungible_pool` | 243,934 | `3c92b31dc1e57a32` |
 | `nft_marketplace` | 196,726 | `ca638242f8bf95df` |
 | `nft_item_offer` | 201,719 | `e09a100c76d22459` |
 | `nft_collection_bid` | 201,639 | `991244f9cc986517` |
 
 Build flags: `--release`, `opt-level = "z"`, `lto = true`, `panic = "abort"`.
 Compilation produced **no warnings**.
+
+> The release profile does **not** set `strip = true`, so the emitted WASM retains
+> symbol/debug information and its digest tracks source line numbers. **Size is the stable
+> property; treat the SHA-256 as an artifact digest for the exact commit, not as a behavioural
+> identifier.** A comment-only source edit moves the digest without changing behaviour.
 
 ## Test inventory at this baseline
 
