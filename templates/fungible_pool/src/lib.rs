@@ -56,7 +56,8 @@ mod fungible_pool {
 
             // Security (OPUS-08): both resources must be pool-eligible by authoritative type/address.
             // NOTE: this enforces the resource-TYPE boundary only; it cannot screen recall/freeze
-            // authority (the v0.41.1 template ABI does not expose those rules). See validate_pool_resource.
+            // authority (the template ABI exposes no access-rule introspection, at v0.42.0 or
+            // earlier). See validate_pool_resource.
             Self::validate_pool_resource(a_addr);
             Self::validate_pool_resource(b_addr);
 
@@ -401,7 +402,8 @@ mod fungible_pool {
 
         /// Internal validation: resource eligibility for an ORDINARY PUBLIC-FUNGIBLE pool (OPUS-08).
         ///
-        /// This is the narrowest safe policy the v0.41.1 template ABI can enforce ON-CHAIN, and it
+        /// This is the narrowest safe policy the template ABI can enforce ON-CHAIN (unchanged at
+        /// v0.42.0: the ABI still exposes no access-rule introspection), and it
         /// is derived purely from authoritative resource state (address + `ResourceType`), never
         /// from metadata:
         ///   * canonical native Tari (exact `STEALTH_TARI_RESOURCE_ADDRESS`) — allowed;
@@ -410,7 +412,8 @@ mod fungible_pool {
         ///     confidential/stealth/NFT assets cannot ride into a public pool merely because a
         ///     `ResourceType` parse succeeds.
         ///
-        /// LIMITATION — READ THIS (OPUS-08 residual, cannot be fixed permissionlessly in v0.41.1):
+        /// LIMITATION — READ THIS (OPUS-08 residual, cannot be fixed permissionlessly; RE-VERIFIED
+        /// UNCHANGED at v0.42.0):
         /// The template ABI exposes ONLY `resource_type()` / `divisibility()` / `total_supply()`
         /// for a foreign resource (`ResourceAction` has no "get access rules"). A template therefore
         /// CANNOT determine whether a candidate fungible is `recallable` or `freezable`, or whether
