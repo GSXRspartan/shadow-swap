@@ -14,10 +14,16 @@ publish = false
 [dependencies]
 
 [dev-dependencies]
-tari_template_test_tooling = { git = "https://github.com/tari-project/tari-ootle.git", rev = "4732f65ec17a96547050989d78fd70a4e3d94113" }
-tari_template_lib = { git = "https://github.com/tari-project/tari-ootle.git", rev = "4732f65ec17a96547050989d78fd70a4e3d94113" }
-tari_template_abi = { git = "https://github.com/tari-project/tari-ootle.git", rev = "4732f65ec17a96547050989d78fd70a4e3d94113" }
-tari_ootle_transaction = { git = "https://github.com/tari-project/tari-ootle.git", rev = "4732f65ec17a96547050989d78fd70a4e3d94113" }
-tari_ootle_common_types = { git = "https://github.com/tari-project/tari-ootle.git", rev = "4732f65ec17a96547050989d78fd70a4e3d94113" }
-tari_engine_types = { git = "https://github.com/tari-project/tari-ootle.git", rev = "4732f65ec17a96547050989d78fd70a4e3d94113" }
-tari_crypto = "0.23"
+# One cohort, one revision: the v0.42.0 release tag (a43773e). The engine and test tooling that
+# execute the templates in tests must be the same build the post-reset Esmeralda validators run,
+# or a test pass proves nothing about the network.
+tari_template_test_tooling = { git = "https://github.com/tari-project/tari-ootle.git", rev = "a43773e600b9503ed3fadcd3f0048f86131e3644" }
+tari_template_lib = { git = "https://github.com/tari-project/tari-ootle.git", rev = "a43773e600b9503ed3fadcd3f0048f86131e3644" }
+tari_template_abi = { git = "https://github.com/tari-project/tari-ootle.git", rev = "a43773e600b9503ed3fadcd3f0048f86131e3644" }
+tari_ootle_transaction = { git = "https://github.com/tari-project/tari-ootle.git", rev = "a43773e600b9503ed3fadcd3f0048f86131e3644" }
+tari_ootle_common_types = { git = "https://github.com/tari-project/tari-ootle.git", rev = "a43773e600b9503ed3fadcd3f0048f86131e3644" }
+tari_engine_types = { git = "https://github.com/tari-project/tari-ootle.git", rev = "a43773e600b9503ed3fadcd3f0048f86131e3644" }
+# NOT a floating "0.23": tari_engine_types 0.42.0 requires tari_crypto ^0.23.4, which is the value
+# the v0.42.0 workspace pins. Leaving this at the 0.41 lock's 0.23.3 makes the cohort
+# unresolvable, so it is pinned to the same version the engine itself resolves.
+tari_crypto = "0.23.4"
