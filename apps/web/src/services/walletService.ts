@@ -267,6 +267,10 @@ class TariBridgeWalletAdapter implements WalletBridge {
       resourceAddress: entry.resourceAddress,
       amount: entry.amount,
       resourceType: entry.resourceType as Balance['resourceType'],
+      // Display metadata only. The exact raw `amount` above is what settlement
+      // uses; neither of these is ever read to decide identity or safety.
+      ...(entry.divisibility === undefined ? {} : { divisibility: entry.divisibility }),
+      ...(entry.symbol === undefined ? {} : { symbol: entry.symbol }),
     }));
     this.resources = this.balances.map((balance) => ({ address: balance.resourceAddress, type: balance.resourceType }));
     return this.balances;

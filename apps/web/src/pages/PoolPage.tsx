@@ -37,6 +37,16 @@ export function PoolPage() {
   const { poolComponent = '' } = useParams();
   const { market, wallet, bundleFor } = useApp();
   const pool = market.pools.find((entry) => entry.poolComponent === poolComponent);
+  /**
+   * Known to exist, but not yet DECODED.
+   *
+   * The indexer establishes WHICH component this is and cannot read its state
+   * (it serves raw tagged CBOR), so a discovered pool is a real pool whose pair
+   * and reserves are still unread until the wallet's authoritative read
+   * resolves. Reporting "Pool not found" for that state would claim the pool
+   * does not exist, which is the one thing discovery actually told us it does.
+   */
+  const candidate = market.discovery.candidates.find((entry) => entry.componentAddress === poolComponent);
 
   const [interval, setInterval] = useState<CandleInterval>('1h');
   const [candles, setCandles] = useState<OhlcvCandle[]>([]);
@@ -181,6 +191,23 @@ export function PoolPage() {
   }, [candles]);
 
   if (pool === undefined) {
+    // A discovered-but-unread pool is a distinct state from a pool that does not
+    // exist. Both are honest; collapsing them is not.
+    if (candidate !== undefined) {
+      return (
+        <Card>
+          <EmptyState
+            title="Pool found on chain; state not yet read"
+            detail={`${candidate.componentAddress} was found in template ${candidate.templateAddress} at version ${candidate.version}. Its reserves, fee and LP supply are read from your wallet, so connect a wallet to load them. Nothing about this pool is guessed.`}
+            action={
+              <Link className="btn btn--sm" to="/pools">
+                Back to pools
+              </Link>
+            }
+          />
+        </Card>
+      );
+    }
     return (
       <Card>
         <EmptyState

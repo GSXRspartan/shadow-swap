@@ -17,7 +17,8 @@ import { resolveConfig, realSubmitGate, type AppConfig, type RealSubmitGate } fr
 import { readBrowserEnv } from '../services/envSource.js';
 import { createWalletService, type WalletBridge } from '../services/walletService.js';
 import { captureIdentity, type ExecutionIdentity, type ProviderCapabilities } from '../lib/executionIdentity.js';
-import { createPoolDiscovery, type PoolDescriptor, type PoolDiscoveryResult } from '../services/pools.js';
+import { createPoolDiscovery, descriptorFromAuthoritativeRead, type PoolDescriptor, type PoolDiscoveryResult } from '../services/pools.js';
+import { createOotleReadbackProvider } from '@tari-ootle/protocol-client';
 import { MarketDataService, type MarketDataBundle } from '../services/marketData.js';
 import type { WalletLegCapabilities } from '../lib/capabilities.js';
 import { presentHealth, aggregateHealth, type HealthPresentation } from '../lib/health.js';
@@ -103,7 +104,14 @@ const INITIAL_WALLET: WalletState = { status: 'DISCONNECTED', balances: [], iden
 
 const UNAVAILABLE_MARKET: MarketDataState = {
   loading: true,
-  discovery: { pools: [], source: 'pending', unavailableReason: 'Pool discovery has not run yet.' },
+  discovery: {
+    pools: [],
+    candidates: [],
+    publishedTemplates: [],
+    state: 'INDEXER_UNAVAILABLE',
+    source: 'pending',
+    unavailableReason: 'Pool discovery has not run yet.',
+  },
   pools: [],
   health: presentHealth({ status: 'UNAVAILABLE', source: 'pending', reason: 'Pool discovery has not run yet.' }),
 };
@@ -145,7 +153,7 @@ export function AppProvider({
       ? UNAVAILABLE_MARKET
       : {
           loading: false,
-          discovery: { pools: providedPools, source: 'injected' },
+          discovery: { pools: providedPools, candidates: [], publishedTemplates: [], state: 'PROTOCOL_AVAILABLE', source: 'injected' },
           pools: providedPools,
           health: presentHealth({ status: 'SYNCED', source: 'injected', reason: 'Pool list supplied by the host application.' }),
         },
@@ -326,7 +334,7 @@ export function AppProvider({
     if (providedPools !== undefined) {
       setMarket({
         loading: false,
-        discovery: { pools: providedPools, source: 'injected' },
+        discovery: { pools: providedPools, candidates: [], publishedTemplates: [], state: 'PROTOCOL_AVAILABLE', source: 'injected' },
         pools: providedPools,
         health: presentHealth({ status: 'SYNCED', source: 'injected', reason: 'Pool list supplied by the host application.' }),
       });
@@ -340,20 +348,88 @@ export function AppProvider({
       // state: an honest "unavailable" is always better than an endless spinner.
       result = {
         pools: [],
+        candidates: [],
+        publishedTemplates: [],
+        state: 'INDEXER_UNAVAILABLE',
         source: discovery.name,
         unavailableReason: `Pool discovery failed unexpectedly: ${(error as Error).message}`,
       };
     }
+    // The deployment state, not `pools.length`, drives the badge. A network that
+    // is perfectly reachable but has no templates published yet is NOT an
+    // outage, and a network we cannot read is NOT an empty market. Collapsing
+    // either pair is the dishonest-empty-state bug this app exists to avoid.
     const health =
-      result.unavailableReason !== undefined
-        ? presentHealth({ status: 'UNAVAILABLE', source: result.source, reason: result.unavailableReason })
-        : presentHealth({ status: result.pools.length > 0 ? 'SYNCED' : 'UNAVAILABLE', source: result.source, reason: result.pools.length > 0 ? undefined : 'Discovery returned no pools.' });
+      result.state === 'INDEXER_UNAVAILABLE' || result.state === 'WRONG_NETWORK'
+        ? presentHealth({ status: 'UNAVAILABLE', source: result.source, reason: result.unavailableReason ?? 'The indexer could not be read.' })
+        : result.state === 'PROTOCOL_AVAILABLE'
+          ? presentHealth({ status: 'SYNCED', source: result.source, reason: undefined })
+          : presentHealth({ status: 'UNAVAILABLE', source: result.source, reason: result.detail ?? 'No pools are published for this deployment.' });
     setMarket({ loading: false, discovery: result, pools: result.pools, health });
   }, [discovery, providedPools]);
 
   useEffect(() => {
     void refreshPools();
   }, [refreshPools]);
+
+  /**
+   * Turn discovered pool COMPONENTS into describable pools.
+   *
+   * This is the join between the two halves of the architecture, and it runs
+   * only over the wallet-backed authoritative read:
+   *
+   *   indexer  -> WHICH pool components exist   (raw CBOR state, no fields)
+   *   wallet   -> WHAT each pool holds           (decoded `fields`, template-checked)
+   *
+   * It re-runs when the wallet connects, because that is the first moment an
+   * authoritative read exists. Before then `pools` stays EMPTY while
+   * `candidates` still lists what was found: showing an undecodable component
+   * as a pool with no numbers would be a pool the user cannot act on.
+   */
+  useEffect(() => {
+    let cancelled = false;
+    const candidates = market.discovery.candidates;
+    const bridge = bridgeRef.current;
+    if (candidates.length === 0 || bridge === undefined || wallet.status !== 'CONNECTED') {
+      // No wallet, so no authoritative read: nothing may be described.
+      if (candidates.length === 0) setMarket((previous) => (previous.pools.length === 0 ? previous : { ...previous, pools: [] }));
+      return undefined;
+    }
+    void (async () => {
+      const decoded: PoolDescriptor[] = [];
+      for (const candidate of candidates) {
+        if (cancelled) return;
+        try {
+          // `WALLET_PROVIDER` is an authoritative source; an indexer read is
+          // never substituted for it.
+          const readback = createOotleReadbackProvider(bridge.substateReader(), 'WALLET_PROVIDER');
+          const read = await readback.readPool(candidate.componentAddress);
+          if (read.status !== 'FOUND') continue;
+          const state = read.value;
+          const descriptor = descriptorFromAuthoritativeRead(
+            {
+              poolComponent: state.poolComponent,
+              resourceA: state.resourceA,
+              resourceB: state.resourceB,
+              ...(state.feeBps === undefined ? {} : { feeBps: state.feeBps }),
+            },
+            wallet.balances,
+          );
+          if (descriptor !== undefined) decoded.push(descriptor);
+        } catch {
+          // A component whose authoritative read fails is simply not described.
+          // It stays in `candidates`, where it is shown as an address and no
+          // more, which is the truthful outcome.
+        }
+      }
+      if (!cancelled) setMarket((previous) => ({ ...previous, pools: decoded }));
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // `wallet.balances` is a member of `wallet`; re-decoding on every balance
+    // change is what lets a newly-seen resource gain its symbol and divisor.
+  }, [market.discovery.candidates, wallet.status, wallet.balances]);
 
   const bundleFor = useCallback(
     (poolComponent: string, pool: PoolDescriptor): MarketDataBundle | undefined => {

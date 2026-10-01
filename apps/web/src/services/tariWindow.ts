@@ -330,10 +330,18 @@ export interface TariBalanceView {
   resourceAddress: string;
   /** Raw base units, exact. */
   amount: string;
-  /** Normalised from the contract's `kind`, which is `Fungible`/`NonFungible`/`…`. */
+  /** Normalised from the contract's `kind`, which is `Fungible`/`NonFungible`/`.`. */
   resourceType: string;
   /** Display-only scaling from the contract's `divisibility`. Never applied to settlement math. */
   divisibility?: number;
+  /**
+   * Display-only ticker from the contract's `symbol`.
+   *
+   * NEVER an identity. A resource is classified by its exact address; a symbol
+   * is a display label an issuer chooses and any issuer can copy, which is why
+   * the safety policy below never reads it.
+   */
+  symbol?: string;
   /** The stealth/confidential side. Meaningful only when `privateViewGranted` is true. */
   confidentialAmount?: string;
 }
@@ -547,6 +555,10 @@ export async function fetchBalances(provider: TariProvider): Promise<TariBalance
     const view: TariBalanceView = { resourceAddress, amount, resourceType };
     if (typeof bag.divisibility === 'number' && Number.isInteger(bag.divisibility) && bag.divisibility >= 0) {
       view.divisibility = bag.divisibility;
+    }
+    // Display-only. An absent or null symbol simply leaves the asset unnamed.
+    if (typeof bag.symbol === 'string' && bag.symbol !== '') {
+      view.symbol = bag.symbol;
     }
     if (bag.confidentialAmount !== undefined) {
       view.confidentialAmount = readRawAmount(bag.confidentialAmount, resourceAddress, 'confidentialAmount');
