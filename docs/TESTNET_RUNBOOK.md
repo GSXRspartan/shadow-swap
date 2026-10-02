@@ -52,10 +52,15 @@ comfortably under the 1 MiB `max_template_binary_size_bytes` ceiling:
 
 | Template | Bytes | SHA256 (first 16) |
 |---|---|---|
-| `fungible_pool` | 243,934 | `70dbff826362bbcf` |
+| `fungible_pool` | 243,934 | `3c92b31dc1e57a32` |
 | `nft_marketplace` | 196,726 | `ca638242f8bf95df` |
 | `nft_item_offer` | 201,719 | `e09a100c76d22459` |
 | `nft_collection_bid` | 201,639 | `991244f9cc986517` |
+
+These are the authoritative digests, kept in step with `security/LP_BASELINE.md`. The release
+profile does not set `strip = true`, so a digest tracks source line numbers and moves on a
+comment-only edit; **size is the stable property** and a digest is an artifact identifier for
+the exact commit, not a behavioural fingerprint.
 
 Building is a local, offline, non-destructive operation. **Publishing is not,
 and is not performed by any automated step in this repository** — see
