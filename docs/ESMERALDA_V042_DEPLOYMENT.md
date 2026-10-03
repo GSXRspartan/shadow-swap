@@ -1,14 +1,224 @@
-# Esmeralda v0.42 — Template Publication Evidence
+# Esmeralda v0.42 — Template Deployment Evidence
 
-Status: **STOPPED BEFORE SUBMISSION — no template was published.**
+Status: **ALL FOUR TEMPLATES PUBLISHED + COMMITTED + PARTIALLY VERIFIED.**
 
-Nothing was instantiated, no pool/component/resource was created, no swap or NFT
-operation was executed, mainnet was not enabled, and no cross-chain submission was
-enabled. The four templates below are verified artifacts with verified fee estimates
-and **no** on-chain address, because the automated publication path does not exist on
-this toolchain. See [Blocker](#blocker).
+`PARTIALLY VERIFIED` is deliberate and precise. Every address is confirmed on chain,
+committed, and independently visible through **both** live indexers, with the
+publication transaction, epoch, and actual fee recovered from receipts. What is *not*
+verified is byte-for-byte on-chain hash equality with the local artifacts, because the
+wallet optimises every binary with `wasm-opt` before publishing, so the on-chain code
+is not the local file. The strongest available equivalence evidence — an identical
+`tari_tdef` section digest — does match on all four, and is recorded below.
 
-Recorded 2026-10-02 UTC. Branch `ops/esmeralda-template-publication` (not merged).
+No component was instantiated, no pool created, no resource created, no swap
+executed, no NFT operation performed, mainnet not enabled, no cross-chain submission
+enabled. Reconciliation only; nothing was submitted in this session.
+
+Reconciled 2026-10-02 UTC by read-only indexer inspection, after a human published all
+four through the wallet Web UI. Branch `ops/esmeralda-template-publication` (not merged).
+
+## CURRENT_ESMERALDA — live template addresses
+
+These four addresses are **CURRENT_ESMERALDA**: verified committed on Esmeralda
+(network byte 38) as of the epoch column below, and listed as `CURRENT_ESMERALDA` for
+use by the next phase. They are **not** fixtures — no test in this repository depends
+on them, and none of the synthetic fixture addresses used by tests was modified.
+
+| # | Template name | Template address (`CURRENT_ESMERALDA`) |
+|---|---|---|
+| 1 | `Pool` | `template_ef2bc1b00fc3212c9acd9ff5f2e8203d9d0b8402c4d04d284a95c1d1e80d5649` |
+| 2 | `FixedPriceListing` | `template_612114e382c28205ee5d4d24754dbdb13351d648237e880b77c991d5f2fa2329` |
+| 3 | `ItemOffer` | `template_083fef7d75857d83ea5424e24d7f47058b4082fa727b91b515aace1c50ec22a6` |
+| 4 | `CollectionBid` | `template_999ef37f1da524e4d3e06132145c1c6e7bef735a66549da24b747c22d4706a54` |
+
+No address from before the 2026-09-30 reset is carried forward anywhere in this file.
+
+## Publication table
+
+| Template | Template address | Artifact path | Bytes | SHA-256 | Publication tx hash | Actual fee | Publication epoch | Indexer A | Indexer B | Status |
+|---|---|---|---|---|---|---|---|---|---|---|
+| `Pool` | `template_ef2bc1b0…d5649` | `templates/fungible_pool/target/wasm32-unknown-unknown/release/fungible_pool.wasm` | 243934 | `3c92b31dc1e57a32a0bf9f146dfdd492bda4b91f18dd1cc5f7701de0404767b2` | `be3e196f97fa0783f32b91d19889e58553092e5fcdf663216a291654405f7525` | 1239998 | 11775 | confirmed | confirmed | PUBLISHED + COMMITTED + PARTIALLY VERIFIED |
+| `FixedPriceListing` | `template_612114e3…a2329` | `templates/nft_marketplace/target/wasm32-unknown-unknown/release/nft_marketplace.wasm` | 196726 | `ca638242f8bf95dff65e314590e609a0facd1fb92257980fde16752af5fb2c19` | `ef528553e7792378f4e21b6e0ab3b6c2ec5bc2f21696f206e9399204a7814212` | 929645 | 11776 | confirmed | confirmed | PUBLISHED + COMMITTED + PARTIALLY VERIFIED |
+| `ItemOffer` | `template_083fef7d…22a6` | `templates/nft_item_offer/target/wasm32-unknown-unknown/release/nft_item_offer.wasm` | 201719 | `e09a100c76d2245918b2a219717eb9e535f06a56514041158eff02e1467d2b12` | `b2d9cad4091257913b96c64a1fac4d9fa707475261560004e6f303b810613926` | 949791 | 11775 | confirmed | confirmed | PUBLISHED + COMMITTED + PARTIALLY VERIFIED |
+| `CollectionBid` | `template_999ef37f…06a54` | `templates/nft_collection_bid/target/wasm32-unknown-unknown/release/nft_collection_bid.wasm` | 201639 | `991244f9cc9865171f64342841b594dad1e3a4f32cb63633db31eda95fbc29d4` | `dd5c7e267862f494fb8a8a5dde7daecdbe2e21a9e38941f97e1ba75c15168ee1` | 958305 | 11775 | confirmed | confirmed | PUBLISHED + COMMITTED + PARTIALLY VERIFIED |
+
+Total actual publication fee: **4077739** micro-units ≈ 4.077739 tTARI.
+
+`Actual fee` is `total_fees_paid` from the on-chain receipt (the amount actually
+charged). `total_fee_payment` was 8–11 units higher per transaction; that difference is
+the exhaust burn rounding and is recorded per template below.
+
+## What "PARTIALLY VERIFIED" means here
+
+Verified independently, through two separate indexers:
+
+1. **Existence.** `GET /templates/<address>` returns HTTP 200 on indexer A **and** indexer
+   B for all four, with a parseable template definition.
+2. **Substate.** `GET /substates/template_<address>` returns HTTP 200 on both, with the
+   template at **version 0** (never updated), the expected `template_name`, and the same
+   `author` public key `74654347e7e08d8c2116ee3e43c7f98bda0d619e1a0cc94faacb55ff36d57341`
+   on all four — the `Purrivacy Swap` account owner key, so all four were published by
+   the same fee account.
+3. **Catalogue.** Exact-name `GET /templates/catalogue?name_filter=<name>` returns exactly
+   one entry per name, whose `template_address` equals the address above, on both indexers.
+   For `Pool` the filter returns 3 entries but only **one** exact `Pool` match — the other
+   two are substring hits (`TwoResourceLiquidityPool` builtin and similar), which is exactly
+   why the runbook insists on exact-name matching.
+4. **Transaction.** `GET /transactions/<tx_id>` returns HTTP 200 on both indexers; the
+   receipt outcome is `Commit` and the transaction body carries a single
+   `PublishTemplate` instruction.
+5. **ABI identity.** The on-chain function list matches the source `pub fn` set for each
+   template exactly — `Pool`: `new, add_liquidity, swap, remove_liquidity, get_a_resource,
+   get_b_resource, get_pool_balances, get_pool_balance, lp_resource, lp_total_supply,
+   locked_lp_supply, fee_bps`; `FixedPriceListing`: `create, buy, cancel, listing`;
+   `ItemOffer`: `create, accept, cancel, refund_expired, offer`; `CollectionBid`:
+   `create, fill, cancel, refund_expired, bid`.
+6. **Binary equivalence (the strongest available correlation).** Each on-chain binary's
+   `tari_tdef` custom section is **byte-identical** to the same section in the local
+   artifact — same length, same SHA-256. See below.
+7. **Cross-checked fee encoding.** The `pay_fee` literal embedded in each transaction
+   decodes (CBOR `0x1a` uint32) to the receipt's `total_fee_payment` value, so the fee is
+   corroborated from two independent fields rather than one.
+
+Not verified, and not claimed:
+
+- **Byte-for-byte SHA-256 equality between the local artifact and the on-chain binary.**
+  The API does not expose a digest of the published code in the local artifact's form,
+  and equality in fact does *not* hold: walletd runs `wasm-opt --optimize-for-size`
+  (with `StripDebug`, `StripProducers`, `StripTargetFeatuers`) on every publish before
+  the transaction is built. On-chain code is ~32% smaller than the artifact.
+
+## Why on-chain size differs from artifact size (resolved, not a mismatch)
+
+`applications/tari_walletd` optimises the binary before publishing
+(`handlers/transaction.rs:734` → `services::wasm_optimizer.rs`). The engine also rejects
+any custom section other than `tari_tdef`, so the optimiser strips the toolchain-emitted
+`name`, `producers`, and `target_features` sections. Both effects are visible:
+
+| Template | Artifact bytes | On-chain `code_size` | Delta | Local custom sections | On-chain custom sections |
+|---|---|---|---|---|---|
+| `Pool` | 243934 | 160497 | −34.2% | `tari_tdef`, `name`, `producers`, `target_features` | `tari_tdef` only |
+| `FixedPriceListing` | 196726 | 133393 | −32.2% | same four | `tari_tdef` only |
+| `ItemOffer` | 201719 | 135919 | −32.6% | same four | `tari_tdef` only |
+| `CollectionBid` | 201639 | 136418 | −32.3% | same four | `tari_tdef` only |
+
+The `tari_tdef` digest is preserved through optimisation, which is what makes the
+correlation meaningful:
+
+| Template | `tari_tdef` length | `tari_tdef` SHA-256 (local **and** on-chain) |
+|---|---|---|
+| `Pool` | 835 | `aa751cf3e4e8b647144d8ff5671424bfe18b139b04c0174efb310bcaafb70394` |
+| `FixedPriceListing` | 358 | `6ecfc75453928a2abd052e728836850d66ade9ac09b1419a3e40e5105c934d4f` |
+| `ItemOffer` | 389 | `6c3ba93175ddab13c883b33e65b9d9e760886fafb6e054e2cfa6cddc43e75b0c` |
+| `CollectionBid` | 409 | `910d79ab7222c406dcec99fc98cfe0b2da4b1e4db29a0ad3be0f603e39d304e8` |
+
+`tari_tdef` is the engine's own template-definition section: it carries the template
+name and the full ABI. Identical digests on all four, retrieved from two independent
+indexers, is strong evidence that each published template was built from the artifact
+recorded in this repository at commit `635a8d4`. It is **not** the same claim as
+identical code bytes, and is not recorded as such.
+
+## Per-template reconciliation detail
+
+### 1. `Pool` — CURRENT_ESMERALDA
+
+```
+Template name:          Pool
+Template address:       template_ef2bc1b00fc3212c9acd9ff5f2e8203d9d0b8402c4d04d284a95c1d1e80d5649
+Artifact path:          templates/fungible_pool/target/wasm32-unknown-unknown/release/fungible_pool.wasm
+Artifact byte size:     243934
+SHA-256:                3c92b31dc1e57a32a0bf9f146dfdd492bda4b91f18dd1cc5f7701de0404767b2
+Network:                esmeralda (byte 38), Ootle v0.42.0 cohort (rev a43773e)
+Walletd version:        0.42.0 (a43773e)
+Account used:           Purrivacy Swap / component_de8ac076ff2299cfc6be32cb7b4f3bc67ad53c9f698c484ad6477b7aa553998b
+Publication tx hash:    be3e196f97fa0783f32b91d19889e58553092e5fcdf663216a291654405f7525
+Final tx status:        Commit (Accept)
+Actual fee:             1239998   (total_fee_payment 1240009, exhaust_burn 1239998)
+Dry-run estimate:       1240006  — actual is 8 units below estimate
+Publication epoch:      11775
+On-chain code_size:     160497
+tari_tdef SHA-256:      aa751cf3e4e8b647144d8ff5671424bfe18b139b04c0174efb310bcaafb70394 (matches local)
+Indexer A:              GET /templates/… 200; /substates/… 200 v0; catalogue exact match; tx 200
+Indexer B:              GET /templates/… 200; /substates/… 200 v0; catalogue exact match; tx 200; binary identical to A
+Status:                 PUBLISHED + COMMITTED + PARTIALLY VERIFIED
+Notes:                  Fee paid confidentially from the account's stealth tTARI position.
+```
+
+### 2. `FixedPriceListing` — CURRENT_ESMERALDA
+
+```
+Template name:          FixedPriceListing
+Template address:       template_612114e382c28205ee5d4d24754dbdb13351d648237e880b77c991d5f2fa2329
+Artifact path:          templates/nft_marketplace/target/wasm32-unknown-unknown/release/nft_marketplace.wasm
+Artifact byte size:     196726
+SHA-256:                ca638242f8bf95dff65e314590e609a0facd1fb92257980fde16752af5fb2c19
+Network:                esmeralda (byte 38), Ootle v0.42.0 cohort (rev a43773e)
+Walletd version:        0.42.0 (a43773e)
+Account used:           Purrivacy Swap / component_de8ac076ff2299cfc6be32cb7b4f3bc67ad53c9f698c484ad6477b7aa553998b
+Publication tx hash:    ef528553e7792378f4e21b6e0ab3b6c2ec5bc2f21696f206e9399204a7814212
+Final tx status:        Commit (Accept)
+Actual fee:             929645    (total_fee_payment 929656, exhaust_burn 929645)
+Dry-run estimate:       929653   — actual is 8 units below estimate
+Publication epoch:      11776
+On-chain code_size:     133393
+tari_tdef SHA-256:      6ecfc75453928a2abd052e728836850d66ade9ac09b1419a3e40e5105c934d4f (matches local)
+Indexer A:              GET /templates/… 200; /substates/… 200 v0; catalogue exact match; tx 200
+Indexer B:              GET /templates/… 200; /substates/… 200 v0; catalogue exact match; tx 200; binary identical to A
+Status:                 PUBLISHED + COMMITTED + PARTIALLY VERIFIED
+Notes:                  Published one epoch after the other three.
+```
+
+### 3. `ItemOffer` — CURRENT_ESMERALDA
+
+```
+Template name:          ItemOffer
+Template address:       template_083fef7d75857d83ea5424e24d7f47058b4082fa727b91b515aace1c50ec22a6
+Artifact path:          templates/nft_item_offer/target/wasm32-unknown-unknown/release/nft_item_offer.wasm
+Artifact byte size:     201719
+SHA-256:                e09a100c76d2245918b2a219717eb9e535f06a56514041158eff02e1467d2b12
+Network:                esmeralda (byte 38), Ootle v0.42.0 cohort (rev a43773e)
+Walletd version:        0.42.0 (a43773e)
+Account used:           Purrivacy Swap / component_de8ac076ff2299cfc6be32cb7b4f3bc67ad53c9f698c484ad6477b7aa553998b
+Publication tx hash:    b2d9cad4091257913b96c64a1fac4d9fa707475261560004e6f303b810613926
+Final tx status:        Commit (Accept)
+Actual fee:             949791    (total_fee_payment 949802, exhaust_burn 949791)
+Dry-run estimate:       949799   — actual is 8 units below estimate
+Publication epoch:      11775
+On-chain code_size:     135919
+tari_tdef SHA-256:      6c3ba93175ddab13c883b33e65b9d9e760886fafb6e054e2cfa6cddc43e75b0c (matches local)
+Indexer A:              GET /templates/… 200; /substates/… 200 v0; catalogue exact match; tx 200
+Indexer B:              GET /templates/… 200; /substates/… 200 v0; catalogue exact match; tx 200; binary identical to A
+Status:                 PUBLISHED + COMMITTED + PARTIALLY VERIFIED
+Notes:                  —
+```
+
+### 4. `CollectionBid` — CURRENT_ESMERALDA
+
+```
+Template name:          CollectionBid
+Template address:       template_999ef37f1da524e4d3e06132145c1c6e7bef735a66549da24b747c22d4706a54
+Artifact path:          templates/nft_collection_bid/target/wasm32-unknown-unknown/release/nft_collection_bid.wasm
+Artifact byte size:     201639
+SHA-256:                991244f9cc9865171f64342841b594dad1e3a4f32cb63633db31eda95fbc29d4
+Network:                esmeralda (byte 38), Ootle v0.42.0 cohort (rev a43773e)
+Walletd version:        0.42.0 (a43773e)
+Account used:           Purrivacy Swap / component_de8ac076ff2299cfc6be32cb7b4f3bc67ad53c9f698c484ad6477b7aa553998b
+Publication tx hash:    dd5c7e267862f494fb8a8a5dde7daecdbe2e21a9e38941f97e1ba75c15168ee1
+Final tx status:        Commit (Accept)
+Actual fee:             958305    (total_fee_payment 958316, exhaust_burn 958305)
+Dry-run estimate:       958313   — actual is 8 units below estimate
+Publication epoch:      11775
+On-chain code_size:     136418
+tari_tdef SHA-256:      910d79ab7222c406dcec99fc98cfe0b2da4b1e4db29a0ad3be0f603e39d304e8 (matches local)
+Indexer A:              GET /templates/… 200; /substates/… 200 v0; catalogue exact match; tx 200
+Indexer B:              GET /templates/… 200; /substates/… 200 v0; catalogue exact match; tx 200; binary identical to A
+Status:                 PUBLISHED + COMMITTED + PARTIALLY VERIFIED
+Notes:                  A repeat attempt returned
+                        FailedToLockInputs: Substate template_999ef37f…06a54:0 already exists
+                        and cannot be created as an output. That is duplicate-publication
+                        evidence for THIS address and confirms version 0 is committed.
+                        No further publication was submitted.
+```
 
 ## Environment as observed
 
@@ -84,248 +294,125 @@ artifact:
   comment-only edit. **Size is the stable property here.**
 - All four byte sizes match the previously verified v0.42 figures exactly.
 
-No rebuild was performed and none is warranted. `docs/TESTNET_RUNBOOK.md:55` should
-be corrected to `3c92b31dc1e57a32`, or made to defer to `security/LP_BASELINE.md`.
+No rebuild was performed and none is warranted. `docs/TESTNET_RUNBOOK.md:55` has since
+been corrected to `3c92b31dc1e57a32` and now defers to `security/LP_BASELINE.md` as the
+authoritative digest table.
 
-## Pre-publication state (evidence nothing was submitted)
+## Pre-publication state (historical, 2026-10-02, superseded)
 
-All four fee estimates were obtained with `dry_run: true`, which executes the
-transaction against the engine and returns the required fee **without** submitting
-or settling anything.
+Before publication, the template catalogue on **both** indexers returned no exact-name
+entry for any of the four templates: `FixedPriceListing`, `ItemOffer` and
+`CollectionBid` returned `{"entries":[]}`, and `Pool` returned only the builtin
+`TwoResourceLiquidityPool` (`template_address` `â€¦0002`). Both indexers now return
+exactly one exact-name entry per template, so the difference between these two states is
+the four publications recorded above.
 
-- Template catalogue on indexer A and indexer B, queried by exact name:
-  `Pool`, `FixedPriceListing`, `ItemOffer`, `CollectionBid` — all return
-  `{"entries":[]}` except `Pool`, which returns only the builtin
-  `TwoResourceLiquidityPool` (`template_address` `…0002`). No exact-name match for
-  `Pool`, so none of this repository's templates is published.
-- `accounts.get_balances` for `Purrivacy Swap` before and after the dry runs is
-  unchanged at `4005148` revealed / `1983911412` confidential tTARI micro-units.
-- The wallet's transaction list contains no `PublishTemplate` instruction.
+The `Purrivacy Swap` tTARI balance read `4005148` revealed / `1983911412` confidential
+micro-units at that point and `1911615` revealed / `1983911412` confidential after
+publication.
 
-## Fee estimates (mandatory dry-run, obtained and recorded)
+> **Unreconciled detail, stated rather than smoothed over.** The revealed balance fell
+> by `2093533`, but the receipts sum to `4077739` in total fees paid. These do not
+> reconcile 1:1, and this file does not claim they do. The most likely explanation is
+> that the fees were sourced from the account's *confidential* stealth-tTARI outputs, so
+> they do not all present as a reduction in the revealed figure; the confidential figure
+> is unchanged. A full reconciliation would need the per-output wallet view, and
+> walletd was no longer running when the ending balance was read, so it was not
+> obtainable read-only. The authoritative fee numbers are the on-chain receipt values
+> (`total_fees_paid`) recorded in the table above, which do not depend on this
+> reconciliation.
 
-Obtained via `transactions.publish_template` with `dry_run: true`, fee account
-`Purrivacy Swap`, from walletd `0.42.0` against current Esmeralda state. These are
-the wallet's own estimates, not hand-computed figures. No fee was hardcoded.
+## Fee estimates (pre-publication dry-run) vs actual fees
 
-| # | Template | WASM bytes | Dry-run estimated fee | Fee account | Dry-run tx id |
+The mandatory estimates were obtained before publication via
+`transactions.publish_template` with `dry_run: true` â€” the wallet's own estimate, not a
+hand-computed figure. They are retained here because the estimate/actual comparison is
+itself evidence that publication behaved predictably.
+
+| # | Template | Artifact bytes | Dry-run estimate | Actual paid | Delta |
 |---|---|---|---|---|---|
-| 1 | `fungible_pool` | 243934 | `1240006` | `Purrivacy Swap` | `715142b04d6ca0528e2bc809e83c41686e20a7feae696207d176beed1fe8a00c` |
-| 2 | `nft_marketplace` | 196726 | `929653` | `Purrivacy Swap` | `1a85e0aa0df1f3f3bef38057a6f2f40d98d0642141580bfd340857faeb4675ea` |
-| 3 | `nft_item_offer` | 201719 | `949799` | `Purrivacy Swap` | `f7e96db86a07209b8278d4bdccb0443bc5f19e75ed1e7be0aaae7cb158dcfff4` |
-| 4 | `nft_collection_bid` | 201639 | `958313` | `Purrivacy Swap` | `ddf19b3368dae4c304dcdd8fcf513ac9087728f8091a4bd67035d950fca277fe` |
+| 1 | `Pool` | 243934 | 1240006 | 1239998 | âˆ’8 |
+| 2 | `FixedPriceListing` | 196726 | 929653 | 929645 | âˆ’8 |
+| 3 | `ItemOffer` | 201719 | 949799 | 949791 | âˆ’8 |
+| 4 | `CollectionBid` | 201639 | 958313 | 958305 | âˆ’8 |
+| | **Total** | | **4077771** | **4077739** | **âˆ’32** |
 
-Total estimated publication cost: `4077771` micro-units ≈ 4.077771 tTARI, against
-`4005148` available. **The total estimate exceeds the account's revealed balance.**
-The shortfall is covered only because the account also holds `1983911412`
-confidential tTARI micro-units; publishing will draw on the combined position, and
-the fee account must be able to source the fee confidentially. This is tight enough
-to matter and is called out in the manual procedure below.
+Every actual fee came in 8 units below its estimate, which is the expected exhaust-burn
+rounding rather than a coincidence. No fee was hardcoded at any point.
 
-Per-template actual fee, submission transaction hash, template address, publication
-epoch, indexer verification, and final status are **not applicable — no submission
-occurred**.
+## Duplicate-publication evidence
 
-## Publication ledger (per template)
-
-Each row is intentionally complete-with-`NOT PUBLISHED` rather than blank, so the
-gap is explicit rather than ambiguous.
-
-### 1. `fungible_pool` (publishes as template name `Pool`)
+The `CollectionBid` publish was attempted twice. The second attempt was refused by the
+engine:
 
 ```
-Template name:          Pool
-Artifact path:          templates/fungible_pool/target/wasm32-unknown-unknown/release/fungible_pool.wasm
-Artifact byte size:     243934
-SHA-256:                3c92b31dc1e57a32a0bf9f146dfdd492bda4b91f18dd1cc5f7701de0404767b2
-Network:                esmeralda (byte 38), Ootle v0.42.0
-Walletd version:        0.42.0 (a43773e)
-Account used:           Purrivacy Swap / component_de8ac076ff2299cfc6be32cb7b4f3bc67ad53c9f698c484ad6477b7aa553998b
-Dry-run estimated fee:  1240006
-Actual fee:             NOT PUBLISHED
-Submission tx hash:     NOT PUBLISHED
-Final tx status:        NOT PUBLISHED
-Template address:       NOT PUBLISHED
-Publication epoch:      NOT PUBLISHED
-Indexer A verification: no exact-name `Pool` entry (only builtin TwoResourceLiquidityPool)
-Indexer B verification: no exact-name `Pool` entry
-Timestamp (UTC):        2026-10-02, artifact verified only
-Notes:                  Artifact and fee estimate verified; no submission.
+FailedToLockInputs: Substate template_999ef37f1da524e4d3e06132145c1c6e7bef735a66549da24b747c22d4706a54:0
+already exists and cannot be created as an output
 ```
 
-### 2. `nft_marketplace` (publishes as `FixedPriceListing`)
+This is treated strictly as duplicate-publication evidence, and nothing further was
+submitted. It independently corroborates three things at once: the address is real, its
+version is `0`, and it was already committed at the time of the retry. The
+`GET /substates/` read independently confirms version `0` and that the binary has never
+been updated.
 
-```
-Template name:          FixedPriceListing
-Artifact path:          templates/nft_marketplace/target/wasm32-unknown-unknown/release/nft_marketplace.wasm
-Artifact byte size:     196726
-SHA-256:                ca638242f8bf95dff65e314590e609a0facd1fb92257980fde16752af5fb2c19
-Network:                esmeralda (byte 38), Ootle v0.42.0
-Walletd version:        0.42.0 (a43773e)
-Account used:           Purrivacy Swap / component_de8ac076ff2299cfc6be32cb7b4f3bc67ad53c9f698c484ad6477b7aa553998b
-Dry-run estimated fee:  929653
-Actual fee:             NOT PUBLISHED
-Submission tx hash:     NOT PUBLISHED
-Final tx status:        NOT PUBLISHED
-Template address:       NOT PUBLISHED
-Publication epoch:      NOT PUBLISHED
-Indexer A verification: {"entries":[]}
-Indexer B verification: {"entries":[]}
-Timestamp (UTC):        2026-10-02, artifact verified only
-Notes:                  Artifact and fee estimate verified; no submission.
-```
+## How these addresses were verified (reproducible)
 
-### 3. `nft_item_offer` (publishes as `ItemOffer`)
-
-```
-Template name:          ItemOffer
-Artifact path:          templates/nft_item_offer/target/wasm32-unknown-unknown/release/nft_item_offer.wasm
-Artifact byte size:     201719
-SHA-256:                e09a100c76d2245918b2a219717eb9e535f06a56514041158eff02e1467d2b12
-Network:                esmeralda (byte 38), Ootle v0.42.0
-Walletd version:        0.42.0 (a43773e)
-Account used:           Purrivacy Swap / component_de8ac076ff2299cfc6be32cb7b4f3bc67ad53c9f698c484ad6477b7aa553998b
-Dry-run estimated fee:  949799
-Actual fee:             NOT PUBLISHED
-Submission tx hash:     NOT PUBLISHED
-Final tx status:        NOT PUBLISHED
-Template address:       NOT PUBLISHED
-Publication epoch:      NOT PUBLISHED
-Indexer A verification: {"entries":[]}
-Indexer B verification: {"entries":[]}
-Timestamp (UTC):        2026-10-02, artifact verified only
-Notes:                  Artifact and fee estimate verified; no submission.
-```
-
-### 4. `nft_collection_bid` (publishes as `CollectionBid`)
-
-```
-Template name:          CollectionBid
-Artifact path:          templates/nft_collection_bid/target/wasm32-unknown-unknown/release/nft_collection_bid.wasm
-Artifact byte size:     201639
-SHA-256:                991244f9cc9865171f64342841b594dad1e3a4f32cb63633db31eda95fbc29d4
-Network:                esmeralda (byte 38), Ootle v0.42.0
-Walletd version:        0.42.0 (a43773e)
-Account used:           Purrivacy Swap / component_de8ac076ff2299cfc6be32cb7b4f3bc67ad53c9f698c484ad6477b7aa553998b
-Dry-run estimated fee:  958313
-Actual fee:             NOT PUBLISHED
-Submission tx hash:     NOT PUBLISHED
-Final tx status:        NOT PUBLISHED
-Template address:       NOT PUBLISHED
-Publication epoch:      NOT PUBLISHED
-Indexer A verification: {"entries":[]}
-Indexer B verification: {"entries":[]}
-Timestamp (UTC):        2026-10-02, artifact verified only
-Notes:                  Artifact and fee estimate verified; no submission.
-```
-
-## Blocker
-
-**There is no supported automated publication tool on this machine, and the
-supported manual path needs a human, so automated submission was stopped rather
-than improvised.**
-
-Findings, in order of decisiveness:
-
-1. **No `tari` CLI is installed.** `tari`, `tari_ootle_wallet_cli`, and
-   `tari-console` are all absent from `PATH` and from a scan of `%USERPROFILE%\.cargo\bin`,
-   `%LOCALAPPDATA%`, `%APPDATA%`, and both `Program Files` trees. The only Tari
-   binaries present are the `tari_ootle_walletd` daemon itself and Tari
-   Universe/Private Ballot, which are different products.
-
-2. **The official v0.42 wallet CLI has no publish command at all.** Against the
-   upstream `tari-ootle` v0.42 source, `applications/tari_wallet_cli/src` contains
-   **zero** occurrences of `publish` or `PublishTemplate`. `tari publish` does not
-   exist as a subcommand in this cohort, so there is nothing to run even if the
-   binary were installed. The repo's own runbook agrees: `docs/TESTNET_RUNBOOK.md`
-   states "There is deliberately no `publish` command in this repository."
-
-3. **This repository deliberately has no automated publish path,** and
-   `docs/TESTNET_RUNBOOK.md` lists "Do not hand-write a publish/transaction-construction
-   script" as a hard rule. Publication is specified as a Web UI action.
-
-The project instructions forbid the workarounds that would otherwise close the gap:
-no third-party publication software, no custom JSON-RPC template publisher, no
-one-off Rust publisher, and no bypassing the wallet's normal signing/fee behaviour.
-The only mechanism that would satisfy publication is therefore the Wallet Web UI,
-which needs a human click.
-
-Note that walletd's own RPC does expose `transactions.publish_template`, and it was
-used here **read-only** with `dry_run: true` to obtain the mandatory fee estimates.
-That is the wallet's supported fee-estimation path, not a publisher: it executed
-against the engine, returned a fee, and settled nothing — confirmed by the unchanged
-balance and the absence of any `PublishTemplate` instruction in the wallet's
-transaction list. Using it to actually submit would be exactly the hand-written
-publisher the rules exclude, so submission was not attempted.
-
-## Manual publication checklist (Wallet Web UI)
-
-Everything below is available through `http://127.0.0.1:5100`, which is already
-serving the wallet UI and requires no authentication in this session.
-
-Before starting: confirm `Purrivacy Swap` shows a balance covering the remaining
-total. Estimated remaining cost for all four is `4077771` micro-units; the account's
-revealed balance is `4005148`, so ensure the fee is sourced from the account's
-combined position.
-
-For each template, in this order — publish one, verify it, then move on:
-
-1. Open `http://127.0.0.1:5100` → **Publish Template**.
-2. Select fee account **`Purrivacy Swap`**.
-3. Upload the exact artifact:
-
-   | # | Template | File to upload | Expected bytes | Expected SHA-256 |
-   |---|---|---|---|---|
-   | 1 | `Pool` | `templates\fungible_pool\target\wasm32-unknown-unknown\release\fungible_pool.wasm` | 243934 | `3c92b31dc1e57a32a0bf9f146dfdd492bda4b91f18dd1cc5f7701de0404767b2` |
-   | 2 | `FixedPriceListing` | `templates\nft_marketplace\target\wasm32-unknown-unknown\release\nft_marketplace.wasm` | 196726 | `ca638242f8bf95dff65e314590e609a0facd1fb92257980fde16752af5fb2c19` |
-   | 3 | `ItemOffer` | `templates\nft_item_offer\target\wasm32-unknown-unknown\release\nft_item_offer.wasm` | 201719 | `e09a100c76d2245918b2a219717eb9e535f06a56514041158eff02e1467d2b12` |
-   | 4 | `CollectionBid` | `templates\nft_collection_bid\target\wasm32-unknown-unknown\release\nft_collection_bid.wasm` | 201639 | `991244f9cc9865171f64342841b594dad1e3a4f32cb63633db31eda95fbc29d4` |
-
-4. Click **Estimate Fee** and compare with this session's dry-run figure:
-
-   | # | Template | Expected estimated fee |
-   |---|---|---|
-   | 1 | `Pool` | 1240006 |
-   | 2 | `FixedPriceListing` | 929653 |
-   | 3 | `ItemOffer` | 949799 |
-   | 4 | `CollectionBid` | 958313 |
-
-   Do not proceed on a materially different number without investigating first.
-5. Click **Publish Template** — exactly once. Do not re-click on an ambiguous
-   result.
-6. Record the transaction id and the template address.
-7. Verify independently before starting the next template:
+Every claim above is reproducible with read-only GETs. No transaction was submitted in
+this reconciliation.
 
 ```bash
-# (a) exact-name catalogue match — a substring hit is not enough
-curl -sS 'https://ootle-indexer-a.tari.com/templates/catalogue?name_filter=Pool&limit=100'
-curl -sS 'https://ootle-indexer-a.tari.com/templates/catalogue?name_filter=FixedPriceListing&limit=100'
-curl -sS 'https://ootle-indexer-a.tari.com/templates/catalogue?name_filter=ItemOffer&limit=100'
-curl -sS 'https://ootle-indexer-a.tari.com/templates/catalogue?name_filter=CollectionBid&limit=100'
+A=https://ootle-indexer-a.tari.com
+B=https://ootle-indexer-b.tari.com
 
-# (b) the template definition resolves at its address (200, not 404)
-curl -sS "https://ootle-indexer-a.tari.com/templates/<template_address>"
+# network identity (both must report esmeralda / 38)
+curl -sS $A/info; curl -sS $B/info
 
-# (c) the transaction committed, not aborted
-curl -sS "https://ootle-indexer-a.tari.com/transactions/<tx_id>"
+# existence + ABI + on-chain code size
+curl -sS $A/templates/template_ef2bc1b00fc3212c9acd9ff5f2e8203d9d0b8402c4d04d284a95c1d1e80d5649
+curl -sS $B/templates/template_ef2bc1b00fc3212c9acd9ff5f2e8203d9d0b8402c4d04d284a95c1d1e80d5649
 
-# repeat (a) and (b) against indexer B
+# committed substate: template_name, author, version 0, full binary
+curl -sS $A/substates/template_ef2bc1b00fc3212c9acd9ff5f2e8203d9d0b8402c4d04d284a95c1d1e80d5649
+curl -sS $B/substates/template_ef2bc1b00fc3212c9acd9ff5f2e8203d9d0b8402c4d04d284a95c1d1e80d5649
+
+# exact-name catalogue match (a substring hit is NOT sufficient)
+curl -sS "$A/templates/catalogue?name_filter=Pool&limit=100"
+curl -sS "$A/templates/catalogue?name_filter=FixedPriceListing&limit=100"
+curl -sS "$A/templates/catalogue?name_filter=ItemOffer&limit=100"
+curl -sS "$A/templates/catalogue?name_filter=CollectionBid&limit=100"
+
+# publication transactions: Commit + PublishTemplate instruction + fees
+curl -sS $A/transactions/be3e196f97fa0783f32b91d19889e58553092e5fcdf663216a291654405f7525
+curl -sS $A/transactions/ef528553e7792378f4e21b6e0ab3b6c2ec5bc2f21696f206e9399204a7814212
+curl -sS $A/transactions/b2d9cad4091257913b96c64a1fac4d9fa707475261560004e6f303b810613926
+curl -sS $A/transactions/dd5c7e267862f494fb8a8a5dde7daecdbe2e21a9e38941f97e1ba75c15168ee1
 ```
 
-8. Repeat for all four, then report each result.
+### Note for automation
 
-If a publish is acknowledged but the catalogue stays empty and the receipt is
-missing or still pending, record it as `UNKNOWN`, reconcile by transaction id, and
-**do not republish the same artifact**.
+The indexer's `/transaction-receipts` endpoint honours a `limit` parameter but **ignores
+`offset`** â€” every page returned byte-identical content. Receipt-paging tools must not
+assume `offset` works here; a bounded scan of the newest page is the correct approach,
+and all four publications were in fact found within the newest 100 receipts.
 
 ## Deployment configuration
 
-No addresses were added to any deployment registry, because no address exists yet.
-`crates/protocol_types` carries no live template addresses to update. Once
-publication completes, the four verified addresses belong in deployment
-configuration under a `CURRENT_ESMERALDA` label, kept distinct from `FIXTURE`
-addresses used by tests and from any `HISTORICAL` pre-2026-09-30-reset address — no
-address from before that reset is valid on the current network.
+The four `CURRENT_ESMERALDA` addresses live in this document, which is the canonical
+record for them.
+
+No live addresses were added to source code or config. Deliberately:
+
+- `apps/web` discovers templates by **catalogue name** (`ootleIndexer.ts` queries
+  `/templates/catalogue` and reads `template_address` from the response), so it needs no
+  hardcoded address and would work against any deployment of the same templates.
+- `crates/protocol_types` holds route gating, not addresses.
+- **No fixture address was modified.** Synthetic fixture data used by tests is a
+  separate concern and must stay synthetic.
+
+Any future registry file that stores live addresses should keep the three labels
+distinct â€” `FIXTURE`, `HISTORICAL`, `CURRENT_ESMERALDA` â€” and no `HISTORICAL` address
+from before the 2026-09-30 reset is valid on the current network.
 
 ## Scope not performed, deliberately
 
