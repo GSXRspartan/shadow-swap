@@ -1,13 +1,16 @@
 # ESMERALDA VERTICAL SLICE EVIDENCE
 
-Status: PARTIAL (template source complete, WASM build verified syntactically, deployment blocked by unavailable tari-cli / walletd in current environment)
+Status: **PUBLISHED + COMMITTED + VERIFIED** (all four templates; see `docs/ESMERALDA_V042_DEPLOYMENT.md`)
 
-Date: 2026-09-22
+Historical note: this file originally recorded status PARTIAL with deployment blocked by an
+unavailable CLI/walletd. Those blockers are resolved as of 2026-10-02.
+
+Date: 2026-09-22 (vertical slice) · updated 2026-10-02 (publication reconciliation)
 Repo commit: 223cc2f (with updates through current session)
-Upstream tari-ootle: development branch (cloned to C:\tmp-tari, 2026-09-22)
+Upstream tari-ootle: v0.42.0 cohort, rev `a43773e600b9503ed3fadcd3f0048f86131e3644`
 Local Rust: 1.97.1
 Local Node/pnpm: v24.14.0 / 11.6.0
-Target network: Esmeralda (current Tari Ootle testnet per upstream docs and wallet daemon references)
+Target network: Esmeralda, network byte 38 (current Tari Ootle testnet)
 
 ## Template Source
 Path: templates/fungible_pool/src/lib.rs
@@ -17,7 +20,7 @@ cd templates/fungible_pool
 cargo build --target wasm32-unknown-unknown --release
 ```
 WASM output path (expected): target/wasm32-unknown-unknown/release/fungible_pool.wasm
-SHA-256 (not yet generated — requires upstream workspace build): to be recorded upon deployment
+SHA-256: `3c92b31dc1e57a32a0bf9f146dfdd492bda4b91f18dd1cc5f7701de0404767b2` (243,934 bytes; built and published 2026-10-02)
 
 ## Template Design Reference
 Based on upstream TariSwap (`C:\tmp-tari\crates\engine\tests\templates\tariswap\src\lib.rs`) with the following critical differences:
@@ -68,6 +71,13 @@ tari build
 tari publish -a <esmeralda_account_name> --api-key <wallet_daemon_key>
 # Expected output: Template published with address like template_... and metadata hash
 ```
+
+> **Superseded 2026-10-02 — do not run these commands.** `tari publish` does not exist
+> in the v0.42 cohort: the official `tari_wallet_cli` has no publish subcommand, so
+> there is no `--api-key` flag to pass either. Publication was performed through the
+> wallet Web UI at `http://127.0.0.1:5100` instead. The resulting address is recorded in
+> `docs/ESMERALDA_V042_DEPLOYMENT.md`. The commands are kept only as a record of the
+> originally intended approach.
 
 ### 3. Create test fungible token resource
 This requires either a faucet template or an existing token resource. For the vertical slice:
@@ -142,12 +152,23 @@ Expected outputs:
 ### 10. Final empty/pool verification
 After full removal, verify reserves are zero (or near-zero due to integer division floor) and no stray LP supply exists. Confirm no unauthorized reserve remains in pool component.
 
-## Known Blockers to Deployment (Documented, Not Fabricated)
-- `tari-ootle-cli` is not installed in current environment (`tari-cli NOT in PATH`).
-- `tari_ootle_walletd` is not installed (`walletd NOT in PATH`).
-- The upstream `tari-ootle` workspace structure (`template_abi`, `template_lib`, etc.) is only available at `C:\tmp-tari` (cloned 2026-09-22), not integrated into this repo's build chain.
-- Therefore, the exact command `tari publish` or `tari build` cannot be executed in this session without installing the CLI and configuring a wallet daemon connection.
-- The WASM binary (`fungible_pool.wasm`) has not been produced; the source is complete and syntactically valid (`rustfmt` verified), but compilation requires the upstream workspace dependencies.
+## Deployment Blockers — RESOLVED as of 2026-10-02
+
+The blockers recorded in this file have been resolved. All four protocol templates are
+published and verified on Esmeralda. See `docs/ESMERALDA_V042_DEPLOYMENT.md` for the
+authoritative addresses, transaction ids, fees, and epochs.
+
+| Old blocker | Current state |
+|---|---|
+| `tari-ootle-cli` not installed | Still not installed, and **still not needed**: the official v0.42 `tari_wallet_cli` has no `publish` subcommand at all. Publication was performed through the wallet Web UI. |
+| `tari_ootle_walletd` not installed | Resolved. `tari_ootle_walletd` `0.42.0` (`a43773e`) runs on `127.0.0.1:5100` against Esmeralda. |
+| Upstream workspace not in build chain | Resolved. Templates build from crates.io/git `tari-ootle` rev `a43773e`. |
+| `tari publish` unavailable | Resolved by the Web UI path; no CLI publish command exists to call. |
+| `fungible_pool.wasm` never produced | Resolved. Built at 243,934 bytes, SHA-256 `3c92b31d…`. |
+
+The stale command list below is retained for history only. Do **not** run
+`tari publish`; that subcommand does not exist in this cohort. The remaining real
+step is instantiation, covered in `docs/ESMERALDA_V042_DEPLOYMENT.md`.
 
 ## What IS Verified in This Run
 - Template source (`templates/fungible_pool/src/lib.rs`) exists, is syntactically valid Rust (`rustfmt` passes), uses upstream TariSwap-style API (`Component`, `Vault`, `Bucket`, `AccessRules`, `ResourceBuilder`, `ResourceManager`), replaces `AccessRules::allow_all()` with strict method-level rules, excludes all privileged admin methods, enforces immutable fee (no setter), validates resource types, and uses integer-only arithmetic.
@@ -155,27 +176,41 @@ After full removal, verify reserves are zero (or near-zero due to integer divisi
 - Security model (`docs/SECURITY_MODEL.md`) explicitly states no admin withdrawal, no upgrade mechanism, 100% fees to LPs, no protocol fee.
 - Route matrix (`docs/ROUTE_MATRIX.md`) marks P0 (Public Fungible / Tari Native) as Experimental (not TESTED) until actual engine/testnet execution succeeds.
 
-## Exact Next Commands Required (for manual execution by engineer with proper environment)
+## Exact Next Commands Required (historical — steps 1–5 are DONE)
 ```
-# 1. Install tari-cli (not done in this session)
-cargo install tari-ootle-cli
+# 1. Install tari-cli — NOT DONE, and not needed. The v0.42 tari_wallet_cli has no
+#    publish subcommand, so installing it would not enable publication.
+#    cargo install tari-ootle-cli
 
-# 2. Ensure wallet daemon runs with Esmeralda network
+# 2. DONE. Wallet daemon runs on Esmeralda:
 tari_ootle_walletd --network esmeralda -b /path/to/config
 
-# 3. Build template (requires upstream workspace or installed crates)
+# 3. DONE. Template builds from crates.io/git tari-ootle rev a43773e:
 cd templates/fungible_pool
 cargo build --target wasm32-unknown-unknown --release
 
-# 4. Build with tari-cli (alternative, if installed)
-tari build --release
+# 4. NOT APPLICABLE. `tari build` is not a v0.42 command either.
 
-# 5. Publish to Esmeralda (requires API key and account)
-tari publish -a <account> --api-key <key> --network esmeralda
+# 5. DONE, via the Wallet Web UI at http://127.0.0.1:5100, NOT via CLI.
+#    `tari publish` does not exist; there is no --api-key flag to pass.
+#    Resulting address recorded in docs/ESMERALDA_V042_DEPLOYMENT.md
 
-# 6. Instantiate pool on Esmeralda (after obtaining resource addresses for Tari native and test token)
-# (Exact transaction construction depends on wallet daemon CLI or SDK interface)
+# 6. Instantiate pool on Esmeralda — THE NEXT REAL STEP.
+#    Requires: a disposable public test token resource, then CallFunction on
+#    template_ef2bc1b00fc3212c9acd9ff5f2e8203d9d0b8402c4d04d284a95c1d1e80d5649.
+#    No programmatic publish/instantiate path exists; use the wallet Web UI or an
+#    SDK client that submits through walletd's normal signing and fee flow.
 ```
+
+### Exact next step for the first live pool instantiation
+
+1. Restart walletd on Esmeralda (`tari_ootle_walletd --network esmeralda --authentication none --listen-on 127.0.0.1:5100 run`).
+2. Confirm the fee account `Purrivacy Swap` still holds tTARI — the four publications cost `4077739` micro-units and the revealed balance is tight, so fund it before instantiating.
+3. Create one disposable `ResourceBuilder::public_fungible()` test token (runbook step C) and record its resource address.
+4. Call `new(a_addr, b_addr)` on `template_ef2bc1b00fc3212c9acd9ff5f2e8203d9d0b8402c4d04d284a95c1d1e80d5649`, pairing canonical tTARI (`resource_0101…0101`) with that test token, paying the fee from `Purrivacy Swap`.
+5. Verify the component authoritatively via the wallet's `tari_getSubstate` (the indexer returns component state as raw tagged CBOR), then proceed to runbook steps F onward with trivial values.
+
+Esmeralda/testnet only. Mainnet never. Real cross-chain submission stays OFF.
 
 ## Security Check During Template Development
 Inspected during this session:

@@ -52,10 +52,15 @@ comfortably under the 1 MiB `max_template_binary_size_bytes` ceiling:
 
 | Template | Bytes | SHA256 (first 16) |
 |---|---|---|
-| `fungible_pool` | 243,934 | `70dbff826362bbcf` |
+| `fungible_pool` | 243,934 | `3c92b31dc1e57a32` |
 | `nft_marketplace` | 196,726 | `ca638242f8bf95df` |
 | `nft_item_offer` | 201,719 | `e09a100c76d22459` |
 | `nft_collection_bid` | 201,639 | `991244f9cc986517` |
+
+These are the authoritative digests, kept in step with `security/LP_BASELINE.md`. The release
+profile does not set `strip = true`, so a digest tracks source line numbers and moves on a
+comment-only edit; **size is the stable property** and a digest is an artifact identifier for
+the exact commit, not a behavioural fingerprint.
 
 Building is a local, offline, non-destructive operation. **Publishing is not,
 and is not performed by any automated step in this repository** — see
@@ -140,14 +145,23 @@ and recovered after downtime", and the latter as best-effort with acknowledged g
 
 ## Publish the protocol templates
 
-**This is the current blocker for every live-pool workflow**, and it is a
-publication step, not a coding one. Verified 2026-10-01: none of this
-repository's four templates appears in `GET /templates/catalogue`, while the
-catalogue returns 19+ community/builtin entries. The endpoint is healthy and our
-deployment is simply empty.
+**DONE — all four templates are published, committed, and verified on Esmeralda as of
+2026-10-02.** The authoritative addresses, publication transaction ids, actual fees, and
+epochs are recorded in `docs/ESMERALDA_V042_DEPLOYMENT.md`. The procedure below is
+retained as the reference for how publication is done and how it must be verified; it is
+no longer a pending step.
+
+Historical state for context: verified 2026-10-01, none of this repository's four
+templates appeared in `GET /templates/catalogue`, while the catalogue returned 19+
+community/builtin entries. The endpoint was healthy and the deployment was empty. As of
+2026-10-02 each of the four names returns exactly one exact-name catalogue entry.
 
 Nothing in this repository publishes automatically, and nothing should. This is
 the supported manual procedure, in order.
+
+> **Do not run `tari publish`.** That subcommand does not exist in the v0.42 cohort: the
+> official `tari_wallet_cli` contains no publish command at all. Publication is a Wallet
+> Web UI action, as described below.
 
 ### 1. Order: there is no dependency order
 
@@ -211,6 +225,25 @@ component and to verify publication. Do not record them anywhere that would make
 a **pre-reset** address look current — no address from before the 2026-09-30
 reset is valid on the current network.
 
+**Recorded 2026-10-02 (`CURRENT_ESMERALDA`).** Full detail, including publication
+transaction ids, actual fees, epochs, and the `tari_tdef` binary correlation, is in
+`docs/ESMERALDA_V042_DEPLOYMENT.md`.
+
+| Template name | Address | Publication tx | Fee paid | Epoch |
+|---|---|---|---|---|
+| `Pool` | `template_ef2bc1b00fc3212c9acd9ff5f2e8203d9d0b8402c4d04d284a95c1d1e80d5649` | `be3e196f…f7525` | 1239998 | 11775 |
+| `FixedPriceListing` | `template_612114e382c28205ee5d4d24754dbdb13351d648237e880b77c991d5f2fa2329` | `ef528553…14212` | 929645 | 11776 |
+| `ItemOffer` | `template_083fef7d75857d83ea5424e24d7f47058b4082fa727b91b515aace1c50ec22a6` | `b2d9cad4…13926` | 949791 | 11775 |
+| `CollectionBid` | `template_999ef37f1da524e4d3e06132145c1c6e7bef735a66549da24b747c22d4706a54` | `dd5c7e26…68ee1` | 958305 | 11775 |
+
+One important caveat when comparing an artifact to what is on chain: **the wallet
+optimises every binary with `wasm-opt` before publishing**, stripping the `name`,
+`producers`, and `target_features` custom sections. On-chain code is therefore ~32%
+smaller than the local artifact, and a byte-for-byte SHA-256 comparison against the
+local `.wasm` will always fail by design. The stable correlation is the `tari_tdef`
+section, which survives optimisation unchanged and carries the template name and full
+ABI. Do not treat the size difference as tampering.
+
 ### 5. Verify publication landed, and distinguish success from "submitted"
 
 A publish acknowledgement is **not** a published template. Three independent
@@ -255,9 +288,13 @@ retry blindly.
 Esmeralda/testnet only. Trivial values. Mainnet never. Real cross-chain
 submission stays OFF.
 
-- [ ] **A.** Publish all four templates (above), recording each template address.
-- [ ] **B.** Verify all four template addresses through the indexer: exact-name
+- [x] **A.** Publish all four templates (above), recording each template address.
+      **DONE 2026-10-02** — addresses recorded in the table above and in
+      `docs/ESMERALDA_V042_DEPLOYMENT.md`.
+- [x] **B.** Verify all four template addresses through the indexer: exact-name
       catalogue match **and** `GET /templates/<addr>` returning a definition.
+      **DONE 2026-10-02** — both confirmed on **both** indexers for all four. See
+      `docs/ESMERALDA_V042_DEPLOYMENT.md`.
 - [ ] **C.** Create one disposable public test token (a `ResourceBuilder::public_fungible()`
       resource) to pair against canonical TARI. Record its resource address.
 - [ ] **D.** Instantiate exactly one tiny public pool: canonical TARI /
