@@ -140,8 +140,12 @@ function componentSubstates(substateId, templateAddress) {
 function realIndexerFetch(options = {}) {
   const templateAddress = options.templateAddress ?? 'ab'.repeat(32);
   const componentId = options.componentId ?? 'component_ff'.repeat(1) + '00'.repeat(31);
+  // The ids this mocked indexer actually "knows". A batch read echoes back only the
+  // requested ids that exist here, so an unknown id (e.g. a durable-registry seed/cache
+  // entry that is not on this chain) is correctly dropped at reverification.
+  const known = new Set([componentId, ...(options.hostile ? HOSTILE_COMPONENT_IDS : [])]);
   const seen = [];
-  const stub = async (url) => {
+  const stub = async (url, init) => {
     const parsed = new URL(url);
     seen.push(`${parsed.pathname}${parsed.search}`);
     if (parsed.pathname === '/info') return jsonResponse(options.identity ?? IDENTITY_OK);
@@ -153,7 +157,13 @@ function realIndexerFetch(options = {}) {
       return jsonResponse(options.receipts ?? receiptsWithComponent(componentId));
     }
     if (parsed.pathname === '/substates/fetch') {
-      return jsonResponse(componentSubstates(componentId, templateAddress));
+      let requested = [];
+      try { requested = (JSON.parse(init && init.body ? init.body : '{}').requests) ?? []; } catch { requested = []; }
+      const substates = {};
+      for (const id of requested) {
+        if (known.has(id)) Object.assign(substates, componentSubstates(id, templateAddress).substates);
+      }
+      return jsonResponse({ substates });
     }
     return jsonResponse({}, { 'content-type': 'application/json' });
   };

@@ -206,7 +206,14 @@ export async function mockIndexer(page: Page, options: MockIndexerOptions = {}):
       } catch {
         requested = [];
       }
-      await json({ substates: Object.fromEntries(requested.map((id) => [id, componentSubstate(POOL_TEMPLATE_ADDRESS)])) });
+      // Echo back ONLY the ids this mock knows. A durable-registry seed/cache entry
+      // that this chain does not have is correctly dropped at reverification, rather
+      // than being echoed back as a phantom pool.
+      const known = new Set<string>([POOL_COMPONENT, SAFE_POOL_COMPONENT, ...(options.hostile ? HOSTILE_COMPONENT_IDS : [])]);
+      const substates = Object.fromEntries(
+        requested.filter((id) => known.has(id)).map((id) => [id, componentSubstate(POOL_TEMPLATE_ADDRESS)]),
+      );
+      await json({ substates });
       return;
     }
 

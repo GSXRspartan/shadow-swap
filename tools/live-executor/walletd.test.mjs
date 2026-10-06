@@ -55,6 +55,20 @@ test('summariseResult parses a committed v0.43 result (status + fee + up substat
   assert.deepEqual(out.resources, ['resource_32a6a6b0869a9cc28be2df45baf8b0b70855d2a8ec57f1c3236fd53ad16bb6e9']);
 });
 
+test('summariseResult extracts a published template address from up substates', () => {
+  // A publish commits a `template_...` up-substate; publishTemplate() reads it from here.
+  const committed = {
+    status: 'Accepted',
+    result: {
+      fee_receipt: { total_fees_paid: 1_240_083 },
+      result: { Accept: { up_substates: [['template_f47a330eee1bbf91f58d9ff4280b4279c3c4fe91fb59ab5812cd5128442819ab', {}]], down_substates: [] } },
+    },
+  };
+  const out = summariseResult(committed);
+  assert.equal(out.status, 'COMMITTED');
+  assert.deepEqual(out.templates, ['template_f47a330eee1bbf91f58d9ff4280b4279c3c4fe91fb59ab5812cd5128442819ab']);
+});
+
 test('summariseResult reports REJECTED for a rejected result', () => {
   const rejected = { status: 'Rejected', result: { fee_receipt: { total_fees_paid: 0 }, result: { Reject: { reason: 'nope' } } } };
   assert.equal(summariseResult(rejected).status, 'REJECTED');
