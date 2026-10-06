@@ -21,11 +21,53 @@ This document records what was *observed*, and distinguishes it from what was
 
 ---
 
-## 0. Post-reset observations (2026-10-01, current)
+## 0.0 v0.43.0 upgrade + batch-read contract change (2026-10-06, CURRENT)
+
+Read-only, same two origins (`https://ootle-indexer-a.tari.com`,
+`…-b.tari.com`), no transaction constructed or submitted. This section is the
+newest and supersedes the version/epoch/API rows below it.
+
+- **Version drift, state preserved.** `GET /info` now reports `version "0.43.0"`,
+  `network "esmeralda"`, `network_byte 38`, `current_epoch ≈ 11913`. This was an
+  **in-place upgrade, not a reset**: all four protocol templates published under
+  0.42 are still present. Confirmed by exact-name catalogue match on live for
+  `Pool`, `FixedPriceListing`, `ItemOffer`, `CollectionBid` (addresses unchanged;
+  see `docs/ESMERALDA_V042_DEPLOYMENT.md`).
+- **The frontend tolerates the drift without change.** `indexerIdentity.ts` gates
+  discovery on network **name + byte only, not version**, so 0.43 verifies the
+  same as 0.42. (Verified by source review and by a live dev-server run.)
+- **Batch substate read changed, and the old shape now 422s.**
+  `POST /substates/fetch` request body moved from v0.42 `{substate_ids:[…]}`
+  (and the interim `{requests:[{substate_id}]}`) to v0.43
+  `{requests:[<id string>,…], cached_only:false}` — `cached_only` is now a
+  **required** field and `requests` elements must be **strings**. The response
+  `substates` container moved from an **array** of `{substate_id,version,substate}`
+  wrappers to a **map keyed by substate id**, value `{version, substate:{Component|…}}`,
+  with `version` as a JSON **number** (was a string). The live host answers
+  **HTTP 422** (`missing field 'requests'` / `missing field 'cached_only'` /
+  `invalid type: map, expected a string`) to the superseded shapes.
+  - Fixed in `apps/web/src/services/ootleIndexer.ts`; verified live: the Pools
+    page now reports `PROTOCOL_DEPLOYED_EMPTY` ("Protocol published, not yet in
+    use") instead of a 422-driven "discovery unavailable". Regressions added in
+    `apps/web/test/outage.test.cjs` and `apps/web/test/ootleV042Contract.test.cjs`.
+- **Reproduce:**
+  ```bash
+  A=https://ootle-indexer-a.tari.com
+  curl -sS $A/info                                    # version 0.43.0, esmeralda, byte 38
+  C=component_de8ac076ff2299cfc6be32cb7b4f3bc67ad53c9f698c484ad6477b7aa553998b
+  curl -sS -X POST $A/substates/fetch -H 'content-type: application/json' \
+       -d "{\"substate_ids\":[\"$C\"]}"               # -> HTTP 422 (old shape)
+  curl -sS -X POST $A/substates/fetch -H 'content-type: application/json' \
+       -d "{\"requests\":[\"$C\"],\"cached_only\":false}"  # -> 200, {"substates":{<id>:{version,substate}}}
+  ```
+
+No transaction was constructed, signed, or submitted on 2026-10-06. No funds moved.
+
+## 0. Post-reset observations (2026-10-01, historical baseline for 0.42.0)
 
 Read-only, same two origins, no transaction constructed or submitted. This
 section supersedes the version/epoch/API rows in the body below, which describe
-the pre-reset network.
+the pre-reset network. It is in turn updated by **§0.0** above for the 0.43.0 upgrade.
 
 ### 0.1 The reset
 

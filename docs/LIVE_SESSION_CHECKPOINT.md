@@ -86,6 +86,13 @@ and keyed-map parse via an injected transport.
 - [x] Live read-only discovery verification against v0.43 (frontend read path)
 - [x] v0.43 discovery bug fixed + regressions + verified live
 - [x] TS typecheck / web tests
-- [ ] web production build
-- [ ] OPUS-08 recall/freeze status re-check (template source re-read: fixes intact)
-- [ ] Docs + ledger update, commit, push, CI
+- [x] web production build (137 modules, deployment headers written, exit 0)
+- [x] OPUS-08 recall/freeze status re-check — template source re-read; all prior
+      OPUS fixes intact (mul-before-div, effective-input fee, component-scoped LP
+      mint/burn + OwnerRule::None, reserves-read-before-deposit, on-chain min_output,
+      first-deposit minimum + permanently-locked LP). Recall/freeze residual is an
+      ABI limitation, still documented, still OPEN (needs engine API or allow-list).
+- [x] Live pages checked: /pools (DEPLOYED_EMPTY, correct), /activity (honest empty
+      + full reconciliation state machine), /nfts (no discovery endpoint by design).
+- [x] Branch pushed; CI (Node Tests + Security Engine Tests) triggered on push.
+- [ ] Final CI result check (engine suite runs Linux-only there)
