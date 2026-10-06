@@ -489,11 +489,23 @@ test('secrets: preimage names may appear only as rejection rules, never with a v
   // different literal still fails, wherever it appears.
   const hexLiterals = text.match(/[0-9a-fA-F]{64}/g) ?? [];
   const CANONICAL_TARI_OBJECT_KEY = '01'.repeat(32);
+  // The ONLY other 64-hex literals permitted are the PUBLIC on-chain identities the
+  // durable pool registry pins for protocol-owned pools (component + template
+  // addresses). These are chain constants, not secret material — the same category
+  // as the canonical TARI key above — and the allowlist is DERIVED from the registry
+  // seed so it stays in sync and any OTHER 64-hex literal still fails this test.
+  const { POOL_REGISTRY_SEED } = require('../build-test/services/poolRegistry.js');
+  const allowed = new Set([CANONICAL_TARI_OBJECT_KEY]);
+  for (const entries of Object.values(POOL_REGISTRY_SEED)) {
+    for (const e of entries) {
+      if (typeof e.component === 'string') allowed.add(e.component.replace(/^component_/, ''));
+      if (typeof e.templateAddress === 'string' && e.templateAddress) allowed.add(e.templateAddress.replace(/^template_/, ''));
+    }
+  }
   for (const literal of new Set(hexLiterals)) {
-    assert.equal(
-      literal,
-      CANONICAL_TARI_OBJECT_KEY,
-      `only the public canonical TARI object key may appear as a 64-hex literal in the bundle; found ${literal}`,
+    assert.ok(
+      allowed.has(literal),
+      `only the public canonical TARI key or a registered protocol pool/template address may appear as a 64-hex literal in the bundle; found ${literal}`,
     );
   }
   const barePreimageAssignment = /preimage\w*\s*[:=]\s*["'][0-9a-zA-Z]{16,}["']/.exec(text);
