@@ -13,7 +13,7 @@
 
 import type { WalletAdapter, WalletSession, NetworkInfo, AccountInfo, Balance, ResourceInfo, TransactionPreview, TransactionResult } from '@tari-ootle/wallet-adapter';
 import type { PoolState, OotleReadbackProvider, AuthoritativeSubstateReader } from '@tari-ootle/protocol-client';
-import { createOotleReadbackProvider, parsePoolState } from '@tari-ootle/protocol-client';
+import { createOotleReadbackProvider, decodePoolState } from '@tari-ootle/protocol-client';
 import type { WalletLegCapabilities } from '@tari-ootle/protocol-client/crosschain';
 import {
   TariProviderError,
@@ -34,6 +34,7 @@ import {
   mapTransactionStatus,
   onProviderAccountsChanged,
   readSubstate,
+  readRawSubstate,
   requestAccounts,
   signAndSubmit,
   submitViaTransactionRequest,
@@ -475,11 +476,18 @@ class TariBridgeWalletAdapter implements WalletBridge {
     return createOotleReadbackProvider(this.substateReader(), 'WALLET_PROVIDER');
   }
 
+  /**
+   * Authoritative Pool state via the wallet's `tari_getSubstate`.
+   *
+   * The published Pool template stores reserves in VAULT substates and total LP
+   * supply in the LP RESOURCE substate (not as flat component fields), so this uses
+   * the multi-substate `decodePoolState` decoder over a RAW substate reader. It reads
+   * the resource pair from the component body, so it never calls the DenyAll
+   * `get_a_resource`/`get_b_resource` methods (which an ownerless v2 pool refuses).
+   */
   async readPoolState(poolComponent: string): Promise<PoolState> {
-    const reader = this.substateReader();
-    const envelope = await reader.readComponent(poolComponent);
-    if (envelope === undefined) throw new Error(`Component ${poolComponent} does not exist.`);
-    return parsePoolState({ ...envelope, source: 'WALLET_PROVIDER' });
+    const provider = this.provider;
+    return decodePoolState({ read: (address) => readRawSubstate(provider, address) }, poolComponent);
   }
 
   on(listener: WalletEventListener): () => void {
