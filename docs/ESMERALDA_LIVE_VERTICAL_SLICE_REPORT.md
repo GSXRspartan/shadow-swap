@@ -108,6 +108,22 @@ Durable per-op record: `tools/live-executor/live-op-ledger.jsonl`.
 Final pool state (also readable via `node tools/live-executor/cli.mjs read-pool`):
 reserves LPTESTB `3_085_017` / LPTESTA `7_463_703`, LP supply `4_797_849`, locked `1_000`.
 
+## Live negative / adversarial tests (dry-run, zero cost)
+
+Executed against the live pool via `submit_manifest` `dry_run:true` (no state change,
+no fee). Each was rejected by the pool's **on-chain** asserts, proving the protection
+is enforced by the contract, not just the client:
+
+| Attempt | On-chain rejection |
+|---|---|
+| swap with `min_output` = 999_999_999 (impossible) | `Slippage: output 40666 is below min_output 999999999` |
+| swap with input resource == output resource | `Pool resources must differ` |
+| swap with input amount 0 | `Swap amount must be non-zero` |
+
+Broader adversarial coverage (first-depositor inflation, dust, wrong/reversed
+resource, oversized redemption, rounding extraction, unauthorized mint/burn) runs in
+the `audit_engine_tests` real-engine suite on Linux CI (ENGINE VERIFIED).
+
 ## Frontend (live discovery)
 
 - `apps/web` `/pools` discovers the live pool component
