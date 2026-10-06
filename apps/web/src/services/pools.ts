@@ -21,6 +21,7 @@ import { DEFAULT_NETWORK, type FrontendNetworkId } from '../lib/networks.js';
 import { getJson, postJson } from './net.js';
 import { describeIdentity, isVerified, verifyIndexerIdentity } from './indexerIdentity.js';
 import { TariIndexerDiscovery, CANONICAL_TARI_RESOURCE, type DiscoveredComponent, type IndexerTransport, type ProtocolDeploymentState, type TemplateCatalogueEntry } from './ootleIndexer.js';
+import { knownComponents as registryKnownComponents, rememberDiscovered, type RegistryStorage } from './poolRegistry.js';
 import type { AppConfig } from './config.js';
 
 /**
@@ -270,6 +271,17 @@ const REAL_INDEXER_TRANSPORT: IndexerTransport = {
  * are read from the wallet at the authoritative reread, where
  * `packages/protocol-client` checks the component really is template `Pool`.
  */
+/** localStorage if present and usable, else undefined. Never throws (sandboxed/blocked contexts). */
+function safeLocalStorage(): RegistryStorage | undefined {
+  try {
+    const ls = (globalThis as { localStorage?: RegistryStorage }).localStorage;
+    if (ls && typeof ls.getItem === 'function' && typeof ls.setItem === 'function') return ls;
+  } catch {
+    // ignore
+  }
+  return undefined;
+}
+
 export class IndexerPoolDiscovery implements PoolDiscoverySource {
   readonly name: string;
   /** Set when the configured URL is unusable. Discovery then fails closed. */
@@ -287,6 +299,8 @@ export class IndexerPoolDiscovery implements PoolDiscoverySource {
     private readonly verify: typeof verifyIndexerIdentity = verifyIndexerIdentity,
     /** Injected in tests; defaults to the real REST calls. */
     transport: IndexerTransport = REAL_INDEXER_TRANSPORT,
+    /** Durable-registry persistence. Defaults to localStorage; undefined disables the cache. */
+    private readonly storage: RegistryStorage | undefined = safeLocalStorage(),
   ) {
     let host: string | undefined;
     try {
@@ -326,7 +340,10 @@ export class IndexerPoolDiscovery implements PoolDiscoverySource {
         unavailableReason: this.invalid,
       };
     }
-    const result = await this.client.discover(PROTOCOL_TEMPLATE_NAMES.pool);
+    // Durable registry: seed + previously-discovered component ids, reverified on
+    // chain by discovery. Never a source of truth on its own (see poolRegistry.ts).
+    const known = registryKnownComponents(this.expected.network, this.storage);
+    const result = await this.client.discover(PROTOCOL_TEMPLATE_NAMES.pool, known);
     if (!result.ok) {
       return {
         pools: [],
@@ -337,6 +354,10 @@ export class IndexerPoolDiscovery implements PoolDiscoverySource {
         unavailableReason: result.detail,
       };
     }
+    // Persist the components that reverified, so they stay discoverable after they
+    // age out of the receipt window. Only addresses are stored; everything is
+    // reverified against chain on the next load.
+    rememberDiscovered(this.expected.network, result.components.map((c) => c.componentAddress), this.storage);
     return {
       // No pool is decoded here. Only the wallet can decode component state, and
       // a pool whose pair and reserves have not been read authoritatively is not

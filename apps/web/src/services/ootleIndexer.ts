@@ -349,13 +349,24 @@ export class TariIndexerDiscovery {
    * it does not say from which template, so trusting that association would let
    * an unrelated component masquerade as a pool.
    */
-  async componentsOfTemplates(templateAddresses: readonly string[]): Promise<{ ok: true; components: DiscoveredComponent[]; pages: number } | { ok: false; reason: string }> {
+  async componentsOfTemplates(
+    templateAddresses: readonly string[],
+    knownComponents: readonly string[] = [],
+  ): Promise<{ ok: true; components: DiscoveredComponent[]; pages: number } | { ok: false; reason: string }> {
     const wanted = new Set(templateAddresses);
     const scan = await this.scanReceiptComponents();
     if (!scan.ok) return { ok: false, reason: scan.reason };
+    // Durable registry: fold in KNOWN component ids (protocol seed + prior-discovery
+    // cache) so a pool that has aged out of the receipt window is still re-read. These
+    // are untrusted ADDRESSES only — each is reverified below from its own on-chain
+    // header exactly like a receipt-scanned one, so a stale/wrong/hostile id is simply
+    // dropped. Deduped against the receipt scan.
+    const scanned = new Set(scan.ids);
+    const extraKnown = knownComponents.filter((id) => typeof id === 'string' && id.startsWith('component_') && !scanned.has(id));
+    const allIds = [...scan.ids, ...extraKnown];
     const components: DiscoveredComponent[] = [];
-    for (let start = 0; start < scan.ids.length; start += SUBSTATE_BATCH_LIMIT) {
-      const batch = scan.ids.slice(start, start + SUBSTATE_BATCH_LIMIT);
+    for (let start = 0; start < allIds.length; start += SUBSTATE_BATCH_LIMIT) {
+      const batch = allIds.slice(start, start + SUBSTATE_BATCH_LIMIT);
       // v0.43 batch-read contract (the live host answers HTTP 422 to the v0.42
       // shape): the body carries `requests` — an array of substate-id STRINGS —
       // and a required `cached_only` flag; `false` asks for a fresh authoritative
@@ -405,7 +416,7 @@ export class TariIndexerDiscovery {
    *   - template present, 0 comps -> PROTOCOL_DEPLOYED_EMPTY (published, unused)
    *   - components present        -> PROTOCOL_AVAILABLE
    */
-  async discover(templateName: string): Promise<IndexerDiscoveryResult> {
+  async discover(templateName: string, knownComponents: readonly string[] = []): Promise<IndexerDiscoveryResult> {
     const identity = await this.verify();
     if (!identity.ok) return identity;
 
@@ -424,7 +435,7 @@ export class TariIndexerDiscovery {
       };
     }
 
-    const found = await this.componentsOfTemplates(catalogue.entries.map((entry) => entry.templateAddress));
+    const found = await this.componentsOfTemplates(catalogue.entries.map((entry) => entry.templateAddress), knownComponents);
     if (!found.ok) {
       return { ok: false, state: 'INDEXER_UNAVAILABLE', detail: `Published templates were found, but their components could not be read. ${found.reason}` };
     }
