@@ -87,8 +87,28 @@ This session on-chain fees ≈ **1.56 tTARI** (publish 1,240,083 + reveal 300,00
 3,182 + add 5,306 + 2 swaps 3,111 each + remove 3,919). Budget 20 tTARI → ~18.4 remaining.
 No mainnet, no L1, no burn, no cross-chain.
 
+## Frontend
+- **Durable pool registry (NEW, UNIT + LIVE VERIFIED).** `apps/web/src/services/poolRegistry.ts`:
+  a network-scoped seed of protocol-owned verified pools (the v2 pool) plus an
+  untrusted `localStorage` cache of previously-discovered components. Both are fed into
+  discovery as candidate ADDRESSES only and **reverified from each component's own
+  on-chain header** before display — a stale/wrong-template/wrong-network/corrupted-cache
+  entry is dropped and can never inject a phantom pool. This fixes receipt-window
+  aging-out. 8 regressions in `apps/web/test/pool-registry.test.cjs` (fresh discovery,
+  known-pool reload, stale drop, wrong-template drop, corrupted cache, per-network
+  isolation, persistence). **Verified live**: `/pools` discovers the v2 pool
+  `component_8c20c644…` via the registry.
+- **Reserve rendering.** The honest unavailable state (`—` without a connected wallet)
+  is retained. A full wallet-connected `tari_getSubstate` decode path is **UNVERIFIED**
+  here (it needs a connected wallet provider, not available in this environment) and is
+  the next priority — it is not shipped unverified.
+- **Asset support UI.** The classification → support-state mapping already exists
+  (`presentSafety`: Canonical TARI / Public-immutable / Issuer-controlled / Unclassified /
+  Unsupported) and matches the compatibility matrix; Created-Stealth stays `Unsupported`.
+
 ## Classification
 - **LIVE VERIFIED:** publication, instantiation, owner-rule None (initial + post-lifecycle),
-  initial liquidity, both swap directions, partial withdrawal, reveal.
+  initial liquidity, both swap directions, partial withdrawal, reveal, registry-backed
+  frontend discovery.
 - **ENGINE VERIFIED (CI):** `opus16_pool_component_is_ownerless` + AMM invariants.
 - **UNIT VERIFIED:** pool_math/pool_ref_model/protocol_types, executor, protocol-client.
