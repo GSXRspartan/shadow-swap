@@ -597,7 +597,12 @@ fn opus16_pool_component_is_ownerless() {
             addr.is_component()
                 && *s.substate_value().component().unwrap().template_address() == pool_template
         })
-        .map(|(_, s)| matches!(s.substate_value().component().unwrap().owner_rule(), SubstateOwnerRule::None))
+        .map(|(_, s)| {
+            matches!(
+                s.substate_value().component().unwrap().owner_rule(),
+                SubstateOwnerRule::None
+            )
+        })
         .expect("pool component must be created");
     assert!(
         ownerless,
