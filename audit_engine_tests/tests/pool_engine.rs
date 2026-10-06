@@ -9,6 +9,7 @@ use tari_ootle_common_types::substate_type::SubstateType;
 use tari_ootle_transaction::args;
 use tari_template_lib::types::{
     constants::TARI_TOKEN, Amount, ComponentAddress, NonFungibleAddress, ResourceAddress,
+    SubstateOwnerRule,
 };
 use tari_template_test_tooling::TemplateTest;
 
@@ -561,4 +562,46 @@ fn e05_micro_swap_rounding() {
             .build_and_seal(pt.t.secret_key());
     let reason = pt.t.execute_expect_failure(sealed, vec![proof]);
     println!("e05 1-unit swap rejected as expected: {:?}", reason);
+}
+
+/// OPUS-16 — the Pool component must be created OWNERLESS (`OwnerRule::None`).
+///
+/// If the component defaults to `OwnedBySigner` (the creator), the engine's
+/// `ComponentAction::SetAccessRules` / `SetOwnerRule` — which require only component
+/// ownership — let the deployer rewrite the pool's method access rules AFTER liquidity
+/// providers have deposited: e.g. deny `remove_liquidity` and permanently freeze every
+/// LP's funds (a non-custodial-AMM-breaking DoS), even though no admin WITHDRAW method
+/// exists. `OwnerRule::None` removes the owner entirely, so SetAccessRules/SetOwnerRule
+/// can never be authorised by anyone, making the published rule set truly immutable.
+///
+/// LP mint/burn is unaffected: it is authorised by the COMPONENT frame
+/// (`rule!(component(this_component))`), not by component ownership.
+#[test]
+fn opus16_pool_component_is_ownerless() {
+    let mut t = TemplateTest::new(
+        CRATE_PATH,
+        ["../templates/fungible_pool", "templates/faucet"],
+    );
+    let (_a_faucet, a) = create_faucet(&mut t, "AAA");
+    let (_b_faucet, b) = create_faucet(&mut t, "BBB");
+    let pool_template = t.get_template_address("Pool");
+    let seal_tx = t
+        .transaction()
+        .call_function(pool_template, "new", args![a, b, 30u16])
+        .build_and_seal(t.secret_key());
+    let res = t.execute_expect_success(seal_tx, vec![]);
+    let ownerless = res
+        .expect_success()
+        .up_iter()
+        .find(|(addr, s)| {
+            addr.is_component()
+                && *s.substate_value().component().unwrap().template_address() == pool_template
+        })
+        .map(|(_, s)| matches!(s.substate_value().component().unwrap().owner_rule(), SubstateOwnerRule::None))
+        .expect("pool component must be created");
+    assert!(
+        ownerless,
+        "Pool component must be ownerless (OwnerRule::None). A non-None owner can call \
+         SetAccessRules/SetOwnerRule on the pool and freeze LP withdrawals."
+    );
 }
