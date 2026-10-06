@@ -23,12 +23,14 @@
     "./dist/*": "./dist/*",
     "./package.json": "./package.json"
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc && tsc -p tsconfig.esm.json && node ./scripts/write-esm-marker.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "echo 'No lint'",
-    "test": "npm run build && node --test test/marketplace.test.cjs test/amm.test.cjs test/amm_parity.test.cjs test/history.test.cjs test/crosschain.test.cjs test/minotari.test.cjs test/hostile_crosschain.test.cjs test/hostile_fuzz.test.cjs test/multihop_hostile.test.cjs test/multihop_fuzz.test.cjs test/marketdata_hostile.test.cjs test/marketdata_fuzz.test.cjs test/route_immutability.test.cjs test/packaging.test.cjs",
+    "test": "npm run build && node --test test/marketplace.test.cjs test/amm.test.cjs test/pool_substate.test.cjs test/amm_parity.test.cjs test/history.test.cjs test/crosschain.test.cjs test/minotari.test.cjs test/hostile_crosschain.test.cjs test/hostile_fuzz.test.cjs test/multihop_hostile.test.cjs test/multihop_fuzz.test.cjs test/marketdata_hostile.test.cjs test/marketdata_fuzz.test.cjs test/route_immutability.test.cjs test/packaging.test.cjs",
     "test:packaging": "npm run build && node --test test/packaging.test.cjs"
   },
   "dependencies": {},
