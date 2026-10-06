@@ -104,13 +104,21 @@ function receiptsWithComponent(substateId) {
   };
 }
 
-/** The batch substate read: a component's header names the template that made it. */
+/**
+ * The batch substate read: a component's header names the template that made it.
+ *
+ * v0.43 shape (read live from https://ootle-indexer-a.tari.com, 2026-10-06):
+ * `substates` is a MAP keyed by substate id, and each value is
+ * `{ version, substate: { Component|… } }` with `version` as a JSON NUMBER. v0.42
+ * sent `{ substate_ids: [...] }` requests and an ARRAY of `{ substate_id, … }`
+ * wrappers; the live host now answers HTTP 422 to the v0.42 request shape, so this
+ * stub models the current contract and guards the parser against regressing to it.
+ */
 function componentSubstates(substateId, templateAddress) {
   return {
-    substates: [
-      {
-        substate_id: substateId,
-        version: 0,
+    substates: {
+      [substateId]: {
+        version: 7,
         substate: {
           Component: {
             header: { template_address: templateAddress, owner_rule: { ByPublicKey: '22'.repeat(32) }, access_rules: { method_access: {}, default: 'DenyAll' }, entity_id: '1' },
@@ -120,7 +128,7 @@ function componentSubstates(substateId, templateAddress) {
           },
         },
       },
-    ],
+    },
   };
 }
 
@@ -285,6 +293,9 @@ test('outage: a healthy discovery response yields the pool component, and no fab
   assert.equal(result.state, 'PROTOCOL_AVAILABLE');
   assert.equal(result.candidates.length, 1);
   assert.equal(result.candidates[0].templateAddress, 'ab'.repeat(32));
+  // v0.43 returns the substate version as a JSON number; it must be carried on as
+  // a decimal string, not collapsed to the '0' fallback.
+  assert.equal(result.candidates[0].version, '7');
   assert.equal(result.unavailableReason, undefined);
   assert.deepEqual(result.pools, [], 'no pool may be described from an unread component state');
   assert.equal(result.publishedTemplates[0].templateName, 'Pool');

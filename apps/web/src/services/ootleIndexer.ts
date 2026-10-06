@@ -18,7 +18,11 @@
  *   GET  /templates/catalogue        -> {"entries":[{template_address,template_name,...}]}
  *   GET  /templates/{addr}           -> published template definition
  *   GET  /transaction-receipts       -> {"receipts":[[addr,{outcome,diff_summary:{upped,downed}}]]}
- *   POST /substates/fetch            -> batch substate read, max 20 ids
+ *   POST /substates/fetch            -> batch substate read, max 20 ids.
+ *        v0.43 body: {"requests":[<id>,...],"cached_only":false}
+ *        v0.43 resp: {"substates":{<id>:{"version","substate":{"Component":{header,body}}}}}
+ *        (v0.42 used {"substate_ids":[...]} and an array response; the live host
+ *         now answers HTTP 422 to the v0.42 shape.)
  *   GET  /substates/{substate_id}    -> {"version","substate":{"Component":{header,body}}}
  *
  * `/templates/cached` was REMOVED in v0.42.0 (the live host answers `400` to
@@ -133,8 +137,20 @@ function text(value: unknown): string | undefined {
   return typeof value === 'string' && value !== '' ? value : undefined;
 }
 
-/** A decimal non-negative integer as a string. Rejects JSON numbers and floats. */
+/**
+ * A decimal non-negative integer, as a string.
+ *
+ * Accepts a JSON string of digits, or a non-negative safe-integer JSON number.
+ * v0.43 returns substate versions as JSON numbers (v0.42 sent strings), so a
+ * number has to be accepted here or every live version collapses to the `'0'`
+ * fallback. Numbers above `Number.MAX_SAFE_INTEGER` are rejected rather than
+ * trusted, because at that size `JSON.parse` has already lost precision and the
+ * value cannot be recovered faithfully; floats are rejected outright.
+ */
 function rawInteger(value: unknown): string | undefined {
+  if (typeof value === 'number') {
+    return Number.isInteger(value) && value >= 0 && value <= Number.MAX_SAFE_INTEGER ? String(value) : undefined;
+  }
   const s = text(value);
   return s !== undefined && /^\d+$/.test(s) ? s : undefined;
 }
@@ -336,14 +352,25 @@ export class TariIndexerDiscovery {
     const components: DiscoveredComponent[] = [];
     for (let start = 0; start < scan.ids.length; start += SUBSTATE_BATCH_LIMIT) {
       const batch = scan.ids.slice(start, start + SUBSTATE_BATCH_LIMIT);
-      const result = await this.transport.postJson(this.url('/substates/fetch'), { requests: batch.map((substate_id) => ({ substate_id })) });
+      // v0.43 batch-read contract (the live host answers HTTP 422 to the v0.42
+      // shape): the body carries `requests` — an array of substate-id STRINGS —
+      // and a required `cached_only` flag; `false` asks for a fresh authoritative
+      // read rather than only whatever the indexer has cached. The response is a
+      // MAP keyed by substate id, each value `{ version, substate: { Component|… } }`
+      // (v0.42 sent `{ substate_ids: [...] }` and an array of wrappers — both the
+      // request field and the response container changed).
+      const result = await this.transport.postJson(this.url('/substates/fetch'), { requests: batch, cached_only: false });
       if (!result.ok) return { ok: false, reason: result.reason };
       const bag = record(result.payload);
       if (bag === undefined) return { ok: false, reason: 'The batch substate response was not a JSON object.' };
-      const substates = bag.substates;
-      if (!Array.isArray(substates)) return { ok: false, reason: 'The batch substate response carried no `substates` array.' };
-      for (const item of substates) {
-        const wrapper = record(item);
+      const substates = record(bag.substates);
+      if (substates === undefined) return { ok: false, reason: 'The batch substate response carried no `substates` map.' };
+      for (const [substateId, rawEntry] of Object.entries(substates)) {
+        // The id is the map KEY in v0.43. A receipt scan only enqueues
+        // `component_*` ids, but re-check the key so a non-component entry in the
+        // map can never be read as a pool component.
+        if (!substateId.startsWith('component_')) continue;
+        const wrapper = record(rawEntry);
         if (wrapper === undefined) continue;
         const inner = record(wrapper.substate) ?? wrapper;
         const component = record(inner.Component);
@@ -352,13 +379,12 @@ export class TariIndexerDiscovery {
         if (header === undefined) continue;
         const templateAddress = text(header.template_address);
         if (templateAddress === undefined || !wanted.has(templateAddress)) continue;
-        const substateId = text(wrapper.substate_id) ?? text(inner.substate_id);
-        if (substateId === undefined) continue;
         components.push({
           componentAddress: substateId,
           templateAddress,
-          // u64 on the wire at v0.42.0. Carried as a decimal string so a
-          // version beyond 2^53 is never truncated by a JS number.
+          // u64 on the wire. v0.43 returns it as a JSON number at the entry level
+          // (v0.42 as a string); carried on as a decimal string so a version is
+          // never silently truncated downstream.
           version: rawInteger(wrapper.version) ?? rawInteger(inner.version) ?? '0',
         });
       }
