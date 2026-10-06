@@ -164,7 +164,11 @@ const CATALOGUE_PAGE_LIMIT = 100;
 /** `/transaction-receipts` likewise caps `limit` at 100. */
 const RECEIPT_PAGE_LIMIT = 100;
 
-/** `POST /substates/fetch` hard-caps a batch at 20 ids and answers 400 above it. */
+/**
+ * Batch size for `POST /substates/fetch`. The live v0.43 host caps `requests` at
+ * 50 ids (it answers HTTP 422 "Upper bound violation" above that, verified
+ * 2026-10-06); 20 stays comfortably under the cap and keeps each request small.
+ */
 const SUBSTATE_BATCH_LIMIT = 20;
 
 /**

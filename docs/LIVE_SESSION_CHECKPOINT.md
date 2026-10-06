@@ -96,3 +96,26 @@ and keyed-map parse via an injected transport.
       + full reconciliation state machine), /nfts (no discovery endpoint by design).
 - [x] Branch pushed; CI (Node Tests + Security Engine Tests) triggered on push.
 - [ ] Final CI result check (engine suite runs Linux-only there)
+
+## UPDATE 2026-10-06 (session 2): LIVE AMM VERTICAL SLICE VERIFIED
+
+Live execution UNBLOCKED and completed. Full detail in
+`docs/ESMERALDA_LIVE_VERTICAL_SLICE_REPORT.md`.
+
+- Submission path: `tools/live-executor` → walletd `transactions.submit_manifest`
+  (daemon signs with its own account key; no key export; loopback-only; testnet
+  identity checked; dry-run fee estimate + per-tx ceiling; durable ledger).
+  Auth solved: v0.43 `auth.request` needs `credentials:{None:null}`.
+- Public fungibles minted via published `TestCoinFactory` (no publish needed):
+  LPTESTA `resource_87385b51…`, LPTESTB `resource_8187d405…` (both Fungible,
+  recall/freeze DenyAll).
+- Pool `component_329d4ef20fe6803ca499db7f923b0d1773d1f72e38d76cfcbe351327d6304169`
+  (Pool template, fee 30bps, LP `resource_32a6a6b0…`).
+- Verified LIVE: initial liquidity (shares 4,242,640; locked 1,000), swap (out
+  271,983 exact), add-liquidity-2 (min-side mint 1,555,209), partial withdrawal
+  (LP→4,797,849; locked still 1,000). Total fees ≈0.026 tTARI.
+- Frontend `/pools` discovers the live pool component on chain (verified in-browser).
+- Finding OPUS-16 (HIGH): pool component defaults to OwnedBySigner → deployer can
+  SetAccessRules and freeze LP funds. Fixed in template source (OwnerRule::None),
+  WASM rebuilt, engine regression added. Needs a NEW published template version;
+  live ef2bc1 pool retains the flaw (harmless, disposable).
