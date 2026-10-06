@@ -101,9 +101,11 @@ function receipts(componentIds: string[]) {
   };
 }
 
-function componentSubstate(substateId: string, templateAddress: string) {
+// v0.43 batch-read entry value: `{ version (a JSON number), substate: { Component } }`.
+// The substate id is the MAP KEY in the response, not a field here (v0.42 carried a
+// `substate_id` field and an array of these wrappers).
+function componentSubstate(templateAddress: string) {
   return {
-    substate_id: substateId,
     version: 0,
     substate: {
       Component: {
@@ -194,14 +196,17 @@ export async function mockIndexer(page: Page, options: MockIndexerOptions = {}):
     }
 
     if (url.pathname === '/substates/fetch') {
+      // v0.43 contract: body is `{ requests: [<id string>,…], cached_only }`, and
+      // the response `substates` is a MAP keyed by substate id (v0.42 sent
+      // `{ substate_id }` objects and an array response).
       let requested: string[] = [];
       try {
-        const body = route.request().postDataJSON() as { requests?: Array<{ substate_id?: string }> };
-        requested = (body.requests ?? []).map((entry) => entry.substate_id ?? '');
+        const body = route.request().postDataJSON() as { requests?: string[] };
+        requested = (body.requests ?? []).filter((id): id is string => typeof id === 'string');
       } catch {
         requested = [];
       }
-      await json({ substates: requested.map((id) => componentSubstate(id, POOL_TEMPLATE_ADDRESS)) });
+      await json({ substates: Object.fromEntries(requested.map((id) => [id, componentSubstate(POOL_TEMPLATE_ADDRESS)])) });
       return;
     }
 
