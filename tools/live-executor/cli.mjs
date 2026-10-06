@@ -188,19 +188,20 @@ fn main() { Pool::new(arg!["a"], arg!["b"], ${feeBps}u16); }`;
     }
     case 'read-pool': {
       const pool = req(flags, 'pool');
+      // NOTE: get_a_resource/get_b_resource are DenyAll on the pool (not in the granted
+      // method set), so an ownerless pool refuses them. The pair is read from
+      // get_pool_balances (AllowAll), which returns both resources with their reserves.
       const manifest = `fn main() {
   let pool = arg!["pool"];
   pool.fee_bps();
-  pool.get_a_resource();
-  pool.get_b_resource();
   pool.lp_resource();
   pool.lp_total_supply();
   pool.locked_lp_supply();
   pool.get_pool_balances();
 }`;
-      const dry = await ex.rpc('transactions.submit_manifest', { manifest, variables: { pool }, max_fee: 1_000_000, dry_run: true, signing_key_ids: [] });
+      const dry = await ex.rpc('transactions.submit_manifest', { manifest, variables: { pool }, max_fee: 100_000, dry_run: true, signing_key_ids: [] });
       const er = dry.result.finalize.execution_results;
-      const names = ['fee_bps', 'a_resource', 'b_resource', 'lp_resource', 'lp_total_supply', 'locked_lp_supply', 'pool_balances'];
+      const names = ['fee_bps', 'lp_resource', 'lp_total_supply', 'locked_lp_supply', 'pool_balances'];
       const fields = {};
       er.forEach((r, i) => { fields[names[i] ?? `r${i}`] = decodeValue(r.indexed?.value); });
       emit({ pool, fields });

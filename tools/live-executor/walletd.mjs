@@ -253,6 +253,57 @@ export class WalletdExecutor {
     });
     return { dryRun: false, transactionId: txId, requiredFees, outcome, raw: finalResult };
   }
+
+  /**
+   * Publish a template WASM through walletd's `transactions.publish_template`.
+   * The daemon optimises (wasm-opt), signs with the default account, and submits —
+   * the same no-key-export signing path. Always dry-runs first for the fee estimate,
+   * enforces the per-tx ceiling, records to the ledger, submits once, reconciles.
+   *
+   * @param {object} p
+   * @param {string} p.opId
+   * @param {string} p.intent
+   * @param {Buffer|Uint8Array} p.binary raw WASM bytes
+   * @param {number} [p.maxFeeMicro]
+   * @param {boolean} [p.dryRunOnly]
+   * @param {Record<string,unknown>} [p.meta]
+   */
+  async publishTemplate(p) {
+    const ceiling = Math.min(p.maxFeeMicro ?? this.maxFeePerTxMicro, this.maxFeePerTxMicro);
+    const identity = await this.verifyNetwork();
+    const account = await this.defaultAccount();
+    const binaryB64 = Buffer.from(p.binary).toString('base64');
+    const base = { binary: binaryB64, fee_account: { ComponentAddress: account.component }, detect_inputs: true };
+
+    // publish_template dry-run returns `{ dry_run_fee, transaction_id }` (not the
+    // `required_fees` / ExecuteResult shape that submit_manifest uses).
+    const dry = await this.rpc('transactions.publish_template', { ...base, max_fee: ceiling, dry_run: true });
+    const requiredFees = dry?.dry_run_fee ?? dry?.required_fees ?? null;
+    if (requiredFees !== null && Number(requiredFees) > ceiling) {
+      throw new ExecutorError(`REFUSED: publish fee estimate ${requiredFees} exceeds ceiling ${ceiling} for op ${p.opId}.`);
+    }
+    await appendLedger(this.ledgerPath, {
+      ts: new Date().toISOString(), opId: p.opId, phase: 'dry_run', intent: p.intent,
+      account: identity, meta: p.meta ?? {}, requiredFees, feeCeiling: ceiling,
+    });
+    if (p.dryRunOnly) return { dryRun: true, requiredFees, result: dry?.result ?? null };
+
+    await appendLedger(this.ledgerPath, { ts: new Date().toISOString(), opId: p.opId, phase: 'submitting', intent: p.intent, feeCeiling: ceiling, requiredFees });
+    const submit = await this.rpc('transactions.publish_template', { ...base, max_fee: ceiling, dry_run: false });
+    const txId = submit?.transaction_id;
+    if (!txId) throw new ExecutorError(`op ${p.opId}: publish returned no transaction_id`);
+    await appendLedger(this.ledgerPath, { ts: new Date().toISOString(), opId: p.opId, phase: 'submitted', transactionId: txId });
+
+    const finalResult = await this.rpc('transactions.wait_result', { transaction_id: txId }, { timeoutMs: 180_000 });
+    const outcome = summariseResult(finalResult);
+    // The published template address is a `template_...` up-substate.
+    const templateAddr = outcome.templates[0] ?? (submit?.template_address);
+    await appendLedger(this.ledgerPath, {
+      ts: new Date().toISOString(), opId: p.opId, phase: 'final', transactionId: txId,
+      status: outcome.status, actualFee: outcome.actualFee, epoch: outcome.epoch, templateAddress: templateAddr,
+    });
+    return { dryRun: false, transactionId: txId, requiredFees, outcome, templateAddress: templateAddr, raw: finalResult };
+  }
 }
 
 function extractComponent(addr) {
