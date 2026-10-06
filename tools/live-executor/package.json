@@ -1,0 +1,16 @@
+{
+  "name": "@tari-ootle/live-executor",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Guarded Esmeralda testnet AMM transaction executor (loopback walletd manifest submission).",
+  "bin": {
+    "ootle-live": "./cli.mjs"
+  },
+  "scripts": {
+    "test": "node --test ./walletd.test.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
