@@ -467,6 +467,10 @@ class TariBridgeWalletAdapter implements WalletBridge {
         if (view === undefined) return undefined;
         return { address: view.address, templateName: view.templateName, epoch: view.epoch, fields: view.fields };
       },
+      // RAW read for the authoritative Pool decoder (reserves live in vault substates).
+      async readRaw(address: string) {
+        return readRawSubstate(provider, address);
+      },
     };
   }
 

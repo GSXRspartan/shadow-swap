@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const { decodePoolState, decodePoolComponent, vaultAmount, resourceTotalSupply, PoolDecodeError } = require('../dist/poolSubstate.js');
+const { createOotleReadbackProvider } = require('../dist/ootle.js');
 
 // REAL Pool v2 substates, captured from the live Esmeralda chain (indexer substate
 // API) on 2026-10-06 for component_8c20c644... . These are the exact bytes the wallet's
@@ -87,4 +88,24 @@ test('decodePoolState fails closed on a missing component or malformed body', as
 test('decodePoolState fails closed when a dependent vault/resource is missing (never invents a reserve)', async () => {
   const partial = { [POOL]: COMPONENT_SUBSTATE, [VAULT_TTARI]: SUBSTATES[VAULT_TTARI] }; // vaults B/locked + LP resource absent
   await assert.rejects(decodePoolState(reader(partial), POOL), PoolDecodeError);
+});
+
+test('readback readPool uses decodePoolState via readRaw (quote-path migration) and is fail-closed', async () => {
+  // The quote/readback provider must decode the REAL multi-substate pool, not the
+  // obsolete flat-field parsePoolState. With a readRaw-capable reader it returns the
+  // exact live state; the legacy flat-field path is only for readers without readRaw.
+  const reader = { async readComponent() { return undefined; }, async readRaw(addr) { return SUBSTATES[addr]; } };
+  const rb = createOotleReadbackProvider(reader, 'WALLET_PROVIDER');
+  const read = await rb.readPool(POOL);
+  assert.equal(read.status, 'FOUND');
+  assert.equal(read.value.reserveA, '595664');
+  assert.equal(read.value.reserveB, '604684');
+  assert.equal(read.value.totalLpSupply, '600000');
+  assert.equal(read.value.lockedLpSupply, '1000');
+  assert.equal(read.value.feeBps, '30');
+
+  // Fail-closed: a missing dependent substate yields UNAVAILABLE, never a fabricated pool.
+  const partial = { async readComponent() { return undefined; }, async readRaw(addr) { return addr === POOL ? SUBSTATES[POOL] : undefined; } };
+  const bad = await createOotleReadbackProvider(partial, 'WALLET_PROVIDER').readPool(POOL);
+  assert.equal(bad.status, 'UNAVAILABLE');
 });

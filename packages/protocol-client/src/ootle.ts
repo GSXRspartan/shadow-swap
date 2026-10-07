@@ -16,6 +16,7 @@ import {
   ReadSource,
 } from './execution.js';
 import { Listing, ItemOffer, CollectionBid } from './marketplace.js';
+import { decodePoolState } from './poolSubstate.js';
 
 // ---------------------------------------------------------------------------
 // Pool readback
@@ -56,6 +57,13 @@ export interface OotleSubstateEnvelope {
 export interface AuthoritativeSubstateReader {
   readComponent(address: string): Promise<OotleSubstateEnvelope | undefined>;
   readResource?(address: string): Promise<OotleSubstateEnvelope | undefined>;
+  /**
+   * RAW substate read: the full `{ Component|Vault|Resource: {...} }` value, with
+   * nested structures intact. Required for the real Pool decode (reserves live in
+   * vault substates). When present, `readPool` uses the multi-substate decoder; when
+   * absent, it falls back to the legacy flat-field envelope path (test doubles).
+   */
+  readRaw?(address: string): Promise<unknown>;
 }
 
 function freshness(envelope: EnvelopeInput): Freshness {
@@ -147,6 +155,20 @@ export function createOotleReadbackProvider(reader: AuthoritativeSubstateReader,
   }
   return {
     async readPool(poolComponent: string): Promise<ExecutionAuthoritativeRead<PoolState>> {
+      // Preferred path: the published Pool keeps reserves in VAULT substates and LP
+      // supply in the LP RESOURCE substate, so decode the real multi-substate state
+      // via the RAW reader. The legacy flat-field `parsePoolState` is kept only for
+      // readers without `readRaw` (test doubles that supply a pre-decoded envelope).
+      if (typeof reader.readRaw === 'function') {
+        try {
+          const value = await decodePoolState({ read: (address) => reader.readRaw!(address) }, poolComponent);
+          const fresh = freshness({ address: poolComponent, source, templateName: 'Pool', fields: {} });
+          return { status: 'FOUND', value, freshness: fresh };
+        } catch (error) {
+          // Fail-closed: a missing/malformed substate is UNAVAILABLE, never a fabricated pool.
+          return { status: 'UNAVAILABLE', reason: (error as Error).message };
+        }
+      }
       const read = await readEnvelope(poolComponent, 'Pool');
       if (read.status === 'UNAVAILABLE') return { status: 'UNAVAILABLE', reason: read.reason };
       try {
