@@ -110,24 +110,38 @@ test('readback readPool uses decodePoolState via readRaw (quote-path migration) 
   assert.equal(bad.status, 'UNAVAILABLE');
 });
 
-test('readback readPool falls back to the legacy flat-field decode for pre-decoded readers (not production)', async () => {
-  // A reader whose readRaw returns a pre-decoded flat envelope (no multi-substate shape)
-  // is a test double / a wallet that pre-flattens. decodePoolState cannot decode it, so
-  // readPool falls back to the legacy flat-field path via readComponent. On REAL substates
-  // the legacy path also fails (no flat reserve_a field), so production stays fail-closed.
-  const flatReader = {
+test('readback readPool never downgrades a raw-capable reader to the legacy flat-field decode', async () => {
+  // HARDENED: the flat-field `parsePoolState` is ONLY for readers that do not
+  // implement `readRaw` (test doubles that supply a pre-decoded envelope). A reader
+  // that advertises raw substates is on the production path and MUST stay fail-closed:
+  // if its raw pool cannot be decoded there is no downgrade to a flattened envelope,
+  // so a transport bug (or a hostile provider) can never fabricate a reserve.
+
+  // (a) A raw-capable reader whose raw pool is undecodable but whose flattened
+  // envelope looks plausible yields UNAVAILABLE — the flat fields are ignored.
+  const downgradeReader = {
     async readComponent(addr) {
       if (addr !== POOL) return undefined;
       return { address: POOL, templateName: 'Pool', fields: { resource_a: TTARI, resource_b: LPTESTA, reserve_a: '11', reserve_b: '22', fee_bps: '30', lp_resource: LP, total_lp_supply: '33', locked_lp_supply: '0' } };
     },
     async readRaw() { return { substateId: POOL, fields: {} }; },
   };
+  const downgraded = await createOotleReadbackProvider(downgradeReader, 'WALLET_PROVIDER').readPool(POOL);
+  assert.equal(downgraded.status, 'UNAVAILABLE');
+
+  // (b) A pre-decoded reader WITHOUT readRaw is the sole legacy path and still decodes.
+  const flatReader = {
+    async readComponent(addr) {
+      if (addr !== POOL) return undefined;
+      return { address: POOL, templateName: 'Pool', fields: { resource_a: TTARI, resource_b: LPTESTA, reserve_a: '11', reserve_b: '22', fee_bps: '30', lp_resource: LP, total_lp_supply: '33', locked_lp_supply: '0' } };
+    },
+  };
   const read = await createOotleReadbackProvider(flatReader, 'WALLET_PROVIDER').readPool(POOL);
   assert.equal(read.status, 'FOUND');
   assert.equal(read.value.reserveA, '11');
   assert.equal(read.value.reserveB, '22');
 
-  // Real-shape-but-broken raw with NO legacy envelope → UNAVAILABLE (fail-closed).
+  // (c) Real-shape-but-broken raw with NO legacy envelope → UNAVAILABLE (fail-closed).
   const brokenReader = { async readComponent() { return undefined; }, async readRaw() { return { substateId: POOL, fields: {} }; } };
   const bad = await createOotleReadbackProvider(brokenReader, 'WALLET_PROVIDER').readPool(POOL);
   assert.equal(bad.status, 'UNAVAILABLE');

@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { mockIndexer, POOL_COMPONENT } from './mockIndexer.js';
+import { RAW_POOL_SUBSTATES, REFERENCE_BALANCES } from './rawPoolSubstates.js';
 
 /**
  * TARI WALLET INTEGRATION CONFORMANCE — browser matrix.
@@ -99,19 +100,12 @@ function contractProvider(options: { form: 'embedded' | 'extension'; capabilitie
             case 'tari_getAccounts': return [state.account];
             case 'tari_getWalletAddress': return 'otl_esm_1qqwalletaddress';
             case 'tari_getBalances':
-              return [{ resourceAddress: 'otl_canonical_tari', kind: 'Fungible', symbol: 'TARI', name: 'Tari', divisibility: 6, amount: '10000000000', confidentialAmount: '0' }];
-            case 'tari_getSubstate':
-              return {
-                substateId: envelope.params.substateId,
-                templateName: 'Pool',
-                substateVersion: '7',
-                epoch: '900',
-                fields: {
-                  resource_a: 'otl_canonical_tari', resource_b: 'otl_wstable_0001',
-                  reserve_a: '1000000000', reserve_b: '4000000000', fee_bps: '30',
-                  lp_resource: 'otl_lp_0001', total_lp_supply: '2000000000', locked_lp_supply: '0',
-                },
-              };
+              return ${JSON.stringify(REFERENCE_BALANCES)};
+            case 'tari_getSubstate': {
+              const raw = ${JSON.stringify(RAW_POOL_SUBSTATES)}[envelope.params.substateId];
+              if (raw === undefined) return { substateId: envelope.params.substateId, notFound: true, fields: {} };
+              return { substate: raw };
+            }
             case 'tari_getTransactionResult': return { transactionId: envelope.params.transactionId, status: 'UNKNOWN' };
             case 'tari_signAndSubmitTransaction': return { transactionId: 'tx_' + Date.now().toString(36) };
             case 'tari_createTransactionRequest': return { requestId: 'req_1' };

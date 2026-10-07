@@ -157,32 +157,24 @@ export function createOotleReadbackProvider(reader: AuthoritativeSubstateReader,
     async readPool(poolComponent: string): Promise<ExecutionAuthoritativeRead<PoolState>> {
       // Preferred path: the published Pool keeps reserves in VAULT substates and LP
       // supply in the LP RESOURCE substate, so decode the real multi-substate state
-      // via the RAW reader. The legacy flat-field `parsePoolState` is kept only for
-      // readers without `readRaw` (test doubles that supply a pre-decoded envelope).
+      // via the RAW reader.
       if (typeof reader.readRaw === 'function') {
+        // FAIL-CLOSED: a raw-capable reader is the production path. If the raw
+        // decode fails there is NO downgrade to the flat-field path — a transport
+        // that advertises raw substates but returns an undecodable pool must yield
+        // UNAVAILABLE, never a fabricated reserve from a flattened envelope.
         try {
           const value = await decodePoolState({ read: (address) => reader.readRaw!(address) }, poolComponent);
           const fresh = freshness({ address: poolComponent, source, templateName: 'Pool', fields: {} });
           return { status: 'FOUND', value, freshness: fresh };
         } catch (rawError) {
-          // The raw multi-substate decode is the production path. If the reader does
-          // not supply raw multi-substate data — a reader that returns a PRE-DECODED
-          // flat-field envelope (a test double, or a wallet that pre-flattens) — fall
-          // through to the legacy flat-field decode. This is NOT a permissive fallback:
-          // on REAL substates the legacy path also fails (a real component carries no
-          // flat `reserve_a`/`total_lp_supply` fields), so production stays fail-closed
-          // and never fabricates a reserve.
-          const legacy = await readEnvelope(poolComponent, 'Pool');
-          if (legacy.status !== 'UNAVAILABLE') {
-            try {
-              return { status: 'FOUND', value: parsePoolState(legacy.value), freshness: legacy.freshness };
-            } catch {
-              // fall through to the raw error below
-            }
-          }
           return { status: 'UNAVAILABLE', reason: (rawError as Error).message };
         }
       }
+      // Legacy flat-field path: ONLY for readers without a raw substate reader (a
+      // test double that supplies a pre-decoded envelope). A real Pool component
+      // carries no flat `reserve_a`/`total_lp_supply` fields, so this path is
+      // intrinsically unreliable and is never reachable from a production transport.
       const read = await readEnvelope(poolComponent, 'Pool');
       if (read.status === 'UNAVAILABLE') return { status: 'UNAVAILABLE', reason: read.reason };
       try {
