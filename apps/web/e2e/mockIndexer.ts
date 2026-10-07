@@ -57,8 +57,15 @@ export const ESMERALDA_IDENTITY = {
   indexes_all_events: true,
 };
 
-/** The address our `Pool` template would occupy once published. */
-export const POOL_TEMPLATE_ADDRESS = 'ab'.repeat(32);
+/**
+ * The address our `Pool` template would occupy once published.
+ *
+ * This is the REAL published Pool v2 template, not a placeholder: discovery reports it,
+ * and the authoritative wallet read is pinned to it, so the two sources must agree the
+ * same way they must on the live chain. A placeholder here would let a wallet that serves
+ * a different template pass, which is exactly the drift the pin exists to catch.
+ */
+export const POOL_TEMPLATE_ADDRESS = 'f47a330eee1bbf91f58d9ff4280b4279c3c4fe91fb59ab5812cd5128442819ab';
 
 /** A DIFFERENT template whose name contains "Pool", to prove exact matching. */
 export const OTHER_POOL_TEMPLATE = {

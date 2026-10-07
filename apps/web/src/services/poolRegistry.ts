@@ -74,6 +74,24 @@ export function seedComponents(network: string): string[] {
   return (POOL_REGISTRY_SEED[network] ?? []).map((e) => e.component).filter(isComponentAddress);
 }
 
+/**
+ * The protocol-VERIFIED template for a seeded pool component, or `undefined`.
+ *
+ * This is the one template identity this repository asserts rather than observes: the seed
+ * names a pool the protocol published and audited. It is used to PIN the authoritative
+ * reread (`decodePoolState` refuses a component whose header template differs), which is a
+ * strictly stronger check than re-confirming the indexer's own claim.
+ *
+ * Deliberately NOT derived from the discovery result: an indexer-reported template is
+ * discovery evidence and must never become the identity the read is pinned to. A component
+ * that is not a protocol seed simply gets no pin, and still has to satisfy the decoder's
+ * intrinsic vault/resource identity checks.
+ */
+export function seededTemplateFor(network: string, component: string): string | undefined {
+  if (!isComponentAddress(component)) return undefined;
+  return (POOL_REGISTRY_SEED[network] ?? []).find((e) => e.component === component)?.templateAddress;
+}
+
 /** The cached (previously-discovered) component addresses for a network. UNTRUSTED. */
 export function loadCachedComponents(network: string, storage: RegistryStorage | undefined): string[] {
   if (storage === undefined) return [];

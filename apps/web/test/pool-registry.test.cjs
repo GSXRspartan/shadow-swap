@@ -95,6 +95,53 @@ test('registry: rememberDiscovered persists, dedups, and never stores the seed',
   assert.deepEqual(cached, [KNOWN_POOL], 'only the new valid non-seed component is cached');
 });
 
+// --- the template PIN used to harden the authoritative reread ----------------
+
+test('registry: seededTemplateFor pins only protocol-verified seeds, never cache/discovery data', () => {
+  const seed = registry.seedComponents('esmeralda')[0];
+  assert.equal(registry.seededTemplateFor('esmeralda', seed), POOL_TEMPLATE);
+  // A cached (UNTRUSTED) id gets no pin: it must not inherit an identity from the cache.
+  assert.equal(registry.seededTemplateFor('esmeralda', KNOWN_POOL), undefined);
+  // Wrong network, garbage, and non-string values never resolve to a template.
+  assert.equal(registry.seededTemplateFor('localnet', seed), undefined);
+  assert.equal(registry.seededTemplateFor('esmeralda', 'not-a-component'), undefined);
+  assert.equal(registry.seededTemplateFor('esmeralda', 42), undefined);
+  assert.equal(registry.seededTemplateFor('esmeralda', null), undefined);
+});
+
+test('registry: the pinned template makes the raw pool decode refuse a look-alike component', async () => {
+  // End-to-end over the real decoder: the protocol-verified pin is what turns
+  // "decodes like a pool" into "is the pool we asked for".
+  const { decodePoolState } = require('@tari-ootle/protocol-client');
+  const POOL = registry.POOL_REGISTRY_SEED.esmeralda[0].component;
+  const TTARI = 'resource_' + '01'.repeat(32);
+  const LPTESTA = 'resource_' + '22'.repeat(32);
+  const LP = 'resource_' + '33'.repeat(32);
+  const tagRes = (hex) => ({ '@cbor': 'tag', tag: 131, value: { '@cbor': 'bytes', hex } });
+  const tagVault = (hex) => ({ '@cbor': 'tag', tag: 132, value: { '@cbor': 'bytes', hex } });
+  const substate = (template) => ({
+    Component: {
+      header: { template_address: template, owner_rule: 'None' },
+      body: { state: [
+        { '@cbor': 'map', entries: [[tagRes('01'.repeat(32)), tagVault('aa'.repeat(32))], [tagRes('22'.repeat(32)), tagVault('bb'.repeat(32))]] },
+        tagRes('33'.repeat(32)), 30, tagVault('cc'.repeat(32)),
+      ] },
+    },
+  });
+  const store = {
+    [POOL]: substate(POOL_TEMPLATE),
+    ['vault_' + 'aa'.repeat(32)]: { Vault: { resource_container: { Stealth: { address: TTARI, revealed_amount: '10' } } } },
+    ['vault_' + 'bb'.repeat(32)]: { Vault: { resource_container: { Fungible: { address: LPTESTA, amount: '20' } } } },
+    ['vault_' + 'cc'.repeat(32)]: { Vault: { resource_container: { Fungible: { address: LP, amount: '5' } } } },
+    [LP]: { Resource: { total_supply: '100' } },
+  };
+  const read = (over) => decodePoolState({ read: (a) => (a in store ? (over[a] ?? store[a]) : store[a]) }, POOL, {
+    templateAddress: registry.seededTemplateFor('esmeralda', POOL),
+  });
+  assert.equal((await read({})).reserveA, '10');
+  await assert.rejects(read({ [POOL]: substate(OTHER_TEMPLATE) }), /is template/);
+});
+
 // --- end-to-end discovery with the registry ---------------------------------
 
 test('discovery: a known pool aged out of receipts is still found via the registry', async () => {

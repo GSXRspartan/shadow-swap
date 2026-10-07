@@ -37,6 +37,14 @@ const VAULT_A2 = h('a2');
 const VAULT_B2 = h('b2');
 const LOCKED_2 = h('c2');
 
+/**
+ * The REAL published Pool v2 template address, so the double serves the same header the
+ * live chain serves. A placeholder here would let the browser tests pass a decoder that
+ * production would reject, which is exactly the class of drift this fixture exists to
+ * prevent.
+ */
+export const POOL_V2_TEMPLATE = 'f47a330eee1bbf91f58d9ff4280b4279c3c4fe91fb59ab5812cd5128442819ab';
+
 /** The exact resource identity the app compares against for canonical TARI. */
 export const TARI_RESOURCE = 'resource_' + TARI_HEX;
 export const WSTABLE_RESOURCE = 'resource_' + WSTABLE_HEX;
@@ -57,11 +65,18 @@ export const REFERENCE_BALANCES = [
 const tagResource = (hex: string) => ({ '@cbor': 'tag', tag: 131, value: { '@cbor': 'bytes', hex } });
 const tagVault = (hex: string) => ({ '@cbor': 'tag', tag: 132, value: { '@cbor': 'bytes', hex } });
 
-/** Raw Pool component body: the `[pools, lp_resource, fee_bps, locked_lp_vault]` tuple. */
+/**
+ * Raw Pool component body: the `[pools, lp_resource, fee_bps, locked_lp_vault]` tuple.
+ *
+ * The header carries the real Pool v2 template and the vault containers carry the
+ * `address` field the live wire shape always includes — the decoder now refuses a vault
+ * that does not hold the resource the component declares, so a double that omitted it
+ * would be testing a weaker reader than production.
+ */
 function componentState(resourceA: string, resourceB: string, vaultA: string, vaultB: string, lpResource: string, feeBps: number, lockedVault: string) {
   return {
     Component: {
-      header: { template_address: 'ab'.repeat(32), owner_rule: 'None', access_rules: { method_access: {}, default: 'DenyAll' } },
+      header: { template_address: POOL_V2_TEMPLATE, owner_rule: 'None', access_rules: { method_access: {}, default: 'DenyAll' } },
       body: {
         state: [
           {
@@ -80,7 +95,10 @@ function componentState(resourceA: string, resourceB: string, vaultA: string, va
   };
 }
 
-const vault = (amount: string) => ({ Vault: { resource_container: { Fungible: { amount } }, freeze_flags: 0 } });
+/** A vault substate in the live wire shape: the container names the resource it holds. */
+const vault = (amount: string, resourceHex: string) => ({
+  Vault: { resource_container: { Fungible: { address: 'resource_' + resourceHex, amount } }, freeze_flags: 0 },
+});
 const resource = (totalSupply: string) => ({ Resource: { resource_type: 'Fungible', owner_rule: 'None', total_supply: totalSupply } });
 
 /**
@@ -90,17 +108,57 @@ const resource = (totalSupply: string) => ({ Resource: { resource_type: 'Fungibl
  */
 export const RAW_POOL_SUBSTATES: Record<string, unknown> = {
   [POOL_COMPONENT]: componentState(TARI_HEX, WSTABLE_HEX, VAULT_A1, VAULT_B1, LP1_HEX, 30, LOCKED_1),
-  ['vault_' + VAULT_A1]: vault('1000000000'),
-  ['vault_' + VAULT_B1]: vault('4000000000'),
+  ['vault_' + VAULT_A1]: vault('1000000000', TARI_HEX),
+  ['vault_' + VAULT_B1]: vault('4000000000', WSTABLE_HEX),
   ['resource_' + LP1_HEX]: resource('2000000000'),
-  ['vault_' + LOCKED_1]: vault('0'),
+  ['vault_' + LOCKED_1]: vault('0', LP1_HEX),
 
   [SAFE_POOL_COMPONENT]: componentState(AAA_HEX, BBB_HEX, VAULT_A2, VAULT_B2, LP2_HEX, 5, LOCKED_2),
-  ['vault_' + VAULT_A2]: vault('5000000000'),
-  ['vault_' + VAULT_B2]: vault('7000000000'),
+  ['vault_' + VAULT_A2]: vault('5000000000', AAA_HEX),
+  ['vault_' + VAULT_B2]: vault('7000000000', BBB_HEX),
   ['resource_' + LP2_HEX]: resource('3000000000'),
-  ['vault_' + LOCKED_2]: vault('0'),
+  ['vault_' + LOCKED_2]: vault('0', LP2_HEX),
 };
+
+/**
+ * A hostile variant of the substate map, BAKED INTO the provider script rather than
+ * transformed at request time.
+ *
+ * Each mode models a wallet that advertises raw substates but does not deliver the real
+ * wire shape:
+ *   'noAddress'     the vault containers omit the resource `address`, so what a vault
+ *                   holds cannot be proven
+ *   'wrongTemplate' the component header names a different template, so the component is
+ *                   a look-alike rather than the pool discovery found
+ *   'missingVault'  a reserve vault is reported absent, so a reserve would have to be
+ *                   invented to display one
+ *
+ * Serving these as DATA keeps the double deterministic: the very first reply is already
+ * hostile, which is both closer to a real broken wallet and immune to any ordering or
+ * state-toggling question in a test.
+ */
+export type HostilePoolMode = 'noAddress' | 'wrongTemplate' | 'missingVault';
+
+export function hostileRawPoolSubstates(mode: HostilePoolMode): Record<string, unknown> {
+  const clone: Record<string, unknown> = structuredClone(RAW_POOL_SUBSTATES);
+  if (mode === 'missingVault') {
+    delete clone['vault_' + VAULT_A1];
+    return clone;
+  }
+  if (mode === 'wrongTemplate') {
+    for (const entry of Object.values(clone)) {
+      const header = (entry as { Component?: { header?: { template_address?: string } } }).Component?.header;
+      if (header !== undefined) header.template_address = '00'.repeat(32);
+    }
+    return clone;
+  }
+  for (const entry of Object.values(clone)) {
+    const container = (entry as { Vault?: { resource_container?: Record<string, { address?: string }> } }).Vault?.resource_container;
+    if (container === undefined) continue;
+    for (const kind of Object.keys(container)) delete container[kind].address;
+  }
+  return clone;
+}
 
 /**
  * The `tari_getSubstate` reply for an id, as the published contract delivers it:
