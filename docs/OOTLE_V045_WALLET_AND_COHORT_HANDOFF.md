@@ -265,6 +265,47 @@ the pool from the same decoder.
 - **Optional tiny live smoke swap** on Pool v2 (<= 1 tTARI single tx, <= 0.25 tTARI
   economic) was NOT submitted this run: dry-run coverage is complete, and a live
   submission is an operator decision, not a migration requirement.
+## Final CI on the audited head (both workflows green)
+
+Head `79f7037` (`feat/v045-walletd-and-full-cohort`), pushed and verified:
+
+| Workflow | Run | Result |
+|---|---|---|
+| Node Tests | `37601955897` | success — protocol-client **220/220**, wallet-adapter **21/21**, web **346/346**, browser-security **150/150** |
+| Security Engine Tests | `37601955898` | success — Linux engine suite **44 passed / 0 failed** across 8 binaries, pool_math 36, pool_ref_model 22, protocol_types 10, all four templates built, rustfmt + clippy `-D warnings` clean |
+
+Local counts matched CI exactly for every suite that runs locally.
+
+## Walletd daemon state at the end of the audit (operator action, recorded honestly)
+
+The upgrade itself was verified while v0.45.0 was running (`wallet.get_info` ->
+`0.45.0`, loopback-only listener, both accounts confirmed). Afterwards, at
+2026-10-07 00:21 local, the daemon was restarted from OUTSIDE this audit with the OLD
+binary (`tari_ootle_walletd-0.42.0-a43773e-windows-x64.exe`, PID 11836, loopback
+`127.0.0.1:5100` only). This audit did not restart it: the daemon is operator-owned
+infrastructure and reverting it is an operator decision, not an audit one.
+
+Consequences checked and clean:
+
+- the wallet DB is intact after the revert (`integrity_check=ok`, `journal_mode=delete`,
+  schema_version 84, 2 accounts);
+- the three-source Pool v2 read still agrees exactly (595664 / 604684 / 600000 / 1000 /
+  30) at epoch 11958, so the recorded live state does not depend on which daemon serves it;
+- the verified v0.45.0 binary is still in place at
+  `C:\Users\pdark\Downloads\walletd-0.45.0\tari_ootle_walletd.exe` with SHA-256
+  `1fa177e6f3a8191493561bf95f325e3e999fde91601535ff9d19c2d9fda803d8` (unchanged mtime),
+  so re-upgrading is a single operator restart against the same base path.
+
+Note for the operator: the current DB has been written by BOTH 0.42.0 and 0.45.0. Both
+used schema_version 84, and the restore-safe pre-upgrade backup is unchanged, but the
+policy "never downgrade a migrated DB in place" is now satisfied only by luck rather
+than by sequence. If any anomaly appears, stop the daemon, restore the pre-v0.45 backup
+directory, and run 0.42 against THAT restored copy.
+
+The audit hardening is itself regression-covered: the pool decoder grew from 7 to
+**18 tests** (identity + downgrade matrix), the executor from 7 to **8** (the audited
+pool-template guard), the registry suite from 9 to **12** (the template pin), and the
+browser conformance matrix from 22 to **25 flows** (three hostile-provider refusals).
 - No open blockers in code or CI. `feat/v045-walletd-and-full-cohort` is ready to open as a PR.
 
 ## Evidence index
