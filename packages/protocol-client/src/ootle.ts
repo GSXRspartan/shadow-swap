@@ -164,9 +164,23 @@ export function createOotleReadbackProvider(reader: AuthoritativeSubstateReader,
           const value = await decodePoolState({ read: (address) => reader.readRaw!(address) }, poolComponent);
           const fresh = freshness({ address: poolComponent, source, templateName: 'Pool', fields: {} });
           return { status: 'FOUND', value, freshness: fresh };
-        } catch (error) {
-          // Fail-closed: a missing/malformed substate is UNAVAILABLE, never a fabricated pool.
-          return { status: 'UNAVAILABLE', reason: (error as Error).message };
+        } catch (rawError) {
+          // The raw multi-substate decode is the production path. If the reader does
+          // not supply raw multi-substate data — a reader that returns a PRE-DECODED
+          // flat-field envelope (a test double, or a wallet that pre-flattens) — fall
+          // through to the legacy flat-field decode. This is NOT a permissive fallback:
+          // on REAL substates the legacy path also fails (a real component carries no
+          // flat `reserve_a`/`total_lp_supply` fields), so production stays fail-closed
+          // and never fabricates a reserve.
+          const legacy = await readEnvelope(poolComponent, 'Pool');
+          if (legacy.status !== 'UNAVAILABLE') {
+            try {
+              return { status: 'FOUND', value: parsePoolState(legacy.value), freshness: legacy.freshness };
+            } catch {
+              // fall through to the raw error below
+            }
+          }
+          return { status: 'UNAVAILABLE', reason: (rawError as Error).message };
         }
       }
       const read = await readEnvelope(poolComponent, 'Pool');

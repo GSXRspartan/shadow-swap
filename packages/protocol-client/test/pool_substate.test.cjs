@@ -109,3 +109,26 @@ test('readback readPool uses decodePoolState via readRaw (quote-path migration) 
   const bad = await createOotleReadbackProvider(partial, 'WALLET_PROVIDER').readPool(POOL);
   assert.equal(bad.status, 'UNAVAILABLE');
 });
+
+test('readback readPool falls back to the legacy flat-field decode for pre-decoded readers (not production)', async () => {
+  // A reader whose readRaw returns a pre-decoded flat envelope (no multi-substate shape)
+  // is a test double / a wallet that pre-flattens. decodePoolState cannot decode it, so
+  // readPool falls back to the legacy flat-field path via readComponent. On REAL substates
+  // the legacy path also fails (no flat reserve_a field), so production stays fail-closed.
+  const flatReader = {
+    async readComponent(addr) {
+      if (addr !== POOL) return undefined;
+      return { address: POOL, templateName: 'Pool', fields: { resource_a: TTARI, resource_b: LPTESTA, reserve_a: '11', reserve_b: '22', fee_bps: '30', lp_resource: LP, total_lp_supply: '33', locked_lp_supply: '0' } };
+    },
+    async readRaw() { return { substateId: POOL, fields: {} }; },
+  };
+  const read = await createOotleReadbackProvider(flatReader, 'WALLET_PROVIDER').readPool(POOL);
+  assert.equal(read.status, 'FOUND');
+  assert.equal(read.value.reserveA, '11');
+  assert.equal(read.value.reserveB, '22');
+
+  // Real-shape-but-broken raw with NO legacy envelope → UNAVAILABLE (fail-closed).
+  const brokenReader = { async readComponent() { return undefined; }, async readRaw() { return { substateId: POOL, fields: {} }; } };
+  const bad = await createOotleReadbackProvider(brokenReader, 'WALLET_PROVIDER').readPool(POOL);
+  assert.equal(bad.status, 'UNAVAILABLE');
+});
