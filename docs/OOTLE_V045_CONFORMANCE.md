@@ -13,19 +13,21 @@ created, no live state-changing transaction submitted.
 | Current epoch | **11940** | `/info`, `/network` |
 | Protocol version | **V1 active** (V1 activated at epoch 11925; 11940 > 11925) | upstream release notes + epoch |
 | `verify_substate_proofs` | true | `/info` |
-| **walletd** | **0.42.0** (`tari_ootle_walletd-0.42.0-a43773e-windows-x64.exe` on :5100) | process inspection |
+| **walletd** | **0.45.0** (`tari_ootle_walletd.exe` sha256 `1fa177e6…`, PID 9148 on `127.0.0.1:5100`) | `wallet.get_info`; process inspection |
 
-**Live state-changing transactions are BLOCKED** this run: walletd (0.42.0) is older
-than the v0.45 line. Per policy, no new state-changing tx is submitted with an outdated
-daemon, and the binary is not replaced unattended (never a second daemon on the same DB,
-never a DB reset). To enable live mutation, the operator upgrades walletd to the v0.45
-line and restarts it against the same base-path. Read-only chain work uses the 0.45
-indexers directly.
+**Update (2026-10-07):** walletd was upgraded 0.42.0 → **0.45.0** against the same base-path
+(a verified restorable backup was taken first). The daemon now matches the v0.45 line, so the
+previous **BLOCKED** status on live state-changing transactions is cleared. No new
+state-changing transaction was submitted in this run; read-only chain work uses the 0.45
+indexers directly. See `docs/OOTLE_V045_WALLET_AND_COHORT_HANDOFF.md`.
 
-## Upstream delta reviewed (v0.44.0 `59b8af33…`, v0.45.0 `7b16f2a0a3c4ee548aaaa20bf597ffd489839cd5`)
+## Upstream delta reviewed (v0.44.0 `59b8af33…`, v0.45.0 `9c626062673760530ffb075b6b006a67becebe5a`)
 
-The prompt's `9c62606` is the `template_lib` subtree commit inside the v0.45.0 tag; the
-tag commit itself is `7b16f2a0…` (verified by `git ls-remote --tags`).
+**Correction (2026-10-07):** v0.45.0 is an **annotated tag**. `7b16f2a0a3c4ee548aaaa20bf597ffd489839cd5`
+is the tag **object**; the release **commit** it points to is
+`9c626062673760530ffb075b6b006a67becebe5a` (`git ls-remote --tags` → `v0.45.0^{} = 9c62606…`).
+`9c62606` is therefore the correct build pin — **not** a `template_lib` subtree commit, as
+previously stated here. See `docs/OOTLE_V045_WALLET_AND_COHORT_HANDOFF.md`.
 
 - **Protocol V1** (v0.44): commits each shard's state version in the state Merkle root;
   changes state-sync verification. **Impact on us: none at the read layer** — the
@@ -100,13 +102,14 @@ valid under V1 (live reads), and its source **compiles cleanly under v0.45.0**
 
 | Dependency | Old | v0.45 target | Changed? | Reason |
 |---|---|---|---|---|
-| templates `tari_template_lib`/`_abi` | git `a43773e` (0.42) | git `7b16f2a` (0.45, lib 0.34.0) | **No (committed)** | Source compiles under v0.45 (build-verified); published artifact is a43773e and valid under V1; a full-cohort bump needs Linux-CI validation of the engine suite — follow-up |
-| `audit_engine_tests` tooling | git `a43773e` | `7b16f2a` | No | Engine suite is Linux-CI-only; bump + validate together as a follow-up |
+| templates `tari_template_lib`/`_abi` | git `a43773e` (0.42) | git `9c62606` (0.45, lib 0.34.0) | **Yes (committed)** | Migrated on `feat/v045-walletd-and-full-cohort`; all four templates build under v0.45. The published Pool v2 artifact stays `a43773e` and remains the on-chain identity. |
+| `audit_engine_tests` tooling | git `a43773e` | `9c62606` | **Yes (committed)** | Bumped with the templates; `tari_crypto 0.23.4 → 0.24.0`; regenerated lockfiles contain no `a43773e`. |
 | protocol-client / web JS | — | — | No | Pure TS; no Tari runtime pin |
 
-The repo cohort is intentionally kept at `a43773e` so the committed source matches the
-published artifact and CI stays green; moving the whole cohort (templates + engine tests
-+ test tooling) to `7b16f2a` is a clean, CI-validated follow-up.
+The repo cohort is now migrated to the v0.45.0 release commit (`9c62606`) for both the
+templates and the engine test tooling. This was a clean, CI-validated migration: the Linux
+Security Engine Tests job passed **112 tests, 0 failed**, and all four templates build under
+v0.45.0. See `docs/OOTLE_V045_WALLET_AND_COHORT_HANDOFF.md`.
 
 ## Browser task (resumed)
 - **Quote-path migration DONE**: `createOotleReadbackProvider.readPool` now decodes the
@@ -125,7 +128,9 @@ published artifact and CI stays green; moving the whole cohort (templates + engi
 - **LIVE READ VERIFIED**: v0.45/V1 network identity; Pool v2 state + owner None + LP
   scoping intact; decoder under V1.
 - **ENGINE VERIFIED**: #2759-class denied (w06/w07), owner None (opus16), empty-reserve
-  rejection — pending the Linux CI run on this push.
-- **BUILD VERIFIED**: fungible_pool compiles under v0.45.0.
-- **UNIT VERIFIED**: decoder (6 tests), quote-path migration, wallet read wiring.
-- **BLOCKED**: live state-changing ops (walletd 0.42); live browser tx (no provider).
+  rejection — Linux Security Engine Tests green (**112 passed, 0 failed**) on `478d7ac`.
+- **BUILD VERIFIED**: all four templates compile under v0.45.0 (cohort `9c62606`).
+- **UNIT VERIFIED**: decoder (7 tests), quote-path migration, wallet read wiring.
+- **CI VERIFIED**: Node Tests (incl. browser-security **233/233**) and Security Engine Tests green on `478d7ac`.
+- **OPEN**: live state-changing ops are unblocked (walletd upgraded to **0.45.0**) but none
+  were submitted this run; live browser tx still has no provider.
