@@ -486,6 +486,14 @@ fn w05_zero_user_lp_reinit_is_proportional_never_rebootstraps() {
 // ---------------------------------------------------------------------------
 
 /// An untrusted component must not be able to mint the pool's LP token.
+///
+/// This is also the regression for the upstream liquidity-pool class fixed in
+/// tari-ootle PR #2759: a built-in pool exposed an overly broad LP mint/burn
+/// authorization, so a third-party template could mint UNBACKED LP and redeem it to
+/// drain reserves. Our Pool scopes LP mint (and burn, see `w07`) to the pool component
+/// itself (`rule!(component(this_component))`, Locked) with `OwnerRule::None`, so a
+/// foreign component frame cannot satisfy the rule — the exploit is denied at step 1
+/// (the mint), and the pool supply is unchanged. Not applicable to our custom Pool.
 #[test]
 fn w06_unauthorized_lp_mint_rejected() {
     let mut ctx = new_ctx(30);
