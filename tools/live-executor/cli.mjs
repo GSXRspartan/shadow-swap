@@ -10,7 +10,7 @@
 //
 // Usage:
 //   node cli.mjs create-token  <SYMBOL> [--supply N] [--div 6]
-//   node cli.mjs create-pool   --a <resA> --b <resB> [--fee-bps 30]
+//   node cli.mjs create-pool   --template <audited pool template> --a <resA> --b <resB> [--fee-bps 30]
 //   node cli.mjs add-liquidity --pool <c> --res-a <r> --amt-a N --res-b <r> --amt-b N
 //   node cli.mjs swap          --pool <c> --in <res> --amt N --out <res> --min-out N
 //   node cli.mjs remove-liquidity --pool <c> --lp <res> --amt N
@@ -20,10 +20,9 @@
 //
 // Testnet only. No mainnet. No key export. No L1. No cross-chain.
 
-import { WalletdExecutor } from './walletd.mjs';
+import { WalletdExecutor, assertAuditedPoolTemplate } from './walletd.mjs';
 
 const TEST_COIN_FACTORY = '93aa539e3a59bd9e45db35f88ec733a40d493223b5892d8724fbfe198831b692';
-const POOL_TEMPLATE = 'ef2bc1b00fc3212c9acd9ff5f2e8203d9d0b8402c4d04d284a95c1d1e80d5649';
 
 function parseArgs(argv) {
   const positional = [];
@@ -97,7 +96,9 @@ fn main() {
       const a = req(flags, 'a');
       const b = req(flags, 'b');
       const feeBps = flags['fee-bps'] && flags['fee-bps'] !== true ? Number(flags['fee-bps']) : 30;
-      const manifest = `use template_${POOL_TEMPLATE} as Pool;
+      // No implicit template. A caller must name it, and it must be the audited pool.
+      const template = assertAuditedPoolTemplate(req(flags, 'template'));
+      const manifest = `use template_${template} as Pool;
 fn main() { Pool::new(arg!["a"], arg!["b"], ${feeBps}u16); }`;
       const r = await ex.submitManifest({
         opId: 'create-pool',
@@ -106,7 +107,7 @@ fn main() { Pool::new(arg!["a"], arg!["b"], ${feeBps}u16); }`;
         variables: { a, b },
         maxFeeMicro,
         dryRunOnly,
-        meta: { template: POOL_TEMPLATE, a, b, feeBps },
+        meta: { template, a, b, feeBps },
       });
       emit(r);
       break;

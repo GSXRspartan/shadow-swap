@@ -31,7 +31,7 @@ Testnet only. No mainnet. No L1 burns. No cross-chain.
 
 - Public fungible test coins: `TestCoinFactory` (published on Esmeralda,
   `template_93aa539e…`) — `create_public_fungible_test_coin(symbol, div, supply)`.
-- AMM pool: this repository's `Pool` template (`template_ef2bc1b0…`).
+- AMM pool: the published `Pool` v2 template (`template_f47a330e...`, CURRENT_ESMERALDA). Pool v1 (`template_ef2bc1b0...`) is superseded; `create-pool` refuses it.
 
 ## Commands
 
@@ -43,6 +43,22 @@ node cli.mjs add-liquidity --pool <c> --res-a <r> --amt-a N --res-b <r> --amt-b 
 node cli.mjs swap          --pool <c> --in <res> --amt N --out <res> --min-out N
 node cli.mjs remove-liquidity --pool <c> --lp <res> --amt N
 node cli.mjs read-pool     --pool <c> --json
+```
+
+## Read-only verification tools (no transaction is ever built into a submission)
+
+```bash
+# Authoritative Pool v2 state from walletd + BOTH Esmeralda indexers, decoded with the
+# production `decodePoolState`, compared and reported per source:
+node read-pool-live.mjs [--pool component_..] [--json]
+
+# v0.45 dry-run conformance: reads, input selection, swap/add/remove construction,
+# slippage failure, zero-reserve and wrong-pair refusals -- all dry_run, no state change:
+node dryrun-pool.mjs
+
+# Durable wallet request lifecycle against the REAL daemon (create -> get -> list ->
+# reject; the request carries a read-only manifest and is never submitted):
+node verify-request-flow.mjs
 ```
 
 Global flags: `--max-fee <micro>` (≤ 5_000_000), `--dry-run` (estimate only, no
@@ -59,6 +75,9 @@ All amounts are **raw integer units** (the test coins and tTARI use divisibility
 | `ledger.mjs` | Durable append-only JSONL operation ledger. |
 | `cli.mjs` | Reviewed command surface over the core. |
 | `walletd.test.mjs` | Unit tests for the guards and the v0.43 result parser. |
+| `read-pool-live.mjs` | Read-only: Pool v2 from walletd + both indexers, decoded and compared. |
+| `dryrun-pool.mjs` | Read-only: v0.45 dry-run conformance for the whole AMM lifecycle. |
+| `verify-request-flow.mjs` | Read-only: durable wallet request lifecycle (create/get/list/reject). |
 | `live-op-ledger.jsonl` | The record of the live vertical-slice run (evidence). |
 
 ## Tests

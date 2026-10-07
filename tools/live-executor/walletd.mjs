@@ -34,6 +34,34 @@ export const EXPECTED_NETWORK_BYTE = 38;
 /** Hard ceiling: no single transaction may be submitted above this fee (micro-tTARI). */
 export const MAX_FEE_PER_TX_MICRO = 5_000_000; // 5 tTARI
 
+/**
+ * The audited, CURRENT Pool template on Esmeralda (Pool v2, `OwnerRule::None`).
+ *
+ * Pool v1 (`ef2bc1b0…`) is SUPERSEDED: its component is owner-controlled, which is the
+ * OPUS-16 class the v2 template exists to close. Instantiating a new pool at all is out of
+ * scope for this venue (the existing Pool v2 IS the market), so the template is never
+ * defaulted: a caller must name it, and it must be this one.
+ */
+export const CURRENT_POOL_TEMPLATE = 'f47a330eee1bbf91f58d9ff4280b4279c3c4fe91fb59ab5812cd5128442819ab';
+
+/**
+ * Refuse any pool instantiation that is not against the audited template.
+ *
+ * This is a build-time constant check, not a chain read: it exists because the previous
+ * shipped default WAS the superseded v1 template, so a command that looked current would
+ * have created an owner-controlled pool the protocol does not support.
+ */
+export function assertAuditedPoolTemplate(template) {
+  const bare = String(template ?? '').replace(/^template_/, '');
+  if (bare !== CURRENT_POOL_TEMPLATE) {
+    throw new ExecutorError(
+      `REFUSED: pool template ${template} is not the audited Pool v2 template (${CURRENT_POOL_TEMPLATE}). ` +
+        'Pool v1 (ef2bc1b0...) is superseded and must not be instantiated; this venue reuses the existing pool.',
+    );
+  }
+  return bare;
+}
+
 export class ExecutorError extends Error {}
 
 function assertLoopback(url) {

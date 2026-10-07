@@ -6,7 +6,19 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { WalletdExecutor, ExecutorError, summariseResult, MAX_FEE_PER_TX_MICRO, EXPECTED_NETWORK, EXPECTED_NETWORK_BYTE } from './walletd.mjs';
+import { WalletdExecutor, ExecutorError, summariseResult, MAX_FEE_PER_TX_MICRO, EXPECTED_NETWORK, EXPECTED_NETWORK_BYTE, assertAuditedPoolTemplate, CURRENT_POOL_TEMPLATE } from './walletd.mjs';
+
+test('pool instantiation refuses every template except the audited Pool v2', () => {
+  // The shipped default used to be the SUPERSEDED v1 template (ef2bc1b0…), so this guard
+  // is the thing that stops a "current-looking" command creating an owner-controlled pool.
+  assert.throws(() => assertAuditedPoolTemplate('ef2bc1b00fc3212c9acd9ff5f2e8203d9d0b8402c4d04d284a95c1d1e80d5649'), ExecutorError);
+  assert.throws(() => assertAuditedPoolTemplate('template_93aa539e3a59bd9e45db35f88ec733a40d493223b5892d8724fbfe198831b692'), ExecutorError);
+  assert.throws(() => assertAuditedPoolTemplate(undefined), ExecutorError);
+  assert.throws(() => assertAuditedPoolTemplate(''), ExecutorError);
+  // Both transport spellings of the audited template are accepted, bare form returned.
+  assert.equal(assertAuditedPoolTemplate(CURRENT_POOL_TEMPLATE), CURRENT_POOL_TEMPLATE);
+  assert.equal(assertAuditedPoolTemplate(`template_${CURRENT_POOL_TEMPLATE}`), CURRENT_POOL_TEMPLATE);
+});
 
 test('constructor refuses a non-loopback walletd URL', () => {
   assert.throws(() => new WalletdExecutor({ url: 'http://8.8.8.8:5100' }), ExecutorError);
