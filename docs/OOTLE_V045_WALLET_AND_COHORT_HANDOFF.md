@@ -127,12 +127,144 @@ That is wrong and has been corrected there:
 - Rollback: stop the 0.45 daemon, restore the backup directory, start the 0.42 binary. The
   chain-level state is untouched (no Pool republish, no new mutation).
 
+
+# Independent audit (2026-10-07, second reviewer)
+
+Everything above was re-derived from primary evidence, not trusted from the handoff. The
+audit found the cohort, wallet and CI claims CORRECT, and added hardening on top:
+
+## What was independently re-verified
+
+| Claim | How it was re-verified | Result |
+|---|---|---|
+| v0.45.0 revision | GitHub tags API: `refs/tags/v0.45.0` is an annotated tag object `7b16f2a0…` whose `object.sha` dereferences to commit `9c626062…` ("chore: release v0.45.0 (#2801)"); the release asset itself is named `tari_ootle-0.45.0-9c62606-windows-x64.exe.zip` | **CORRECT** (`9c62606` is the build pin) |
+| walletd binary | `Get-FileHash` on the running executable: `1fa177e6…`, matching the upstream `.sha256` sidecar | **CORRECT** |
+| walletd runtime | PID 9148, `127.0.0.1:5100` ONLY (loopback), `wallet.get_info` → `0.45.0` / esmeralda / 38 | **CORRECT** |
+| Backup | direct sqlite read of the backup copy: `integrity_check=ok`, `journal_mode=delete` (self-contained, no WAL dependency), 26 tables, 2 accounts, schema_version 84 | **CORRECT** |
+| Accounts preserved | live `accounts.list`: "Purrivacy Swap" (default) + `V042_ATOMICSWAP_TEST_COUNTERPARTY`, both `is_confirmed_on_chain: true`, receive address `otl_esm_1w3j5x3l8uzxccggk…` | **CORRECT** |
+| Live Pool v2 state | `decodePoolState` over walletd `substates.get` AND indexer A AND indexer B: reserves 595664 / 604684, LP supply 600000, locked 1000, fee 30 — all three sources agree exactly | **LIVE READ VERIFIED** |
+| Template builds | all four templates rebuilt locally; byte-identical SHA-256 to the recorded values | **BUILD VERIFIED** |
+| Rust suites | pool_math 36, pool_ref_model 22, protocol_types 10; rustfmt clean on all 8 manifests; clippy `-D warnings` clean | **UNIT VERIFIED** |
+| TS suites | protocol-client 209/209 → re-run after hardening; web 344 → 346/346; Chromium e2e 148 → 150/150 | **UNIT/E2E VERIFIED** |
+
+## Two real defects the audit found and fixed
+
+### 1. The raw Pool decode was fail-open on identity (security)
+
+`decodePoolState` never checked the component's `template_address`, and treated the
+resource `address` inside a vault container as optional. So a raw-capable provider could:
+
+- serve a DIFFERENT component that merely decodes like a pool (no template pin existed on
+  the raw path, while the legacy flat-field path DID check the template name);
+- declare the pair (tTARI, LPTESTA) while its reserve vaults held other resources.
+
+Both are now fail-closed (`packages/protocol-client/src/poolSubstate.ts`):
+
+- the component header MUST name its template (every raw-serving transport carries it, so
+  a header without one is a stale or hand-made payload);
+- each reserve vault MUST carry a container `address` and MUST hold the declared pair leg;
+- the locked-LP vault MUST hold the declared LP resource;
+- a caller may pin `expect.templateAddress/resourceA/resourceB/lpResource`, and
+  `readPool(component, expect)` threads the pin through BOTH the raw and legacy paths
+  (`packages/protocol-client/src/ootle.ts`).
+
+The app now pins every authoritative reread: a protocol-verified registry seed wins
+(`seededTemplateFor`, `apps/web/src/services/poolRegistry.ts`), otherwise discovery's own
+verified header claim is the pin (`apps/web/src/state/AppContext.tsx`), so the wallet's
+bytes must name the same template discovery found.
+
+New regressions cover the full matrix: wrong template (pinned and unpinned), wrong pair,
+wrong component, missing vault, missing LP resource, incorrect substate type, unrecognised
+container, non-integer amounts, absent dependent substates, and a raw reader that also
+carries plausible flat fields — which must never reach the legacy parser.
+
+### 2. `create-pool` defaulted to the SUPERSEDED Pool v1 template
+
+`tools/live-executor/cli.mjs` shipped `POOL_TEMPLATE = ef2bc1b0…` — the owner-controlled
+v1 template (the OPUS-16 class the v2 template exists to close). A command that looked
+current would have instantiated a pool from the wrong cohort. The template is now never
+defaulted: it must be named explicitly and must equal the audited Pool v2 template
+(`assertAuditedPoolTemplate` in `walletd.mjs`, unit-tested).
+
+## Additional live verification (v0.45, read-only + dry-run)
+
+- **Pool security, live**: the LP resource substate shows `owner_rule: None`, `mint` and
+  `burn` `Restricted → ScopedToComponent: component_8c20c644…`, `recall: DenyAll`,
+  `freeze: DenyAll`, and every rule updater `Locked`. The component shows
+  `owner_rule: None`, `get_a_resource`/`get_b_resource` absent from the method set (DenyAll
+  default) — calling them returns `AccessDenied`. **LIVE VERIFIED, #2759 class closed.**
+- **STEST (created-stealth) is still rejected by the pool**: a `Pool::new(STEST, LPTESTA)`
+  dry run returns `TemplateError: Resource … is not eligible: only canonical native Tari…`,
+  and `pool.add_liquidity(STEST + LPTESTA)` returns `TemplateError: Resource … not in pool`,
+  while the control `Pool::new(tTARI, LPTESTA)` is ACCEPTED. **POOL_TEMPLATE_BLOCKED holds
+  under v0.45. LIVE VERIFIED.**
+- **Dry-run conformance** (`tools/live-executor/dryrun-pool.mjs`, all `dry_run: true`, no
+  state change): reads Accept; input selection Accept for tTARI (stealth reveal) and public
+  fungibles; burn refused (DenyAll); swap Accept with `min_output` derived from live
+  reserves; slippage failure returns `Slippage: output 9954 is below min_output 99540`;
+  wrong pair returns `Pool resources must differ`; balanced add Accept; unbalanced add
+  returns `Contribution too small relative to reserves to mint any LP shares`; over-balance
+  add and over-hold remove return InsufficientFunds; over-supply remove returns
+  `Redemption too small to withdraw any reserves`. Fee estimates: swap 3342, add 4269,
+  remove 4141, empty manifest 1062 micro-tTARI — all far under the 1 tTARI ceiling.
+  **DRY-RUN VERIFIED.**
+- **Durable wallet request lifecycle** (`tools/live-executor/verify-request-flow.mjs`),
+  against the real daemon with a READ-ONLY manifest: `transaction_requests.create` →
+  durable `request_id`, `.get` → `Pending`, `.list` → present, `.reject` → persisted
+  `Rejected`, and a SECOND `.reject` is REFUSED (`is Rejected, expected Pending or
+  Approved`). No submission. **LIVE VERIFIED** for the daemon half of the browser contract.
+  The browser half remains REFERENCE PROVIDER VERIFIED (no real `window.tari` here).
+- **Indexer substate proofs** (§ evidence labels): `GET /info` reports
+  `verify_substate_proofs: true` and `POST /substates/fetch` accepts `include_proofs: true`,
+  returning `{anchor: {block_id, epoch, height, shard_group, state_merkle_root},
+  commit_proof, value_proof, value_hash_epoch}`. Official verification lives in the Rust
+  Tari-crypto state-Merkle verifier, which is NOT in this repository's JS dependency tree,
+  and writing our own verifier is out of scope by policy. **PROOF_AVAILABLE_NOT_YET_VERIFIED.**
+
+## Wallet inventory after the upgrade (re-read live)
+
+All previous assets are present: canonical tTARI (Stealth), STEST (Stealth), PTEST,
+LPTESTA, LPTESTB, the two LP resources (v1-scoped and v2-scoped), and the TNFTA/TNFTB
+collections (zero items). One NEW finding: the wallet holds one actual NFT item
+(`V042R`, id `v042-restart-swap-a-7f3c9`), so `NO_EXISTING_NFT_TEST_ASSET` is no longer
+the correct label — disposable NFT marketplace flows are now actionable. They were NOT run
+in this pass, so that the v0.45 migration could not be delayed by them.
+
+Two pool LP resources exist because Pool v1 (LP scoped to `component_329d4ef2…`) still
+exists on chain alongside Pool v2 (LP scoped to `component_8c20c644…`). Only v2 is seeded
+in the registry; v1 is superseded and never a place to send new liquidity.
+
+## Browser doubles
+
+The e2e Pool fixtures now serve the REAL wire shape — the published Pool v2 template in the
+component header and the resource `address` inside every vault container — instead of a
+placeholder, and three NEW hostile-provider flows prove the browser refuses a raw-capable
+provider that does not deliver it:
+
+- `matrix 7d` — a wrong-template pool is not displayed (the honest "state not yet read"
+  candidate view is shown instead);
+- `matrix 7e` — a provider omitting the vault resource address is refused;
+- `matrix 7f` — a provider reporting a reserve vault as absent is refused, never invented.
+
+The hostile bytes are BAKED into the provider script (`hostileRawPoolSubstates` in
+`apps/web/e2e/rawPoolSubstates.ts`), so the very first reply is already hostile and the
+double is deterministic. No assertion was weakened: the control (`matrix 1`) still renders
+the pool from the same decoder.
+
 ## Remaining / open items
 
 - **CI-only Firefox coverage**: firefox-desktop runs only in CI (`test:e2e:all`); it is green.
 - **R-1 hosting**: `dist/_headers` emission is build-checked, but "served by the real origin"
   remains open until the deployed origin is observed (`docs/TESTNET_HOSTING.md`).
 - **Walletd 0.45 daemon is local-only**; it is not a committed artifact.
+- **Live browser approval** needs a real `window.tari` provider and a human approval step;
+  the durable request lifecycle is verified on the daemon side and via the reference
+  provider in the browser, which is the honest ceiling without a real wallet.
+- **NFT marketplace flows are actionable** (one disposable `V042R` NFT item is held) but
+  were deliberately not run in this pass, so the v0.45 migration could not be delayed.
+- **Optional tiny live smoke swap** on Pool v2 (<= 1 tTARI single tx, <= 0.25 tTARI
+  economic) was NOT submitted this run: dry-run coverage is complete, and a live
+  submission is an operator decision, not a migration requirement.
 - No open blockers in code or CI. `feat/v045-walletd-and-full-cohort` is ready to open as a PR.
 
 ## Evidence index
