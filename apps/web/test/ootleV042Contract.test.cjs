@@ -93,9 +93,67 @@ test('ootle v0.42: canonical TARI is STEALTH, so it is not a public fungible tok
 
 test('ootle v0.42: the substate version is carried as a decimal string, never a JS number', () => {
   // v0.42.0 widened the substate version to u64. A JS number truncates above
-  // 2^53, so the version is parsed only from a decimal STRING and a numeric JSON
-  // value is refused rather than coerced.
+  // 2^53, so a version at or beyond the u64 ceiling must be kept as a decimal
+  // STRING; `rawInteger` therefore caps numeric acceptance at MAX_SAFE_INTEGER.
   const view = { substateVersion: '18446744073709551615' };
   assert.equal(String(view.substateVersion), '18446744073709551615');
   assert.equal(Number.isSafeInteger(Number(view.substateVersion)), false, 'the u64 ceiling must not survive a round trip through a JS number');
+});
+
+test('ootle v0.43: batch substate read uses {requests,cached_only} and parses the keyed-map response', async () => {
+  // The live Esmeralda host upgraded 0.42 -> 0.43 and changed the batch-read
+  // contract: the request body is now `{requests:[<id>,...],cached_only:bool}`
+  // (was `{substate_ids:[...]}`) and the response is a MAP keyed by substate id
+  // with the version as a JSON NUMBER (was an array of wrappers with a string
+  // version). The old shape now gets HTTP 422. This pins the shapes the app
+  // sends and reads so a revert fails here, not against the live network.
+  const COMPONENT = 'component_' + 'cd'.repeat(32);
+  const TEMPLATE = 'ab'.repeat(32);
+  const posted = [];
+  const transport = {
+    async getJson(url) {
+      const pathname = new URL(url).pathname;
+      if (pathname === '/transaction-receipts') {
+        return {
+          ok: true,
+          payload: {
+            receipts: [['ee'.repeat(32), { outcome: 'Commit', diff_summary: { upped: [{ substate_id: COMPONENT, version: 0 }], downed: [] } }]],
+          },
+        };
+      }
+      return { ok: true, payload: { receipts: [] } };
+    },
+    async postJson(url, body) {
+      posted.push({ url, body });
+      // v0.43 keyed-map response, version as a JS number.
+      return {
+        ok: true,
+        payload: {
+          substates: {
+            [COMPONENT]: {
+              version: 42,
+              substate: { Component: { header: { template_address: TEMPLATE }, body: { state: [{ '@cbor': 'map', entries: [] }, {}] } } },
+            },
+          },
+        },
+      };
+    },
+  };
+  const discovery = new ootleIndexer.TariIndexerDiscovery('https://indexer.example', {
+    transport,
+    verifyIdentity: async () => ({ ok: true }),
+    maxReceiptPages: 1,
+  });
+  const found = await discovery.componentsOfTemplates([TEMPLATE]);
+  assert.equal(found.ok, true);
+  assert.equal(found.components.length, 1);
+  assert.equal(found.components[0].componentAddress, COMPONENT);
+  assert.equal(found.components[0].templateAddress, TEMPLATE);
+  assert.equal(found.components[0].version, '42', 'a numeric v0.43 version must be carried as a decimal string');
+
+  // The request shape is the v0.43 contract, not the v0.42 one.
+  const fetchCall = posted.find((p) => new URL(p.url).pathname === '/substates/fetch');
+  assert.ok(fetchCall, 'discovery must POST /substates/fetch');
+  assert.deepEqual(fetchCall.body, { requests: [COMPONENT], cached_only: false });
+  assert.equal('substate_ids' in fetchCall.body, false, 'the removed v0.42 `substate_ids` field must not be sent');
 });

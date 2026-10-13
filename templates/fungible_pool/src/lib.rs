@@ -109,8 +109,21 @@ mod fungible_pool {
                 locked_lp_vault,
             })
             .with_address_allocation(allocation)
-            // STRICT ACCESS RULES: only component methods (not arbitrary callers)
-            // No admin withdrawal method exists. Pool is immutable after creation.
+            // OWNERLESS COMPONENT (OPUS-16). Without this, the component defaults to
+            // `OwnerRule::OwnedBySigner` — the creator — and the engine's
+            // `ComponentAction::SetAccessRules` / `SetOwnerRule` require only component
+            // ownership (crates/engine runtime: `require_ownership(SetAccessRules, ...)`).
+            // That would let the deployer rewrite the pool's method access rules after
+            // LPs have deposited — e.g. deny `remove_liquidity` and freeze every LP's
+            // funds (a non-custodial-AMM-breaking DoS), even though no admin WITHDRAW
+            // method exists. `OwnerRule::None` makes the pool genuinely immutable: there
+            // is no owner, so SetAccessRules/SetOwnerRule can never be authorised by
+            // anyone. LP mint/burn is unaffected because it is authorised by the
+            // COMPONENT frame (`rule!(component(this_component))`), not by ownership.
+            .with_owner_rule(OwnerRule::None)
+            // STRICT ACCESS RULES: only component methods (not arbitrary callers).
+            // No admin withdrawal method exists, and with OwnerRule::None above the rule
+            // set below can never be changed — the pool is immutable after creation.
             .with_access_rules(
                 ComponentAccessRules::new()
                     .default(AccessRule::DenyAll)

@@ -1,5 +1,17 @@
 # Esmeralda v0.42 — Template Deployment Evidence
 
+> **POOL SUPERSEDED (2026-10-06).** The `Pool` template below
+> (`template_ef2bc1b0…d5649`) is **`SUPERSEDED_TESTNET`**: it carries OPUS-16 (the
+> component is created `OwnedBySigner`). A corrected **Pool v2**
+> (`template_f47a330eee1bbf91f58d9ff4280b4279c3c4fe91fb59ab5812cd5128442819ab`,
+> `OwnerRule::None`) is published and is now **`CURRENT_ESMERALDA`** for new pools.
+> Pool v1 is immutable and is NOT patched on chain; its history below is retained
+> unchanged. New meaningful pools must use Pool v2. Full v2 evidence (publication,
+> ownerless-on-chain proof, and a native-tTARI live market) is in
+> [`docs/ESMERALDA_POOL_V2_REPORT.md`](ESMERALDA_POOL_V2_REPORT.md). The other three
+> templates (FixedPriceListing, ItemOffer, CollectionBid) are unaffected and remain
+> `CURRENT_ESMERALDA`.
+
 Status: **ALL FOUR TEMPLATES PUBLISHED + COMMITTED + PARTIALLY VERIFIED.**
 
 `PARTIALLY VERIFIED` is deliberate and precise. Every address is confirmed on chain,

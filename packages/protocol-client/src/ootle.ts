@@ -16,6 +16,8 @@ import {
   ReadSource,
 } from './execution.js';
 import { Listing, ItemOffer, CollectionBid } from './marketplace.js';
+import { decodePoolState } from './poolSubstate.js';
+import type { PoolIdentityExpectations } from './poolSubstate.js';
 
 // ---------------------------------------------------------------------------
 // Pool readback
@@ -56,6 +58,13 @@ export interface OotleSubstateEnvelope {
 export interface AuthoritativeSubstateReader {
   readComponent(address: string): Promise<OotleSubstateEnvelope | undefined>;
   readResource?(address: string): Promise<OotleSubstateEnvelope | undefined>;
+  /**
+   * RAW substate read: the full `{ Component|Vault|Resource: {...} }` value, with
+   * nested structures intact. Required for the real Pool decode (reserves live in
+   * vault substates). When present, `readPool` uses the multi-substate decoder; when
+   * absent, it falls back to the legacy flat-field envelope path (test doubles).
+   */
+  readRaw?(address: string): Promise<unknown>;
 }
 
 function freshness(envelope: EnvelopeInput): Freshness {
@@ -98,7 +107,16 @@ function numericField(envelope: EnvelopeInput, name: string): string {
 
 /** Readback provider interface for pools (separate from any pool discovery/search). */
 export interface PoolReadbackProvider {
-  readPool(poolComponent: string): Promise<ExecutionAuthoritativeRead<PoolState>>;
+  /**
+   * Read the authoritative Pool state.
+   *
+   * `expect` pins identity (published template, pair, LP resource) that only the caller
+   * knows. It is optional so existing resolvers keep working, but every caller that is
+   * about to build a financial transaction SHOULD pass it: without it a component that
+   * merely happens to decode like a pool is accepted, and the legacy flat-field path's
+   * template-name check is skipped entirely on the raw path.
+   */
+  readPool(poolComponent: string, expect?: PoolIdentityExpectations): Promise<ExecutionAuthoritativeRead<PoolState>>;
 }
 
 export function parsePoolState(envelope: EnvelopeInput): PoolState {
@@ -146,11 +164,48 @@ export function createOotleReadbackProvider(reader: AuthoritativeSubstateReader,
     return { status: 'FOUND', value: withSource, freshness: freshness(withSource) };
   }
   return {
-    async readPool(poolComponent: string): Promise<ExecutionAuthoritativeRead<PoolState>> {
+    async readPool(poolComponent: string, expect?: PoolIdentityExpectations): Promise<ExecutionAuthoritativeRead<PoolState>> {
+      // Preferred path: the published Pool keeps reserves in VAULT substates and LP
+      // supply in the LP RESOURCE substate, so decode the real multi-substate state
+      // via the RAW reader.
+      if (typeof reader.readRaw === 'function') {
+        // FAIL-CLOSED: a raw-capable reader is the production path. If the raw
+        // decode fails there is NO downgrade to the flat-field path — a transport
+        // that advertises raw substates but returns an undecodable pool must yield
+        // UNAVAILABLE, never a fabricated reserve from a flattened envelope.
+        // `expect` additionally pins the component's template/pair, so the raw path
+        // is at least as strict about identity as the legacy path's name check.
+        try {
+          const value = await decodePoolState({ read: (address) => reader.readRaw!(address) }, poolComponent, expect);
+          const fresh = freshness({ address: poolComponent, source, templateName: 'Pool', fields: {} });
+          return { status: 'FOUND', value, freshness: fresh };
+        } catch (rawError) {
+          return { status: 'UNAVAILABLE', reason: (rawError as Error).message };
+        }
+      }
+      // Legacy flat-field path: ONLY for readers without a raw substate reader (a
+      // test double that supplies a pre-decoded envelope). A real Pool component
+      // carries no flat `reserve_a`/`total_lp_supply` fields, so this path is
+      // intrinsically unreliable and is never reachable from a production transport.
       const read = await readEnvelope(poolComponent, 'Pool');
       if (read.status === 'UNAVAILABLE') return { status: 'UNAVAILABLE', reason: read.reason };
       try {
-        return { status: 'FOUND', value: parsePoolState(read.value), freshness: read.freshness };
+        const value = parsePoolState(read.value);
+        // The same identity pin applies here, so a caller that asks for the verified
+        // template/pair cannot be satisfied by a differently-shaped flat envelope.
+        if (expect?.templateAddress !== undefined || expect?.resourceA !== undefined || expect?.resourceB !== undefined || expect?.lpResource !== undefined) {
+          const claims: readonly [string, string | undefined, string | undefined][] = [
+            ['resourceA', value.resourceA, expect?.resourceA],
+            ['resourceB', value.resourceB, expect?.resourceB],
+            ['lpResource', value.lpResource, expect?.lpResource],
+          ];
+          for (const [field, actual, expected] of claims) {
+            if (expected !== undefined && actual !== expected) {
+              return { status: 'UNAVAILABLE', reason: `Pool ${poolComponent} declares ${field}=${actual}, expected ${expected}` };
+            }
+          }
+        }
+        return { status: 'FOUND', value, freshness: read.freshness };
       } catch (error) {
         return { status: 'UNAVAILABLE', reason: (error as Error).message };
       }

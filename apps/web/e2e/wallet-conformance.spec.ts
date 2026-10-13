@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { mockIndexer, POOL_COMPONENT } from './mockIndexer.js';
+import { RAW_POOL_SUBSTATES, REFERENCE_BALANCES, hostileRawPoolSubstates, type HostilePoolMode } from './rawPoolSubstates.js';
 
 /**
  * TARI WALLET INTEGRATION CONFORMANCE — browser matrix.
@@ -59,7 +60,7 @@ const FULL_CAPABILITIES = {
  * `extra` lets a test inject a capability set or a request observer without
  * duplicating the whole double.
  */
-function contractProvider(options: { form: 'embedded' | 'extension'; capabilities?: Record<string, boolean>; delayMs?: number; failWithCodeFor?: string[]; failingCode?: number }): string {
+function contractProvider(options: { form: 'embedded' | 'extension'; capabilities?: Record<string, boolean>; delayMs?: number; failWithCodeFor?: string[]; failingCode?: number; corruptPoolSubstates?: HostilePoolMode }): string {
   // Everything the injected script needs must be INLINED here. A `${…}`
   // placeholder is substituted while this function runs, so the string that
   // reaches the page has no reference to anything in this module's scope.
@@ -71,6 +72,12 @@ function contractProvider(options: { form: 'embedded' | 'extension'; capabilitie
   // than only on connect.
   const failing = JSON.stringify(options.failWithCodeFor ?? []);
   const failingCode = options.failingCode ?? 0;
+  // The hostile substate map is BAKED IN at script generation, not transformed at
+  // request time: the provider serves corrupted bytes from its very first reply,
+  // which is deterministic and closer to a real hostile wallet.
+  const servedSubstates = JSON.stringify(
+    options.corruptPoolSubstates === undefined ? RAW_POOL_SUBSTATES : hostileRawPoolSubstates(options.corruptPoolSubstates),
+  );
   return `
   (() => {
     const state = {
@@ -99,19 +106,12 @@ function contractProvider(options: { form: 'embedded' | 'extension'; capabilitie
             case 'tari_getAccounts': return [state.account];
             case 'tari_getWalletAddress': return 'otl_esm_1qqwalletaddress';
             case 'tari_getBalances':
-              return [{ resourceAddress: 'otl_canonical_tari', kind: 'Fungible', symbol: 'TARI', name: 'Tari', divisibility: 6, amount: '10000000000', confidentialAmount: '0' }];
-            case 'tari_getSubstate':
-              return {
-                substateId: envelope.params.substateId,
-                templateName: 'Pool',
-                substateVersion: '7',
-                epoch: '900',
-                fields: {
-                  resource_a: 'otl_canonical_tari', resource_b: 'otl_wstable_0001',
-                  reserve_a: '1000000000', reserve_b: '4000000000', fee_bps: '30',
-                  lp_resource: 'otl_lp_0001', total_lp_supply: '2000000000', locked_lp_supply: '0',
-                },
-              };
+              return ${JSON.stringify(REFERENCE_BALANCES)};
+            case 'tari_getSubstate': {
+              const raw = ${servedSubstates}[envelope.params.substateId];
+              if (raw === undefined) return { substateId: envelope.params.substateId, notFound: true, fields: {} };
+              return { substate: raw };
+            }
             case 'tari_getTransactionResult': return { transactionId: envelope.params.transactionId, status: 'UNKNOWN' };
             case 'tari_signAndSubmitTransaction': return { transactionId: 'tx_' + Date.now().toString(36) };
             case 'tari_createTransactionRequest': return { requestId: 'req_1' };
@@ -585,6 +585,36 @@ test('matrix 7c: no outbound request ever carries an undocumented parameter', as
     expect('transaction' in params).toBe(false);
     expect('display' in params).toBe(false);
   }
+});
+
+// ===========================================================================
+// 7d. A RAW-CAPABLE PROVIDER THAT DOES NOT DELIVER THE REAL WIRE SHAPE IS REFUSED
+// ===========================================================================
+
+test('matrix 7d: a provider serving a wrong-template pool is refused, not displayed', async ({ page }) => {
+  // The component header names a different template. The decoder must refuse it, so the
+  // pool is not described and no reserve is ever rendered from a look-alike component.
+  await openWith(page, contractProvider({ form: 'extension', corruptPoolSubstates: 'wrongTemplate' }), `/pools/${POOL_COMPONENT}`);
+  await connect(page);
+  await expect(page.getByRole('heading', { name: 'Swap' })).toBeHidden();
+  // The honest refusal is the candidate view: the component exists, but NOTHING about it
+  // is decoded, so no reserve, fee or pair is asserted from the hostile bytes.
+  await expect(page.getByText('Pool found on chain; state not yet read')).toBeVisible();
+  await expect(page.getByText(/Nothing about this pool is guessed/)).toBeVisible();
+});
+
+test('matrix 7e: a provider omitting the vault resource address is refused, not guessed', async ({ page }) => {
+  // The vault containers carry no `address`, so the decoder cannot prove the vaults hold
+  // the declared pair. It must fail closed rather than accept a self-unproven reserve.
+  await openWith(page, contractProvider({ form: 'extension', corruptPoolSubstates: 'noAddress' }), `/pools/${POOL_COMPONENT}`);
+  await connect(page);
+  await expect(page.getByRole('heading', { name: 'Swap' })).toBeHidden();
+});
+
+test('matrix 7f: a provider reporting a reserve vault as absent is refused, never invented', async ({ page }) => {
+  await openWith(page, contractProvider({ form: 'extension', corruptPoolSubstates: 'missingVault' }), `/pools/${POOL_COMPONENT}`);
+  await connect(page);
+  await expect(page.getByRole('heading', { name: 'Swap' })).toBeHidden();
 });
 
 // ===========================================================================
