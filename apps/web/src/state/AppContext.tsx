@@ -18,6 +18,7 @@ import { readBrowserEnv } from '../services/envSource.js';
 import { createWalletService, type WalletBridge } from '../services/walletService.js';
 import { captureIdentity, type ExecutionIdentity, type ProviderCapabilities } from '../lib/executionIdentity.js';
 import { createPoolDiscovery, descriptorFromAuthoritativeRead, type PoolDescriptor, type PoolDiscoveryResult } from '../services/pools.js';
+import { seededTemplateFor } from '../services/poolRegistry.js';
 import { createOotleReadbackProvider } from '@tari-ootle/protocol-client';
 import { MarketDataService, type MarketDataBundle } from '../services/marketData.js';
 import type { WalletLegCapabilities } from '../lib/capabilities.js';
@@ -403,7 +404,13 @@ export function AppProvider({
           // `WALLET_PROVIDER` is an authoritative source; an indexer read is
           // never substituted for it.
           const readback = createOotleReadbackProvider(bridge.substateReader(), 'WALLET_PROVIDER');
-          const read = await readback.readPool(candidate.componentAddress);
+          // The read is PINNED to the template this component is supposed to be. A
+          // protocol-verified seed wins when there is one; otherwise discovery's own
+          // verified header claim is the pin. Either way the wallet's bytes must name
+          // the same template discovery found, so a provider that serves a look-alike
+          // component is refused rather than displayed.
+          const template = seededTemplateFor(config.network, candidate.componentAddress) ?? candidate.templateAddress;
+          const read = await readback.readPool(candidate.componentAddress, { templateAddress: template });
           if (read.status !== 'FOUND') continue;
           const state = read.value;
           const descriptor = descriptorFromAuthoritativeRead(

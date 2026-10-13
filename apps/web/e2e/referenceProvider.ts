@@ -21,6 +21,8 @@
  * Each one models a real wallet behaviour the app must survive.
  */
 
+import { RAW_POOL_SUBSTATES, REFERENCE_BALANCES, TARI_RESOURCE, WSTABLE_RESOURCE, AAA_RESOURCE, BBB_RESOURCE } from './rawPoolSubstates.js';
+
 export interface ReferenceProviderState {
   network: string;
   /** Account COMPONENT address, as `tari_requestAccounts` returns. */
@@ -69,12 +71,7 @@ export const DEFAULT_STATE: ReferenceProviderState = {
   // The wallet is the only source of a resource's SYMBOL and divisibility: the
   // indexer returns component state as raw tagged CBOR and cannot supply either.
   // Both pools' assets are listed here so both pairs can be described.
-  balances: [
-    { resourceAddress: 'otl_canonical_tari', kind: 'Fungible', symbol: 'TARI', name: 'Tari', divisibility: 6, amount: '10000000000', confidentialAmount: '0' },
-    { resourceAddress: 'otl_wstable_0001', kind: 'Fungible', symbol: 'wSTABLE', name: 'Wrapped USDT', divisibility: 6, amount: '25000000000', confidentialAmount: '0' },
-    { resourceAddress: 'otl_aaa_0001', kind: 'Fungible', symbol: 'AAA', name: 'AAA', divisibility: 6, amount: '40000000000', confidentialAmount: '0' },
-    { resourceAddress: 'otl_bbb_0001', kind: 'Fungible', symbol: 'BBB', name: 'BBB', divisibility: 6, amount: '80000000000', confidentialAmount: '0' },
-  ],
+  balances: REFERENCE_BALANCES,
 };
 
 declare global {
@@ -101,8 +98,8 @@ declare global {
 
 export const POOL = {
   poolComponent: 'component_pool_tari_wstable_0001',
-  baseResource: 'otl_canonical_tari',
-  quoteResource: 'otl_wstable_0001',
+  baseResource: TARI_RESOURCE,
+  quoteResource: WSTABLE_RESOURCE,
   baseSymbol: 'TARI',
   quoteSymbol: 'wSTABLE',
 };
@@ -116,16 +113,10 @@ export const POOL = {
  */
 export const SAFE_POOL = {
   poolComponent: 'component_pool_a_b_0002',
-  baseResource: 'otl_aaa_0001',
-  quoteResource: 'otl_bbb_0001',
+  baseResource: AAA_RESOURCE,
+  quoteResource: BBB_RESOURCE,
   baseSymbol: 'AAA',
   quoteSymbol: 'BBB',
-};
-
-/** Decoded pool state, keyed by component address, as the wallet would report it. */
-const POOL_FIELDS: Record<string, { resourceA: string; resourceB: string; feeBps: string; templateName: string }> = {
-  [POOL.poolComponent]: { resourceA: POOL.baseResource, resourceB: POOL.quoteResource, feeBps: '30', templateName: 'Pool' },
-  [SAFE_POOL.poolComponent]: { resourceA: SAFE_POOL.baseResource, resourceB: SAFE_POOL.quoteResource, feeBps: '5', templateName: 'Pool' },
 };
 
 /** The init script, as a string, so it can be passed to `page.addInitScript`. */
@@ -177,34 +168,20 @@ export const installReferenceProvider = `
           case 'tari_getBalances':
             return state.balances;
           case 'tari_getSubstate':
-            // The contract takes { substateId, version? }.
-            // The fields are the COMPONENT's own, decoded from its state. The
-            // indexer cannot supply them (it serves raw tagged CBOR), which is
-            // why this is the authoritative side of the discovery/read split.
+            // The contract takes { substateId, version? } and returns the RAW
+            // substate value (a Component/Vault/Resource object), wrapped as
+            // { substate: value }. The Pool decoder reads the component, its
+            // reserve VAULTS, the LP RESOURCE and the locked VAULT; a flat field
+            // map would not carry reserves and must never be synthesised here.
             {
               const substateId = envelope.params.substateId;
-              const known = ${JSON.stringify(POOL_FIELDS)}[substateId];
-              if (known === undefined) {
+              const raw = ${JSON.stringify(RAW_POOL_SUBSTATES)}[substateId];
+              if (raw === undefined) {
                 // An unknown substate does not exist. Reporting it as absent is
                 // what lets the app distinguish "not a pool" from "read failed".
                 return { substateId, notFound: true, fields: {} };
               }
-              return {
-                substateId,
-                templateName: known.templateName,
-                substateVersion: '7',
-                epoch: '900',
-                fields: {
-                  resource_a: known.resourceA,
-                  resource_b: known.resourceB,
-                  reserve_a: '1000000000',
-                  reserve_b: '4000000000',
-                  fee_bps: known.feeBps,
-                  lp_resource: 'otl_lp_0001',
-                  total_lp_supply: '2000000000',
-                  locked_lp_supply: '0',
-                },
-              };
+              return { substate: raw };
             }
           case 'tari_signAndSubmitTransaction':
             return { transactionId: state.claimSubmittedTxId || ('tx_' + Date.now().toString(36)), epoch: '900' };

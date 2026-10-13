@@ -6,6 +6,7 @@ export interface IndexerProvider {
 export * from './marketplace.js';
 export * from './execution.js';
 export * from './ootle.js';
+export * from './poolSubstate.js';
 export * from './amm.js';
 export * from './history.js';
 export * from './execution_flow.js';

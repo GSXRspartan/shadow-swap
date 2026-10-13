@@ -14,16 +14,16 @@ publish = false
 [dependencies]
 
 [dev-dependencies]
-# One cohort, one revision: the v0.42.0 release tag (a43773e). The engine and test tooling that
-# execute the templates in tests must be the same build the post-reset Esmeralda validators run,
+# One cohort, one revision: the v0.45.0 release commit (9c62606). The engine and test tooling that
+# execute the templates in tests must be the same build the Protocol-V1 Esmeralda validators run,
 # or a test pass proves nothing about the network.
-tari_template_test_tooling = { git = "https://github.com/tari-project/tari-ootle.git", rev = "a43773e600b9503ed3fadcd3f0048f86131e3644" }
-tari_template_lib = { git = "https://github.com/tari-project/tari-ootle.git", rev = "a43773e600b9503ed3fadcd3f0048f86131e3644" }
-tari_template_abi = { git = "https://github.com/tari-project/tari-ootle.git", rev = "a43773e600b9503ed3fadcd3f0048f86131e3644" }
-tari_ootle_transaction = { git = "https://github.com/tari-project/tari-ootle.git", rev = "a43773e600b9503ed3fadcd3f0048f86131e3644" }
-tari_ootle_common_types = { git = "https://github.com/tari-project/tari-ootle.git", rev = "a43773e600b9503ed3fadcd3f0048f86131e3644" }
-tari_engine_types = { git = "https://github.com/tari-project/tari-ootle.git", rev = "a43773e600b9503ed3fadcd3f0048f86131e3644" }
-# NOT a floating "0.23": tari_engine_types 0.42.0 requires tari_crypto ^0.23.4, which is the value
-# the v0.42.0 workspace pins. Leaving this at the 0.41 lock's 0.23.3 makes the cohort
-# unresolvable, so it is pinned to the same version the engine itself resolves.
-tari_crypto = "0.23.4"
+tari_template_test_tooling = { git = "https://github.com/tari-project/tari-ootle.git", rev = "9c626062673760530ffb075b6b006a67becebe5a" }
+tari_template_lib = { git = "https://github.com/tari-project/tari-ootle.git", rev = "9c626062673760530ffb075b6b006a67becebe5a" }
+tari_template_abi = { git = "https://github.com/tari-project/tari-ootle.git", rev = "9c626062673760530ffb075b6b006a67becebe5a" }
+tari_ootle_transaction = { git = "https://github.com/tari-project/tari-ootle.git", rev = "9c626062673760530ffb075b6b006a67becebe5a" }
+tari_ootle_common_types = { git = "https://github.com/tari-project/tari-ootle.git", rev = "9c626062673760530ffb075b6b006a67becebe5a" }
+tari_engine_types = { git = "https://github.com/tari-project/tari-ootle.git", rev = "9c626062673760530ffb075b6b006a67becebe5a" }
+# NOT a floating "0.24": the v0.45.0 workspace pins tari_crypto 0.24.0 (it was bumped from 0.23.x in
+# this release). tari_engine_types 0.45.0 requires tari_crypto ^0.24, so this must match or the
+# cohort is unresolvable.
+tari_crypto = "0.24.0"

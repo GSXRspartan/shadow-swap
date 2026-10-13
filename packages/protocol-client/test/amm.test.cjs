@@ -11,6 +11,7 @@ const {
   classifyResourceForRouting,
   applyRoutingPolicy,
 } = require('../dist/amm.js');
+const { classifyResource } = require('../dist/index.js');
 const { createOotleReadbackProvider } = require('../dist/ootle.js');
 
 const FRESHNESS = { source: 'WALLET_PROVIDER', identity: { substateVersion: '7', epoch: '100', readAtUnixMs: 1 } };
@@ -279,6 +280,34 @@ test('routing classification refuses or gates issuer-controlled and unknown asse
   assert.equal(applyRoutingPolicy('CANONICAL_TARI', policy).verdict, 'ALLOW');
   assert.equal(applyRoutingPolicy('ISSUER_CONTROLLED', policy).verdict, 'REFUSE');
   assert.equal(applyRoutingPolicy('UNKNOWN', policy).verdict, 'REQUIRE_ACKNOWLEDGEMENT');
+});
+
+// Real Esmeralda wallet-asset shapes, characterized LIVE DRY-RUN on 2026-10-06 against
+// the published Pool v1 (template_ef2bc1...). Each shape is sanitized to the on-chain
+// facts that drive classification (type + canonical-ness + advisory safety), with NO
+// wallet balances. The expected verdict is the one the live dry-run matrix produced, so
+// the classifier can never silently drift from the contract's real resource policy.
+//
+//   Pool::new dry-run results: LPTESTA x LPTESTB/PTEST/tTARI -> ACCEPT;
+//   LPTESTA x STEST (stealth) -> REJECT (template); LPTESTA x TNFTA (nft) -> REJECT.
+test('classification matches the live Esmeralda wallet inventory (incl. created-stealth)', () => {
+  // tTARI: canonical native (Stealth-typed, but canonical identity wins).
+  assert.equal(classifyResource({ address: 'resource_0101', isCanonicalTari: true, kind: 'stealth' }), 'canonical_tari');
+  assert.equal(classifyResourceForRouting({ isCanonicalTari: true, resourceType: 'stealth' }), 'CANONICAL_TARI');
+
+  // STEST: a CREATED-STEALTH fungible (non-canonical Stealth). Pool-ineligible, and
+  // revealing it does not help — the resource TYPE is what the template rejects.
+  assert.equal(classifyResource({ address: 'resource_e0158c30', isCanonicalTari: false, kind: 'stealth' }), 'unsupported_resource_type');
+  assert.equal(classifyResourceForRouting({ isCanonicalTari: false, resourceType: 'stealth' }), 'UNSUPPORTED');
+
+  // PTEST / LPTESTA: ordinary public fungibles with recall/freeze/mutability known-false.
+  const publicFungible = { address: 'resource_87385b51', isCanonicalTari: false, kind: 'fungible', recallPossible: false, freezePossible: false, securityRulesMutable: false };
+  assert.equal(classifyResource(publicFungible), 'eligible_public_fungible');
+  assert.equal(classifyResourceForRouting({ isCanonicalTari: false, resourceType: 'fungible', recallPossible: false, freezePossible: false, securityRulesMutable: false }), 'PUBLIC_IMMUTABLE_OR_VETTED');
+
+  // TNFTA/TNFTB: NFT collection resources — pool-ineligible.
+  assert.equal(classifyResource({ address: 'resource_51e2234a', isCanonicalTari: false, kind: 'non_fungible' }), 'unsupported_resource_type');
+  assert.equal(classifyResourceForRouting({ isCanonicalTari: false, resourceType: 'non_fungible' }), 'UNSUPPORTED');
 });
 
 

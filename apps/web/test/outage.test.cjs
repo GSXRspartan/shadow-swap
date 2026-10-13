@@ -104,13 +104,21 @@ function receiptsWithComponent(substateId) {
   };
 }
 
-/** The batch substate read: a component's header names the template that made it. */
+/**
+ * The batch substate read: a component's header names the template that made it.
+ *
+ * v0.43 shape (read live from https://ootle-indexer-a.tari.com, 2026-10-06):
+ * `substates` is a MAP keyed by substate id, and each value is
+ * `{ version, substate: { Component|… } }` with `version` as a JSON NUMBER. v0.42
+ * sent `{ substate_ids: [...] }` requests and an ARRAY of `{ substate_id, … }`
+ * wrappers; the live host now answers HTTP 422 to the v0.42 request shape, so this
+ * stub models the current contract and guards the parser against regressing to it.
+ */
 function componentSubstates(substateId, templateAddress) {
   return {
-    substates: [
-      {
-        substate_id: substateId,
-        version: 0,
+    substates: {
+      [substateId]: {
+        version: 7,
         substate: {
           Component: {
             header: { template_address: templateAddress, owner_rule: { ByPublicKey: '22'.repeat(32) }, access_rules: { method_access: {}, default: 'DenyAll' }, entity_id: '1' },
@@ -120,7 +128,7 @@ function componentSubstates(substateId, templateAddress) {
           },
         },
       },
-    ],
+    },
   };
 }
 
@@ -132,8 +140,12 @@ function componentSubstates(substateId, templateAddress) {
 function realIndexerFetch(options = {}) {
   const templateAddress = options.templateAddress ?? 'ab'.repeat(32);
   const componentId = options.componentId ?? 'component_ff'.repeat(1) + '00'.repeat(31);
+  // The ids this mocked indexer actually "knows". A batch read echoes back only the
+  // requested ids that exist here, so an unknown id (e.g. a durable-registry seed/cache
+  // entry that is not on this chain) is correctly dropped at reverification.
+  const known = new Set([componentId, ...(options.hostile ? HOSTILE_COMPONENT_IDS : [])]);
   const seen = [];
-  const stub = async (url) => {
+  const stub = async (url, init) => {
     const parsed = new URL(url);
     seen.push(`${parsed.pathname}${parsed.search}`);
     if (parsed.pathname === '/info') return jsonResponse(options.identity ?? IDENTITY_OK);
@@ -145,7 +157,13 @@ function realIndexerFetch(options = {}) {
       return jsonResponse(options.receipts ?? receiptsWithComponent(componentId));
     }
     if (parsed.pathname === '/substates/fetch') {
-      return jsonResponse(componentSubstates(componentId, templateAddress));
+      let requested = [];
+      try { requested = (JSON.parse(init && init.body ? init.body : '{}').requests) ?? []; } catch { requested = []; }
+      const substates = {};
+      for (const id of requested) {
+        if (known.has(id)) Object.assign(substates, componentSubstates(id, templateAddress).substates);
+      }
+      return jsonResponse({ substates });
     }
     return jsonResponse({}, { 'content-type': 'application/json' });
   };
@@ -285,6 +303,9 @@ test('outage: a healthy discovery response yields the pool component, and no fab
   assert.equal(result.state, 'PROTOCOL_AVAILABLE');
   assert.equal(result.candidates.length, 1);
   assert.equal(result.candidates[0].templateAddress, 'ab'.repeat(32));
+  // v0.43 returns the substate version as a JSON number; it must be carried on as
+  // a decimal string, not collapsed to the '0' fallback.
+  assert.equal(result.candidates[0].version, '7');
   assert.equal(result.unavailableReason, undefined);
   assert.deepEqual(result.pools, [], 'no pool may be described from an unread component state');
   assert.equal(result.publishedTemplates[0].templateName, 'Pool');

@@ -136,6 +136,7 @@ Assumptions: the engine's vault/bucket/resource authorization behaves as in the 
 | OPUS-12 | INFO | `canonical_pair` orders by `{:?}` Debug string | Open (documented) | Robustness |
 | OPUS-13 | LOW | Bundled `faucet` template mints native Tari (impossible) → dead/misleading | Open (documented) | Repo hygiene |
 | OPUS-14 | MEDIUM | Fee-unit mismatch: contract charged per-mil (fee=30 → 3.0%) while protocol/UI advertise 30 bps (0.30%) — a 10× overcharge | Fixed (engine-verified pending) | AMM fee units |
+| OPUS-16 | HIGH | Pool COMPONENT created without `OwnerRule::None` → defaults to `OwnedBySigner` (creator); deployer can `SetAccessRules`/`SetOwnerRule` and freeze LP withdrawals | Fixed in source (needs new template version) | AMM authorization / custody |
 
 ---
 
@@ -485,6 +486,46 @@ TariSwap (per-mil) to match the protocol's own units; the divergence is document
 exact 30-bps output (90,661,089 for reserves 1e9/1e9 and input 1e8); the pure-math twin
 `swap_output_30bps_default_tier` in `pool_math` asserts the same value and explicitly asserts it is
 NOT the per-mil value (88,422,971). Engine-verification pending the next Linux CI run.
+
+---
+
+### OPUS-16 (HIGH) — Pool component owner can rewrite access rules and freeze LP funds
+
+**File/function:** `new` (component builder), `templates/fungible_pool/src/lib.rs`.
+
+**Discovered:** 2026-10-06, during the live Esmeralda vertical slice, when the created
+pool component's header reported `owner_rule: {ByPublicKey: <creator>}`.
+
+**Cause.** The template applied `OwnerRule::None` to the **LP resource** but not to the
+**component** itself. A component created without `.with_owner_rule(...)` defaults to
+`OwnerRule::OwnedBySigner` — the pool creator. The v0.43 engine authorises
+`ComponentAction::SetAccessRules` and `ComponentAction::SetOwnerRule` on nothing more
+than component ownership (`crates/engine/.../runtime/impl.rs`:
+`require_ownership(SetAccessRules, component.as_ownership())`).
+
+**Impact.** The deployer of a pool retains the power, **after** liquidity providers
+deposit, to rewrite the pool's method access rules — e.g. set `remove_liquidity` to
+`DenyAll` and **permanently freeze every LP's funds** (a non-custodial-AMM-breaking
+DoS / soft rug), or re-own the component. No admin WITHDRAW method exists and the WASM
+logic cannot be changed, so principal cannot be directly stolen; but LP funds can be
+locked at the deployer's discretion, which breaks the "non-custodial, permissionless,
+immutable after creation" claim. Severity HIGH (LP custody/DoS controlled by deployer).
+It is a per-deployer trust issue, not a permissionless exploit by third parties.
+
+**Fix.** Add `.with_owner_rule(OwnerRule::None)` to the component builder in `new`, so the
+pool is ownerless and `SetAccessRules`/`SetOwnerRule` can never be authorised by anyone.
+LP mint/burn is unaffected — it is authorised by the **component frame**
+(`rule!(component(this_component))`), not by component ownership.
+
+**On-chain status.** The fix is in **source only**. The currently published Pool template
+(`template_ef2bc1b0…d5649`) is immutable and still has the flaw; the live test pool
+`component_329d4ef2…` created from it is `OwnedBySigner` (harmless — it is a disposable
+test pool). Shipping the fix to production requires **publishing a new Pool template
+version**; the old address must be retained and marked superseded, never "patched".
+
+**Regression test.** `opus16_pool_component_is_ownerless` in
+`audit_engine_tests/tests/pool_engine.rs` creates a pool and asserts the component's
+`owner_rule` is `SubstateOwnerRule::None`. Engine-verification pending the next Linux CI run.
 
 ---
 

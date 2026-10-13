@@ -611,6 +611,35 @@ export async function readSubstate(provider: TariProvider, substateId: string, v
   return view;
 }
 
+/**
+ * RAW substate read for the authoritative Pool decoder.
+ *
+ * `readSubstate` above flattens only SCALAR top-level fields and drops nested
+ * structures, which is fine for a resource's scalar metadata but loses a Pool's
+ * reserves — they live in nested vault containers and in dependent vault/resource
+ * substates. The Pool decoder needs the raw substate value
+ * (`{ Component|Vault|Resource: {...} }`), so this returns it with the wrapper
+ * intact and lets the decoder (which is tolerant of common wrappings) interpret it.
+ * The reply shape is read defensively; `undefined` means "not present", never a
+ * fabricated empty substate.
+ */
+export async function readRawSubstate(provider: TariProvider, substateId: string, version?: number | null): Promise<unknown> {
+  if (typeof substateId !== 'string' || substateId === '') {
+    throw new TariProviderError('A substate read requires a non-empty substateId.', 'MALFORMED_REPLY');
+  }
+  const params: { substateId: string; version?: number | null } = { substateId };
+  if (version !== undefined) params.version = version;
+  const reply = await call<unknown>(provider, TARI_METHODS.getSubstate, params);
+  if (reply === null || reply === undefined) return undefined;
+  const bag = readRecord(reply, 'substate');
+  if (bag.notFound === true || bag.found === false) return undefined;
+  // Unwrap the common envelopes to reach the `{ Component|Vault|Resource: {...} }`
+  // value: `{ substate: { substate: <value> } }`, `{ substate: <value> }`, or the
+  // value itself. The decoder tolerates either the wrapped or inner form.
+  const inner = readRecord(bag.substate ?? bag, 'substate');
+  return inner;
+}
+
 export interface TariTransactionView {
   transactionId: string;
   status: string;

@@ -7,9 +7,9 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
-# Pinned to the v0.42.0 marketplace and engine-test revision (a43773e).
-tari_template_abi = { git = "https://github.com/tari-project/tari-ootle.git", rev = "a43773e600b9503ed3fadcd3f0048f86131e3644" }
-tari_template_lib = { git = "https://github.com/tari-project/tari-ootle.git", rev = "a43773e600b9503ed3fadcd3f0048f86131e3644" }
+# Pinned to the v0.45.0 marketplace and engine-test revision (9c62606).
+tari_template_abi = { git = "https://github.com/tari-project/tari-ootle.git", rev = "9c626062673760530ffb075b6b006a67becebe5a" }
+tari_template_lib = { git = "https://github.com/tari-project/tari-ootle.git", rev = "9c626062673760530ffb075b6b006a67becebe5a" }
 
 [profile.release]
 opt-level = "z"

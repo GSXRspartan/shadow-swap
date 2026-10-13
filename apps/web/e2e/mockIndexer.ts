@@ -57,8 +57,15 @@ export const ESMERALDA_IDENTITY = {
   indexes_all_events: true,
 };
 
-/** The address our `Pool` template would occupy once published. */
-export const POOL_TEMPLATE_ADDRESS = 'ab'.repeat(32);
+/**
+ * The address our `Pool` template would occupy once published.
+ *
+ * This is the REAL published Pool v2 template, not a placeholder: discovery reports it,
+ * and the authoritative wallet read is pinned to it, so the two sources must agree the
+ * same way they must on the live chain. A placeholder here would let a wallet that serves
+ * a different template pass, which is exactly the drift the pin exists to catch.
+ */
+export const POOL_TEMPLATE_ADDRESS = 'f47a330eee1bbf91f58d9ff4280b4279c3c4fe91fb59ab5812cd5128442819ab';
 
 /** A DIFFERENT template whose name contains "Pool", to prove exact matching. */
 export const OTHER_POOL_TEMPLATE = {
@@ -101,9 +108,11 @@ function receipts(componentIds: string[]) {
   };
 }
 
-function componentSubstate(substateId: string, templateAddress: string) {
+// v0.43 batch-read entry value: `{ version (a JSON number), substate: { Component } }`.
+// The substate id is the MAP KEY in the response, not a field here (v0.42 carried a
+// `substate_id` field and an array of these wrappers).
+function componentSubstate(templateAddress: string) {
   return {
-    substate_id: substateId,
     version: 0,
     substate: {
       Component: {
@@ -194,14 +203,24 @@ export async function mockIndexer(page: Page, options: MockIndexerOptions = {}):
     }
 
     if (url.pathname === '/substates/fetch') {
+      // v0.43 contract: body is `{ requests: [<id string>,…], cached_only }`, and
+      // the response `substates` is a MAP keyed by substate id (v0.42 sent
+      // `{ substate_id }` objects and an array response).
       let requested: string[] = [];
       try {
-        const body = route.request().postDataJSON() as { requests?: Array<{ substate_id?: string }> };
-        requested = (body.requests ?? []).map((entry) => entry.substate_id ?? '');
+        const body = route.request().postDataJSON() as { requests?: string[] };
+        requested = (body.requests ?? []).filter((id): id is string => typeof id === 'string');
       } catch {
         requested = [];
       }
-      await json({ substates: requested.map((id) => componentSubstate(id, POOL_TEMPLATE_ADDRESS)) });
+      // Echo back ONLY the ids this mock knows. A durable-registry seed/cache entry
+      // that this chain does not have is correctly dropped at reverification, rather
+      // than being echoed back as a phantom pool.
+      const known = new Set<string>([POOL_COMPONENT, SAFE_POOL_COMPONENT, ...(options.hostile ? HOSTILE_COMPONENT_IDS : [])]);
+      const substates = Object.fromEntries(
+        requested.filter((id) => known.has(id)).map((id) => [id, componentSubstate(POOL_TEMPLATE_ADDRESS)]),
+      );
+      await json({ substates });
       return;
     }
 
