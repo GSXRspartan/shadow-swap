@@ -11,7 +11,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { resolveBuyNow, resolveSellNow, type MarketplaceResolution } from '@tari-ootle/protocol-client';
+import { resolveAcceptItemOffer, resolveBuyNow, resolveSellNow, type MarketplaceResolution } from '@tari-ootle/protocol-client';
 import { marketplaceReadbackFrom, type MarketplaceSource, type NftDescriptor } from '../services/marketplace.js';
 import { loadNftMetadata, type NftMetadata } from '../services/nftMetadata.js';
 import { useApp } from '../state/AppContext.js';
@@ -22,6 +22,8 @@ import { marketplaceRouteBuilder, toMarketplacePreview, type MarketplaceTransact
 import { formatAddress, formatUnits, UNAVAILABLE } from '../lib/format.js';
 import { asRawExecutionAmount, asResourceAddress } from '../lib/tradeBoundary.js';
 import { Badge, Card, CardHeader, DataRow, EmptyState, Notice } from './primitives.js';
+import { MarketplaceActionDialog } from './MarketplaceActionDialog.js';
+import type { MarketplaceAction } from '../services/marketplaceActions.js';
 
 /**
  * Map a thrown value to a user-facing status without leaking internals. An
@@ -65,6 +67,15 @@ export function NftDetailPanel({
    */
   const submitGuard = useRef(false);
   const [route, setRoute] = useState<MarketplaceResolution<MarketplaceTransactionIntent> | undefined>(undefined);
+  /**
+   * Which create/cancel action the review dialog is currently showing, if any.
+   *
+   * The action is built from facts this panel already read — the item descriptor and
+   * the connected account — and handed to the shared action service, which owns
+   * template pinning, review construction, and submission. Nothing about the
+   * transaction is assembled here.
+   */
+  const [pendingAction, setPendingAction] = useState<MarketplaceAction | undefined>(undefined);
 
   useEffect(() => {
     let cancelled = false;
@@ -250,6 +261,43 @@ export function NftDetailPanel({
     else setStatus({ tone: 'danger', title: 'Failed', detail: result.reason });
   };
 
+/**
+   * Accept an item offer. Uses the protocol-client's authoritative resolver, so the
+   * offer is REREAD from the chain and refused if it is no longer ACTIVE or if its
+   * terms no longer match what the user was shown.
+   */
+  const acceptOffer = async (offerAddress: string) => {
+    if (submitGuard.current) return;
+    if (readbackProvider === undefined || quoteResource === undefined) return;
+    submitGuard.current = true;
+    setBusy(true);
+    setStatus(undefined);
+    try {
+      const outcome = await resolveAcceptItemOffer<MarketplaceTransactionIntent>(
+        {
+          offerAddress,
+          expectedCollectionResource: asResourceAddress(collectionResource, 'expectedCollectionResource'),
+          expectedNftId: nftId,
+          expectedQuoteResource: asResourceAddress(quoteResource, 'expectedQuoteResource'),
+          expectedAmount: asRawExecutionAmount(item?.priceRaw ?? '0', 'expectedAmount'),
+          sellerAccount: wallet.account ?? '',
+        },
+        { readback: marketplaceReadbackFrom(readbackProvider), builder: marketplaceRouteBuilder() },
+      );
+      setRoute(outcome);
+      if (outcome.status !== 'READY') {
+        setStatus({ tone: outcome.status === 'STALE' ? 'warn' : 'danger', title: `Accept offer ${outcome.status.toLowerCase()}`, detail: outcome.reason });
+        return;
+      }
+      await submit(outcome, 'MARKET_ACCEPT_ITEM_OFFER', wallets, readbackProvider);
+    } catch (error) {
+      setStatus(failureStatus(error, 'Accept offer'));
+    } finally {
+      submitGuard.current = false;
+      setBusy(false);
+    }
+  };
+
   return (
     <div className="stack" style={{ gap: 'var(--s-4)' }}>
       <button type="button" className="btn btn--sm btn--ghost" onClick={onBack}>
@@ -314,15 +362,69 @@ export function NftDetailPanel({
             <button type="button" className="btn btn--block" disabled={!canAct || busy} onClick={() => void sellNow()}>
               Sell into best bid
             </button>
-            <button type="button" className="btn btn--block" disabled={!canAct}>
+            <button
+              type="button"
+              className="btn btn--block"
+              disabled={!canAct || quoteResource === undefined}
+              onClick={() =>
+                setPendingAction({
+                  kind: 'MAKE_ITEM_OFFER',
+                  buyerAccount: wallet.account ?? '',
+                  nftResource: collectionResource,
+                  nftId,
+                  quoteResource: quoteResource as string,
+                  offerAmountRaw: '0',
+                  expiryEpoch: 0,
+                })
+              }
+            >
               Make offer
             </button>
-            <button type="button" className="btn btn--block" disabled={!canAct}>
-              List
+            <button
+              type="button"
+              className="btn btn--block"
+              disabled={!canAct || quoteResource === undefined}
+              onClick={() =>
+                setPendingAction({
+                  kind: 'CREATE_LISTING',
+                  sellerAccount: wallet.account ?? '',
+                  nftResource: collectionResource,
+                  nftId,
+                  quoteResource: quoteResource as string,
+                  priceRaw: '0',
+                  expiryEpoch: 0,
+                })
+              }
+            >
+              List for sale
             </button>
-            <button type="button" className="btn btn--block" disabled>
+            <button
+              type="button"
+              className="btn btn--block"
+              disabled={!canAct || item?.listingAddress === undefined || quoteResource === undefined}
+              onClick={() =>
+                setPendingAction({
+                  kind: 'CANCEL_LISTING',
+                  listingAddress: item?.listingAddress as string,
+                  sellerAccount: wallet.account ?? '',
+                  nftResource: collectionResource,
+                  nftId,
+                  quoteResource: quoteResource as string,
+                })
+              }
+            >
               Cancel listing
             </button>
+            {item?.offerAddress !== undefined && (
+              <button
+                type="button"
+                className="btn btn--block"
+                disabled={!canAct || busy || quoteResource === undefined}
+                onClick={() => void acceptOffer(item.offerAddress as string)}
+              >
+                Accept item offer
+              </button>
+            )}
 
             {!canAct && (
               <Notice tone="warn" title="Actions unavailable">
@@ -352,6 +454,20 @@ export function NftDetailPanel({
           </Card>
         </aside>
       </div>
+
+      {pendingAction !== undefined && (
+        <MarketplaceActionDialog
+          request={{ action: pendingAction, quoteDecimals: '0' }}
+          onClose={() => setPendingAction(undefined)}
+          onDone={() => {
+            // Re-read discovery so a settled order stops being presented as open.
+            void source.listItems(collectionResource).then((all) => {
+              const fresh = all.find((entry) => entry.nftId === nftId);
+              setItem(fresh);
+            });
+          }}
+        />
+      )}
     </div>
   );
 }

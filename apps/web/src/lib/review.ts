@@ -31,7 +31,21 @@ export interface ReviewAmount {
   resourceAddress: string;
   /** Raw base units. Exact, non-negative integer string. */
   amountRaw: string;
-  role: 'INPUT' | 'OUTPUT' | 'MINIMUM' | 'ESCROW' | 'FEE';
+  /**
+   * What the figure means.
+   *
+   * `REFUND` is deliberately distinct from the value-moving roles. A cancel or a
+   * refund calls `cancel` on a component and the template returns whatever is
+   * actually left — the figure is NOT a transaction argument, so it cannot be checked
+   * against the instruction list and must not be. It exists because a review with no
+   * named amounts is refused outright (correctly: a signer must be told what is being
+   * spent), and because the user is entitled to see the escrow that will come back.
+   *
+   * It is deliberately NOT usable to claim value: nothing reads it as an economic
+   * term, it is excluded from the carry check because it is not carried, and the
+   * "intent moves X but the review does not state X" check is independent of it.
+   */
+  role: 'INPUT' | 'OUTPUT' | 'MINIMUM' | 'ESCROW' | 'FEE' | 'REFUND';
   /** Present for NFT legs, where the quantity is an identifier, not an amount. */
   nftId?: string;
 }
@@ -387,7 +401,11 @@ function checkInstructionsCarryAmounts(review: TransactionReview, amounts: reado
   }
   const serialised = JSON.stringify(request.instructions);
   for (const amount of amounts) {
-    if (amount.role === 'FEE') continue;
+    // FEE is the network charge, which is not an instruction argument either.
+    // REFUND is the remaining escrow a cancel returns, computed on-chain by the
+    // template rather than passed in. Neither is claimed to be carried by the
+    // transaction, so neither is checked for it. See ReviewAmount['role'].
+    if (amount.role === 'FEE' || amount.role === 'REFUND') continue;
     if (!serialised.includes(amount.amountRaw)) {
       mismatches.push(`the instructions the provider will sign do not carry ${amount.amountRaw} of ${amount.resourceAddress}`);
     }
@@ -405,9 +423,18 @@ function legMentionsComponent(instructions: readonly unknown[], componentAddress
     if (entry === null || typeof entry !== 'object') continue;
     const bag = entry as Record<string, Record<string, unknown>>;
     const call = bag.CallMethod;
-    if (call === undefined) continue;
-    const address = (call.call as { Address?: unknown } | undefined)?.Address;
-    if (address === componentAddress) return true;
+    if (call !== undefined) {
+      const address = (call.call as { Address?: unknown } | undefined)?.Address;
+      if (address === componentAddress) return true;
+    }
+    // A CREATE has no component address until its receipt lands — it calls a
+    // template FUNCTION instead. The leg then names the TEMPLATE, and the check has
+    // to look for it in `CallFunction.address`. Without this branch every create
+    // action (listing, item offer, collection bid) would fail this gate with a
+    // correct review, because the only address such a transaction carries is the
+    // template's.
+    const create = bag.CallFunction;
+    if (create !== undefined && create.address === componentAddress) return true;
   }
   return false;
 }
@@ -464,7 +491,21 @@ export function diffReviewAgainstMarketplaceIntent(review: TransactionReview, in
   if (leg === undefined) return { ok: false, mismatches };
 
   // The leg must name the order or listing the intent targets.
-  if (leg.componentAddress !== intent.target.componentOrOrderId) {
+  //
+  // A CREATE has no `componentOrOrderId` — the component does not exist until its
+  // receipt lands — so there is nothing on the target to compare. In that case the
+  // leg is required to name the TEMPLATE the intent's own `call_function` targets,
+  // which is the only identity such a transaction carries before submission. That
+  // is checked rather than skipped: it is precisely the field a substituted template
+  // would attack, and there is no reread that would catch it later.
+  const templateAddresses = new Set(
+    intent.calls.map((call) => (call as { templateAddress?: string }).templateAddress).filter((a): a is string => typeof a === 'string'),
+  );
+  if (intent.target.componentOrOrderId === undefined) {
+    if (!templateAddresses.has(leg.componentAddress)) {
+      mismatches.push(`create: review names "${String(leg.componentAddress)}" but the intent calls template ${[...templateAddresses].join(', ') || '(none)'}`);
+    }
+  } else if (leg.componentAddress !== intent.target.componentOrOrderId) {
     mismatches.push(`target: review ${String(leg.componentAddress)} != intent ${String(intent.target.componentOrOrderId)}`);
   }
 
