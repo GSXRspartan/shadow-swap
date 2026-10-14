@@ -221,20 +221,26 @@ correctness one. The 1 MiB `max_template_binary_size_bytes` ceiling and the quad
 premium are **unchanged** (both `fee_table.rs` and `fee_module.rs` are byte-identical
 between revs), and at 244 KB the largest template is ~24% of the cap.
 
-### 3.11 New WASM *shape* caps — **UNVERIFIED, carried as a risk**
+### 3.11 New WASM *shape* caps — **VERIFIED SAFE via publish dry-run**
 
 v0.46 adds hard module-shape ceilings that can refuse a publish outright:
 `max_function_metering_checks = 8192`, `max_function_loops = 512`,
 `max_module_loops = 2048`, `max_function_nesting_depth = 1024`. A refusal is not a price
 increase — it is a hard reject.
 
-These are **UNVERIFIED for this repository's four templates.** Measuring
-`metering_checks` requires the engine's own instrumentation, and no WASM tooling
-(`wasm-objdump`, `wasm-tools`) is available on this machine. They can only be settled by a
-publish dry-run against a 0.46.0 daemon. Mitigating evidence, stated as such: the four
-templates build at 196–244 KB, essentially identical in size to their v0.45 builds, and
-`tari_template_lib`/`tari_template_abi` did not change at all — so the module shape is
-expected to be within the caps. **Expected is not verified.**
+**Settled on 2026-10-14 by a publish dry-run of all four templates against the live 0.46.0
+daemon** (see §10.7 for the non-mutation proof). Every dry run was accepted — no shape cap
+is exceeded:
+
+| Template | bytes | publish dry-run fee (microTARI) |
+|---|---|---|
+| `fungible_pool` | 244 029 | 1 438 537 |
+| `nft_marketplace` | 196 806 | 1 089 304 |
+| `nft_item_offer` | 201 715 | 1 114 144 |
+| `nft_collection_bid` | 201 096 | 1 113 276 |
+
+Nothing was published. These fees are also the first concrete v0.46 publish prices: a
+publication costs ~1.1–1.4 tTARI, dominated by the compile billing described in §3.10.
 
 ### 3.12 Validator metrics moved off JSON-RPC — **no action, verified negative**
 
@@ -375,14 +381,20 @@ bump introduced. **The three Rust edits in §3.2 are therefore verified only by 
 locally.** They were written to reuse an expression (`IndexedValue::get_value`) that already
 compiled at v0.45, specifically so that CI is the only new thing being asked to confirm.
 
-## 8. What was NOT done, and why
+## 8. What was NOT done at this point, and why
+
+> This section records the state at the end of the READ-ONLY verification (§4–§7), before the
+> daemon upgrade in §10. §10 supersedes three of these bullets; the superseded text is kept
+> because it explains the reasoning that led to the upgrade being performed the way it was.
 
 - **No template republished.** §4 shows the existing deployments work.
 - **No live state-changing transaction submitted.** The network is on Protocol V2 and the
   only local daemon is 0.45.0; that is exactly the incompatible-cohort case the runbook
-  forbids.
+  forbids. *(Superseded: after the §10 upgrade, §10.3–§10.5 executed the full set.)*
 - **No wallet database touched.** No daemon was started, so nothing could migrate or write.
+  *(Superseded: §10.1 migrated it in place, with a verified backup.)*
 - **No WASM shape-cap measurement.** No WASM tooling available; see §3.11.
+  *(Superseded: §10.7 settled it with a non-mutating publish dry-run.)*
 - **Mainnet, L1 cross-chain and Created-Stealth lanes untouched**, as instructed.
 
 ## 9. Open items carried forward
@@ -390,7 +402,7 @@ compiled at v0.45, specifically so that CI is the only new thing being asked to 
 | # | Item | Severity | Note |
 |---|---|---|---|
 | 1 | Wallet-extension behaviour under the new session requirement (`#2855`) | LOW | The app's own handling is verified correct by code inspection (§3.7): a session-gated approve degrades to a persisted `PENDING` resume, not an error. Only the extension's side needs a live integration test. |
-| 2 | WASM shape caps for the four templates | MEDIUM | Needs a publish dry-run against a 0.46.0 daemon (§3.11). |
+| 2 | ~~WASM shape caps for the four templates~~ | RESOLVED | Publish dry-runs of all four templates accepted on the live 0.46.0 daemon (§3.11, §10.7); nothing published. |
 | 3 | Engine suite result under v0.46 | MEDIUM | CI is the only channel (§7). |
 | 4 | `total_fees_required` reconciliation | LOW | Fee estimates recorded pre-v0.46 will not reproduce; re-measure before quoting a budget. Live v0.46 measurements now exist for the marketplace and swap paths (§10). |
 | 5 | Substate proof verification | unchanged | `PROOF_AVAILABLE_NOT_YET_VERIFIED`; the verifier is not in this repo's dependency tree and is out of scope by policy. |
@@ -532,6 +544,30 @@ The create-listing dry run's `fee_receipt.cost_breakdown` contains, as separate 
 `WasmExecution: 180` and `NativeExecution: 877` alongside the familiar Storage/TemplateLoad/
 TransactionWeight entries. These are the v0.46 metering categories (§3.4/§3.10) observed on
 a live receipt, not inferred from release notes.
+
+### 10.7 WASM shape-cap publish dry-run — proven non-mutating, all four accepted
+
+Before running anything, the dry-run's non-mutation was proven from the upstream v0.46.0
+source itself (commit `cc8a83bcab88e03e0fcf760d2652ab6f1e067d8a`), not assumed:
+
+- `applications/tari_walletd/src/handlers/transaction.rs`, `handle_publish_template`:
+  `if req.dry_run { ... submit_dry_run_inner(...) }` — the transaction is built unsigned
+  and marked `with_dry_run(true)`.
+- `submit_dry_run_inner`: *"A dry run never finalizes, so it must not link the locks."*
+- `crates/wallet/sdk/src/apis/transaction.rs`, `submit_dry_run_transaction`: the run goes to
+  `network_interface.submit_dry_run_transaction` — local, non-finalising execution that never
+  reaches the network submission path. No template is registered anywhere; publication only
+  happens when a REAL publish transaction finalises on-chain.
+- The only local write is one `transactions`-table row with status `DryRun` — the same
+  bounded class as the six submit-manifest dry-runs already performed this session.
+  `enforce_max_fee_limit` is explicitly skipped for dry runs, so a ceiling REFUSAL cannot
+  be raised by a daemon-side rule either.
+
+The four templates were then dry-run published (`dryRunOnly: true`, ceiling 5 000 000
+microTARI — the executor's hard cap, never raised). All four were accepted with the fees in
+§3.11; the ledger records exactly four `phase: dry_run` entries and no `submitting`/`final`
+for any of them (the only real `publish … submitted/final` entries remain the historical
+2026-10-06 Pool v2 publication). Nothing was published.
 
 ## 11. Evidence index
 
