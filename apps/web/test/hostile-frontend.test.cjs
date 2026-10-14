@@ -907,11 +907,14 @@ test('storage: the record count is bounded so a huge payload cannot exhaust memo
   assert.ok(loaded.records.length <= 500, `record count must be bounded, got ${loaded.records.length}`);
 });
 
-test('storage: the inventory declares exactly two keys and neither holds secrets', () => {
+test('storage: the inventory declares exactly three keys and none holds secrets', () => {
   const inventory = storage.storageInventory();
-  assert.equal(inventory.length, 2);
+  assert.equal(inventory.length, 3);
   assert.ok(inventory.every((entry) => entry.containsSecrets === false));
-  assert.deepEqual([...storage.ALLOWED_STORAGE_KEYS].sort(), ['__ootle_probe__', 'ootle.operations.v1']);
+  assert.deepEqual(
+    [...storage.ALLOWED_STORAGE_KEYS].sort(),
+    ['__ootle_probe__', 'ootle.operations.v1', 'ootle.pendingRequests.v1'],
+  );
 });
 
 // ===========================================================================

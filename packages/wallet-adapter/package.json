@@ -1,7 +1,7 @@
 {
   "name": "@tari-ootle/wallet-adapter",
   "version": "0.1.0",
-  "description": "Wallet adapter interface and implementations for Tari Ootle",
+  "description": "Shadow Swap wallet adapter: the window.tari provider boundary for Tari Ootle",
   "type": "commonjs",
   "main": "dist/index.js",
   "module": "dist/esm/index.js",

@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "license": "MIT",
-  "description": "Non-custodial liquidity protocol for Tari Ootle",
+  "description": "Shadow Swap — non-custodial liquidity and NFT trading protocol for Tari's Ootle network",
   "packageManager": "pnpm@9.15.9",
   "workspaces": [
     "packages/*",

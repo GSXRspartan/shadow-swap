@@ -16,6 +16,7 @@ import type { OotleReadbackProvider } from '@tari-ootle/protocol-client';
 import { resolveConfig, realSubmitGate, type AppConfig, type RealSubmitGate } from '../services/config.js';
 import { readBrowserEnv } from '../services/envSource.js';
 import { createWalletService, type WalletBridge } from '../services/walletService.js';
+import { browserPendingRequestStorage } from '../lib/pendingRequests.js';
 import { captureIdentity, type ExecutionIdentity, type ProviderCapabilities } from '../lib/executionIdentity.js';
 import { createPoolDiscovery, descriptorFromAuthoritativeRead, type PoolDescriptor, type PoolDiscoveryResult } from '../services/pools.js';
 import { seededTemplateFor } from '../services/poolRegistry.js';
@@ -93,10 +94,12 @@ export interface ExecutionWalletsLike {
   preview(preview: Partial<import('@tari-ootle/wallet-adapter').TransactionPreview>): Promise<import('@tari-ootle/wallet-adapter').TransactionPreview>;
   signAndSubmit(
     preview: import('@tari-ootle/wallet-adapter').TransactionPreview,
-    context: { assets: string[]; operation: string; network: string; poolOrDestination: string; privacyDisclosure: string; operationId?: string },
+    context: { assets: string[]; operation: string; network: string; poolOrDestination: string; privacyDisclosure: string; operationId?: string; reviewFingerprint?: string },
     reviewedRequest: Readonly<Record<string, unknown>>,
   ): Promise<import('@tari-ootle/wallet-adapter').TransactionResult>;
   getTransactionStatus(txId: string): Promise<{ status: string; epoch?: number; error?: string }>;
+  /** The unresolved durable wallet request, if any. Gates a second submission. */
+  blockingPendingRequest(): { operationId: string; operation: string } | undefined;
 }
 
 const AppContext = createContext<AppContextValue | undefined>(undefined);
@@ -133,7 +136,10 @@ export function AppProvider({
   const config = useMemo(() => providedConfig ?? resolveConfig(readBrowserEnv()), [providedConfig]);
   const realSubmit = useMemo<RealSubmitGate>(() => realSubmitGate(readBrowserEnv(), config.network), [config.network]);
 
-  const walletService = useMemo(() => createWalletService(config.network), [config.network]);
+  const walletService = useMemo(
+    () => createWalletService(config.network, browserPendingRequestStorage()),
+    [config.network],
+  );
   const bridgeRef = useRef<WalletBridge | undefined>(undefined);
   /** The identity bound to the current session. Re-issued on any change. */
   const identityRef = useRef<ExecutionIdentity | null>(null);
@@ -423,6 +429,7 @@ export function AppProvider({
               resourceA: state.resourceA,
               resourceB: state.resourceB,
               ...(state.feeBps === undefined ? {} : { feeBps: state.feeBps }),
+              ...(state.lpResource === undefined ? {} : { lpResource: state.lpResource }),
             },
             wallet.balances,
           );
@@ -476,6 +483,12 @@ export function AppProvider({
           reviewedRequest,
           { ...context, operationId: context.operationId },
         ),
+      // Surfaced so the flow can refuse to mint a second wallet request while one is
+      // still unresolved. See the duplicate-submission guard in `executeSwap`.
+      blockingPendingRequest: () => {
+        const blocking = bridge.blockingPendingRequest();
+        return blocking === undefined ? undefined : { operationId: blocking.operationId, operation: blocking.operation };
+      },
       getTransactionStatus: (txId) => bridge.getTransactionStatus(txId),
     };
   }, [wallet.status]);

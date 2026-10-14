@@ -164,6 +164,32 @@ export function buildSignableInstructions(input: InstructionBuildInput): TariIns
         break;
       }
 
+      case 'call_function': {
+        // A template FUNCTION call — the constructor form used by create-listing,
+        // create-item-offer, and create-collection-bid. It is a different
+        // instruction from `call_method` (address is a TEMPLATE, not a component,
+        // and the callee is a function rather than a method), so it gets its own
+        // case rather than being folded into the method case with the fields
+        // reshaped. Folding them would silently emit a `CallMethod` aimed at a
+        // template address.
+        //
+        // The wire spelling mirrors `tari_ootle_transaction::Instruction` field for
+        // field: `CallFunction { address, function, args }`.
+        //
+        // NOT LIVE-VERIFIED against a browser wallet. The instruction itself is
+        // documented in the Ootle transaction reference and the field names come
+        // from the Rust enum, but this repository has verified the `CallMethod`
+        // spelling against the published provider contract and has NOT verified
+        // this one the same way. A wallet that does not recognise the shape rejects
+        // the request, which fails closed; it cannot execute something different.
+        // Recorded as an open verification gap rather than presented as proven.
+        const template = requireTemplateAddress(instruction.templateAddress, 'call_function.templateAddress');
+        const fn = requireOpaque(instruction.method, 'call_function.method');
+        const args = (instruction.args ?? []).map((arg) => translateArg(arg, ids));
+        out.push({ CallFunction: { address: template, function: fn, args } });
+        break;
+      }
+
       case 'deposit_all': {
         const account = requireComponent(instruction.accountAddress, 'deposit_all.accountAddress');
         const bucketRef = instruction.bucket ?? instruction.output;
@@ -201,4 +227,20 @@ function requireOpaque(value: string | undefined, field: string): string {
     throw new Error(`${field} must be a non-empty string.`);
   }
   return value;
+}
+
+/**
+ * A template address, in the canonical 64-hex form.
+ *
+ * `requireComponent` would accept any non-empty string, which is too loose for the
+ * one field whose whole job is identity: a mistyped or substituted template address
+ * would publish nothing but would mean the user was asked to sign against something
+ * other than the template this protocol published.
+ */
+function requireTemplateAddress(value: string | undefined, field: string): string {
+  const text = requireOpaque(value, field);
+  if (!/^template_[0-9a-f]{64}$/.test(text)) {
+    throw new Error(`${field} must be a canonical template_<64 hex> address; received a different shape.`);
+  }
+  return text;
 }

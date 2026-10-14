@@ -502,6 +502,21 @@ test('secrets: preimage names may appear only as rejection rules, never with a v
       if (typeof e.templateAddress === 'string' && e.templateAddress) allowed.add(e.templateAddress.replace(/^template_/, ''));
     }
   }
+  // The three marketplace templates. They enter the bundle because a CREATE action
+  // pins the template address it will call, and a create has no component address to
+  // reread — so the template address is the only pre-submission identity check there
+  // is. These are the exact deployments whose flows settled live on Esmeralda
+  // (FixedPriceListing SOLD, ItemOffer ACCEPTED, CollectionBid FILLED): public
+  // on-chain identities in the same category as the canonical TARI key, not secret
+  // material. Derived from the module under test rather than retyped here, so the
+  // allowlist cannot drift from what the app actually pins.
+  //
+  // This test found them: it is the reason the create path ships with a registry
+  // entry rather than an unexplained hex literal in the bundle.
+  const { MARKETPLACE_TEMPLATES } = require('../build-test/services/marketplaceActions.js');
+  for (const address of Object.values(MARKETPLACE_TEMPLATES)) {
+    if (typeof address === 'string' && address) allowed.add(address.replace(/^template_/, ''));
+  }
   for (const literal of new Set(hexLiterals)) {
     assert.ok(
       allowed.has(literal),
@@ -518,8 +533,15 @@ test('secrets: no secret-shaped value is written to storage or a URL', () => {
     const text = fs.readFileSync(file, 'utf8');
     const relative = path.relative(appRoot, file).split(path.sep).join('/');
     // Only the detector/inventory modules may name these fields: one strips them
-    // from error text, the other rejects records that carry them.
-    if (relative === 'src/lib/storage.ts' || relative === 'src/lib/errorMessage.ts') continue;
+    // from error text, and the two persistence validators reject records that
+    // carry them rather than storing them.
+    if (
+      relative === 'src/lib/storage.ts' ||
+      relative === 'src/lib/errorMessage.ts' ||
+      relative === 'src/lib/pendingRequests.ts'
+    ) {
+      continue;
+    }
     for (const forbidden of ['preimage', 'seedPhrase', 'mnemonic', 'privateKey']) {
       const hit = text
         .split('\n')

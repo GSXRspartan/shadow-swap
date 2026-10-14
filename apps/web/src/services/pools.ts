@@ -51,6 +51,14 @@ export interface PoolDescriptor {
   base: PoolAssetInfo;
   quote: PoolAssetInfo;
   feeBps?: string;
+  /**
+   * The LP resource, from the AUTHORITATIVE multi-substate decode.
+   *
+   * Needed to show the connected account's LP position. It is read from the pool
+   * component itself, not inferred from the pair, so a position can never be
+   * measured against a resource the pool does not actually mint.
+   */
+  lpResource?: string;
   /** The weakest classification across both assets; drives the pool's warning. */
   weakestSafety: ResourceRoutingClass;
 }
@@ -161,6 +169,8 @@ export interface DecodedPoolFacts {
   readonly resourceA: string;
   readonly resourceB: string;
   readonly feeBps?: string;
+  /** The LP resource named by the pool component itself. */
+  readonly lpResource?: string;
 }
 
 /** One balance as the wallet reports it: the only source of symbol/divisibility. */
@@ -237,6 +247,7 @@ export function descriptorFromAuthoritativeRead(facts: DecodedPoolFacts, balance
     weakestSafety: weakestClassification(base.safetyClass, quote.safetyClass),
   };
   if (facts.feeBps !== undefined) descriptor.feeBps = facts.feeBps;
+  if (facts.lpResource !== undefined && facts.lpResource !== '') descriptor.lpResource = facts.lpResource;
   return descriptor;
 }
 
