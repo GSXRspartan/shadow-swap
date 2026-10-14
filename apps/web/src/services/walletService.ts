@@ -36,6 +36,7 @@ import {
   readSubstate,
   readRawSubstate,
   requestAccounts,
+  resumeTransactionRequest,
   signAndSubmit,
   submitViaTransactionRequest,
   type TariProvider,
@@ -45,6 +46,19 @@ import type { TariWalletCapabilities } from './tariDappTypes.js';
 import { checkNetwork } from '../lib/networks.js';
 import { requireAccountComponent } from '../lib/addressDomain.js';
 import type { LiveIdentityInput } from '../lib/executionIdentity.js';
+import {
+  blockingPendingRequest,
+  describeResumeRefusal,
+  forgetPendingRequest,
+  listPendingRequests,
+  rememberPendingRequest,
+  resumeBlockReason,
+  type PendingRequestStorage,
+  type PendingWalletRequest,
+  type ResumeBinding,
+  type ResumeRefusal,
+} from '../lib/pendingRequests.js';
+import { awaitingApproval } from '@tari-ootle/protocol-client';
 
 export type WalletEvent =
   | { kind: 'accountsChanged' }
@@ -77,6 +91,37 @@ export interface WalletBridge extends WalletAdapter {
    * reload can resume by id instead of losing the outcome.
    */
   bindRequestId(operationId: string, requestId: string): void | Promise<void>;
+  /** Point the bridge at the durable ledger. Injected so the store stays testable. */
+  setPendingRequestStorage(storage: PendingRequestStorage | undefined): void;
+  /**
+   * Every durable request this app knows about, across reloads.
+   *
+   * The ledger is UNTRUSTED input and is never consulted for authority: it can only
+   * tell the UI what to go and ASK the wallet about.
+   */
+  pendingRequests(): readonly PendingWalletRequest[];
+  /**
+   * The unresolved request that must be dealt with before a new financial
+   * operation may start, for this account on this network.
+   */
+  blockingPendingRequest(): PendingWalletRequest | undefined;
+  /**
+   * Resume a durable request BY ID.
+   *
+   * There is no payload argument, by construction: submission takes only the
+   * `requestId` the wallet already approved. There is therefore no code path on
+   * which a reviewed transaction is reconstructed, mutated, or replaced between
+   * approval and broadcast.
+   */
+  resumePendingRequest(
+    record: PendingWalletRequest,
+    live: ResumeBinding,
+  ): Promise<{ submitted: true; transactionId: string } | { submitted: false; state: 'AWAITING_APPROVAL' | 'REJECTED' | 'FAILED' | 'UNKNOWN'; detail?: string }>;
+  /**
+   * Forget a durable request. Only ever called on a verdict the WALLET gave, never
+   * because time passed or the user navigated away.
+   */
+  forgetPendingRequest(operationId: string): void;
   /**
    * Sign the exact request that was reviewed. Preferred over `signAndSubmit`
    * for any financial operation, because it does not re-derive the payload from
@@ -108,6 +153,16 @@ class TariBridgeWalletAdapter implements WalletBridge {
   private resources: ResourceInfo[] = [];
   /** Durable operation id -> wallet transaction-request id, for reload resume. */
   private readonly requestIds = new Map<string, string>();
+  /**
+   * Durable ledger backing `requestIds`.
+   *
+   * The in-memory map is a fast path for this tab. This is what survives a reload,
+   * which is the whole point of the create/approve/submit split. Injected rather than
+   * reaching for `localStorage` directly so the whole store is testable and so a
+   * storage failure is a single contained degradation rather than a thrown error on
+   * the approval path.
+   */
+  private pendingStorage: PendingRequestStorage | undefined;
   private detachAccounts: (() => void) | undefined;
   /**
    * The provider object this session was established against, if any.
@@ -330,11 +385,19 @@ class TariBridgeWalletAdapter implements WalletBridge {
    * resume by the persisted id. `rejected` is a clean user decision. `failed` is
    * recorded as a wallet failure. An unrecognised status fails closed without
    * submitting.
+   *
+   * WHEN THE WALLET IS STILL WAITING, the thrown error carries the
+   * awaiting-approval brand from the protocol client rather than being a bare
+   * failure. That distinction is load-bearing: an unbranded throw is recorded as
+   * `FAILED`, which hides a live durable wallet request from the user and invites
+   * them to press the button again — minting a second request for the same intent,
+   * so that approving both popups executes the trade twice. See
+   * `lib/pendingRequests.ts`.
    */
   async signAndSubmitReviewed(
     preview: TransactionPreview,
     reviewedRequest: Readonly<Record<string, unknown>>,
-    context: { assets: string[]; operation: string; network: string; poolOrDestination: string; privacyDisclosure: string; operationId?: string },
+    context: { assets: string[]; operation: string; network: string; poolOrDestination: string; privacyDisclosure: string; operationId?: string; reviewFingerprint?: string },
   ): Promise<TransactionResult> {
     const instructions = requireReviewedInstructions(reviewedRequest);
     // A signing request that names no asset, operation, network, or destination
@@ -350,7 +413,7 @@ class TariBridgeWalletAdapter implements WalletBridge {
       throw new TariProviderError('Refusing to present a signing request with no pool or destination context.', 'REJECTED');
     }
 
-    const result = await this.submitExact(instructions, context.operationId);
+    const result = await this.submitExact(instructions, context);
     void preview;
     return { transactionId: result.transactionId, epoch: result.epoch === undefined ? 0 : Number(result.epoch), status: 'pending' };
   }
@@ -361,29 +424,70 @@ class TariBridgeWalletAdapter implements WalletBridge {
    * The capability that selects the flow is `transactionRequests` from
    * `tari_getCapabilities`. There is deliberately no brand test anywhere on this
    * path: a dApp must not detect which wallet it has.
+   *
+   * The durable request id is written to the pending-request ledger BEFORE the
+   * approval is polled, and before any await that could be interrupted by a reload.
+   * That ordering is the entire recovery guarantee: once the wallet has minted an
+   * id, this app is able to find it again even if the tab dies mid-approval.
    */
-  private async submitExact(instructions: readonly unknown[], operationId: string | undefined): Promise<TariSignResult> {
+  private async submitExact(
+    instructions: readonly unknown[],
+    context: { operation: string; network: string; poolOrDestination: string; operationId?: string; reviewFingerprint?: string },
+  ): Promise<TariSignResult> {
     const capabilities = this.capabilities;
-    if (capabilities !== undefined && capabilities.transactionRequests === true) {
+    const operationId = context.operationId;
+    const account = this.session?.account?.address;
+    // An approval can only be recorded against the identity it was actually given
+    // to. Without an operation id or a review fingerprint there is nothing durable to
+    // bind the request to, so the durable path is not offered rather than offered
+    // un-bound.
+    const bindable = operationId !== undefined && context.reviewFingerprint !== undefined && account !== undefined;
+
+    if (capabilities !== undefined && capabilities.transactionRequests === true && bindable) {
       const outcome = await submitViaTransactionRequest(this.provider, instructionsOperation(instructions), {
         onRequestId: (requestId) => {
-          if (operationId !== undefined) this.requestIds.set(operationId, requestId);
+          this.requestIds.set(operationId, requestId);
+          rememberPendingRequest(this.pendingStorage, {
+            operationId,
+            requestId,
+            reviewFingerprint: context.reviewFingerprint as string,
+            operation: context.operation,
+            approvedAccount: account as string,
+            approvedNetwork: context.network,
+            destination: context.poolOrDestination,
+            createdAtUnixMs: Date.now(),
+            state: 'AWAITING_APPROVAL',
+          });
         },
-        onSubmitted: () => undefined,
+        onSubmitted: (result) => {
+          rememberPendingRequest(this.pendingStorage, {
+            operationId,
+            requestId: this.requestIds.get(operationId) ?? '',
+            reviewFingerprint: context.reviewFingerprint as string,
+            operation: context.operation,
+            approvedAccount: account as string,
+            approvedNetwork: context.network,
+            destination: context.poolOrDestination,
+            createdAtUnixMs: Date.now(),
+            state: 'SUBMITTED',
+            transactionId: result.transactionId,
+          });
+        },
       });
       if ('pendingRequestId' in outcome) {
-        // The human has not answered yet. Nothing was submitted, and this is not
-        // a failure: the durable id is recorded and the caller can resume.
-        throw new TariProviderError('The transaction request is awaiting wallet approval. It was not submitted.', 'UNKNOWN');
+        // The human has not answered yet. Nothing was submitted, and this is NOT
+        // a failure: the durable id is already in the ledger and the caller — and
+        // the next page load — can resume it. The branded error is what stops the
+        // execution flow from recording this as FAILED.
+        throw awaitingApproval(`Operation ${operationId} is awaiting wallet approval of request ${outcome.pendingRequestId}. It was not submitted.`);
       }
       return outcome;
     }
     // Capability-gated fallback. Reached when the account reports
-    // `transactionRequests: false` (or advertised nothing), i.e. the trio is not
-    // available. The one-shot form is still given the EXACT reviewed
+    // `transactionRequests: false` (or advertised nothing), or when the call could
+    // not be durably bound. The one-shot form is still given the EXACT reviewed
     // instructions, so "shown == signed" is preserved; what is lost is the
-    // reload-survival of the request id, which is recorded in the residual-risk
-    // documentation rather than worked around.
+    // reload-survival of the request id.
     return signAndSubmit(this.provider, { instructions });
   }
 
@@ -404,6 +508,80 @@ class TariBridgeWalletAdapter implements WalletBridge {
     return this.requestIds.get(operationId);
   }
 
+  /** Seed the durable ledger. Set once by `createWalletService`; injectable for tests. */
+  setPendingRequestStorage(storage: PendingRequestStorage | undefined): void {
+    this.pendingStorage = storage;
+  }
+
+  pendingRequests(): readonly PendingWalletRequest[] {
+    return listPendingRequests(this.pendingStorage);
+  }
+
+  blockingPendingRequest(): PendingWalletRequest | undefined {
+    const account = this.session?.account?.address;
+    const network = this.session?.network?.name ?? this.allowedNetworkId;
+    return blockingPendingRequest(listPendingRequests(this.pendingStorage), account, network);
+  }
+
+  forgetPendingRequest(operationId: string): void {
+    this.requestIds.delete(operationId);
+    forgetPendingRequest(this.pendingStorage, operationId);
+  }
+
+  /**
+   * Resume, or explain why not.
+   *
+   * The order of the two checks is the security property:
+   *
+   *   1. `resumeBlockReason` compares the PERSISTED account/network/fingerprint
+   *      against the LIVE session. Every mismatch refuses. Note the direction:
+   *      storage supplies only the left-hand side, so a tampered ledger can cause a
+   *      refusal but can never cause a submission.
+   *   2. Only then is the wallet asked what happened to the request. The wallet's
+   *      answer — never the ledger's `state` field — decides what happens next.
+   *
+   * `AWAITING_APPROVAL` comes back as a value, not a throw: the human still has not
+   * answered, nothing was broadcast, and the entry stays in the ledger for later.
+   * `UNKNOWN` is likewise never treated as success.
+   */
+  async resumePendingRequest(
+    record: PendingWalletRequest,
+    live: ResumeBinding,
+  ): Promise<{ submitted: true; transactionId: string } | { submitted: false; state: 'AWAITING_APPROVAL' | 'REJECTED' | 'FAILED' | 'UNKNOWN'; detail?: string }> {
+    const refusal: ResumeRefusal | undefined = resumeBlockReason(record, live);
+    if (refusal !== undefined && refusal !== 'NOT_BLOCKING') {
+      throw new TariProviderError(describeResumeRefusal(refusal), refusal === 'NETWORK_CHANGED' ? 'WRONG_NETWORK' : 'ACCOUNT_CHANGED');
+    }
+    this.provider = getTariProvider();
+    try {
+      const outcome = await resumeTransactionRequest(this.provider, record.requestId, {
+        onRequestId: () => undefined,
+        onSubmitted: () => undefined,
+      });
+      if ('pendingRequestId' in outcome) {
+        return { submitted: false, state: 'AWAITING_APPROVAL' };
+      }
+      // Remember which id produced which transaction, so a reload can still
+      // reconcile this operation even after the ledger entry is retired.
+      this.requestIds.set(record.operationId, record.requestId);
+      return { submitted: true, transactionId: outcome.transactionId };
+    } catch (error) {
+      const code = error instanceof TariProviderError ? error.code : 'UNKNOWN';
+      if (code === 'REJECTED') {
+        this.forgetPendingRequest(record.operationId);
+        return { submitted: false, state: 'REJECTED', detail: (error as Error).message };
+      }
+      if (code === 'INTERNAL') {
+        this.forgetPendingRequest(record.operationId);
+        return { submitted: false, state: 'FAILED', detail: (error as Error).message };
+      }
+      // TIMEOUT, MALFORMED_REPLY, UNKNOWN, and anything else: the request's fate is
+      // genuinely unknown. It is reported as UNKNOWN and KEPT in the ledger, because
+      // the request may well be approvable later and must not be treated as settled.
+      return { submitted: false, state: 'UNKNOWN', detail: (error as Error).message };
+    }
+  }
+
   async signAndSubmit(preview: TransactionPreview): Promise<TransactionResult> {
     // The preview-derived path is retained only for the adapter seam. The
     // instructions come from the preview's own args, which the resolvers
@@ -413,7 +591,11 @@ class TariBridgeWalletAdapter implements WalletBridge {
     if (instructions.length === 0) {
       throw new TariProviderError('Refusing to sign: no instructions were supplied.', 'REJECTED');
     }
-    const result = await this.submitExact(instructions, undefined);
+    const result = await this.submitExact(instructions, {
+      operation: 'ADAPTER_SEAM',
+      network: this.session?.network?.name ?? this.allowedNetworkId,
+      poolOrDestination: preview.componentAddress ?? 'UNSPECIFIED',
+    });
     return { transactionId: result.transactionId, epoch: result.epoch === undefined ? 0 : Number(result.epoch), status: 'pending' };
   }
 
@@ -609,7 +791,7 @@ export interface WalletService {
  * a different state, established by `probeAvailability` and surfaced as such —
  * `Boolean(window.tari)` is never treated as "a usable wallet is available".
  */
-export function createWalletService(allowedNetworkId: string): WalletService {
+export function createWalletService(allowedNetworkId: string, pendingStorage?: PendingRequestStorage): WalletService {
   let bridge: WalletBridge | undefined;
   let bridgedTo: object | undefined;
   const resolve = (): WalletBridge | undefined => {
@@ -621,6 +803,7 @@ export function createWalletService(allowedNetworkId: string): WalletService {
     try {
       bridge = new TariBridgeWalletAdapter(allowedNetworkId);
       (bridge as { pinnedProvider?: object }).pinnedProvider = provider;
+      bridge.setPendingRequestStorage(pendingStorage);
       bridgedTo = provider;
       return bridge;
     } catch {

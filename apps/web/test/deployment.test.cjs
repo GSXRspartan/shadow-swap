@@ -518,8 +518,15 @@ test('secrets: no secret-shaped value is written to storage or a URL', () => {
     const text = fs.readFileSync(file, 'utf8');
     const relative = path.relative(appRoot, file).split(path.sep).join('/');
     // Only the detector/inventory modules may name these fields: one strips them
-    // from error text, the other rejects records that carry them.
-    if (relative === 'src/lib/storage.ts' || relative === 'src/lib/errorMessage.ts') continue;
+    // from error text, and the two persistence validators reject records that
+    // carry them rather than storing them.
+    if (
+      relative === 'src/lib/storage.ts' ||
+      relative === 'src/lib/errorMessage.ts' ||
+      relative === 'src/lib/pendingRequests.ts'
+    ) {
+      continue;
+    }
     for (const forbidden of ['preimage', 'seedPhrase', 'mnemonic', 'privateKey']) {
       const hit = text
         .split('\n')

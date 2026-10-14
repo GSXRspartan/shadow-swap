@@ -34,6 +34,8 @@ export type ErrorCode =
   | 'MARKET_DATA_STALE'
   | 'SUBMISSION_UNKNOWN'
   | 'SUBMISSION_FAILED'
+  | 'AWAITING_WALLET_APPROVAL'
+  | 'APPROVAL_SUBSTITUTED'
   | 'PROVIDER_OFFLINE'
   | 'BROWSER_SHA_UNAVAILABLE'
   | 'STORAGE_CORRUPT'
@@ -70,15 +72,24 @@ const MESSAGES: Record<ErrorCode, string> = {
   MARKET_DATA_STALE: 'Market data is behind the chain.',
   SUBMISSION_UNKNOWN: 'The submission outcome is unknown and is being reconciled.',
   SUBMISSION_FAILED: 'The transaction was rejected.',
+  AWAITING_WALLET_APPROVAL: 'Waiting for you to approve this transaction in your wallet. Nothing has been submitted yet.',
+  APPROVAL_SUBSTITUTED: 'This pending approval cannot be submitted from the current session.',
   PROVIDER_OFFLINE: 'The wallet provider is not responding.',
   BROWSER_SHA_UNAVAILABLE: 'Atomic XTM swaps are not available in a browser wallet yet.',
   STORAGE_CORRUPT: 'Saved operation history in this browser could not be read.',
   UNEXPECTED: 'Something went wrong. Nothing was submitted.',
 };
 
-const RETRYABLE: ReadonlySet<ErrorCode> = new Set<ErrorCode>(['WALLET_REJECTED', 'WALLET_DISCONNECTED', 'QUOTE_STALE', 'QUOTE_EXPIRED', 'PROVIDER_OFFLINE', 'SUBMISSION_UNKNOWN']);
+const RETRYABLE: ReadonlySet<ErrorCode> = new Set<ErrorCode>(['WALLET_REJECTED', 'WALLET_DISCONNECTED', 'QUOTE_STALE', 'QUOTE_EXPIRED', 'PROVIDER_OFFLINE', 'SUBMISSION_UNKNOWN', 'AWAITING_WALLET_APPROVAL']);
 
 const BY_PATTERN: ReadonlyArray<{ pattern: RegExp; code: ErrorCode }> = [
+  // These two must precede every other pattern. "awaiting wallet approval" reads
+  // like a rejection to several of the patterns below, and "approval substituted"
+  // contains no rejection wording at all — getting either wrong would tell a user
+  // their pending, un-submitted approval failed, which is exactly the confusion that
+  // leads them to press the button a second time.
+  { pattern: /awaiting wallet approval|awaits wallet approval|awaiting (the )?human/i, code: 'AWAITING_WALLET_APPROVAL' },
+  { pattern: /approval.*(different account|different network|not the one that was approved)|cannot be submitted from/i, code: 'APPROVAL_SUBSTITUTED' },
   { pattern: /user rejected|denied by user|declined|rejected by (the )?user/i, code: 'WALLET_REJECTED' },
   { pattern: /insufficient (balance|funds)/i, code: 'INSUFFICIENT_BALANCE' },
   { pattern: /no (tari )?wallet provider|not injected|provider unavailable/i, code: 'WALLET_UNAVAILABLE' },
