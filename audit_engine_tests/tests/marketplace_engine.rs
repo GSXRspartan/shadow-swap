@@ -366,6 +366,213 @@ fn m03_listing_rejects_wrong_quote_insufficient_payment_non_nft_and_nft_quote() 
     t.execute_expect_failure(unsupported_quote, vec![seller_proof]);
 }
 
+/// The escrow vault's own contents, read from the store rather than inferred from an
+/// account balance.
+///
+/// The live decoder the frontend now uses reports `escrow` straight from this vault, so
+/// "the component holds nothing after settlement" is a property the UI depends on and
+/// must be engine-proven, not assumed from a net balance difference.
+fn escrow_holding(
+    t: &mut TemplateTest,
+    listing: ComponentAddress,
+) -> (ResourceAddress, Amount, Vec<NonFungibleId>) {
+    let vaults = t
+        .read_only_state_store()
+        .get_vaults_for_component(listing)
+        .expect("listing escrow vault readable");
+    let (_, vault) = vaults
+        .iter()
+        .next()
+        .expect("listing has exactly one escrow vault");
+    (
+        *vault.resource_address(),
+        vault.balance(),
+        vault.get_non_fungible_ids().iter().cloned().collect(),
+    )
+}
+
+/// LIVE DISCOVERY (Esmeralda 2026-10-07, tx 0af825a4...): a settled listing's escrow vault
+/// is EMPTY, and both the seller's chosen settlement account and the buyer's own account
+/// receive the exact amounts. `seller_account` is whatever the seller signed at create
+/// time; it is not implied to be the account that held the NFT.
+#[test]
+fn m05_settled_listing_holds_nothing_in_escrow_and_pays_the_signed_settlement_account() {
+    let mut t = new_test();
+    let (quote_faucet, quote) = create_fungible_faucet(&mut t, "wUSD");
+    let nft_id = NonFungibleId::from_u64(41);
+    let (nft_faucet, collection) = create_nft_faucet(&mut t, nft_id.clone(), "COLF");
+    let (seller, seller_proof, seller_secret) = t.create_funded_account();
+    let (buyer, buyer_proof, buyer_secret) = t.create_funded_account();
+    // A THIRD account the seller nominates as the settlement destination. This is the
+    // live shape: the seller chooses where payment lands, and nothing may change it
+    // afterwards.
+    let (payee, _, _) = t.create_funded_account();
+    fund_nft(&mut t, nft_faucet, seller);
+    fund(&mut t, quote_faucet, buyer);
+
+    let template = t.get_template_address("FixedPriceListing");
+    let created = t.execute_expect_success(
+        t.transaction()
+            .call_method(
+                seller,
+                "withdraw_non_fungible",
+                args![collection, nft_id.clone()],
+            )
+            .put_last_instruction_output_on_workspace("nft")
+            .call_function(
+                template,
+                "create",
+                args![payee, Workspace("nft"), quote, Amount::from(PRICE), 0u64],
+            )
+            .build_and_seal(&seller_secret),
+        vec![seller_proof.clone()],
+    );
+    let listing: ComponentAddress = created
+        .expect_success()
+        .up_iter()
+        .find_map(|(address, substate)| {
+            if address.is_component()
+                && *substate
+                    .substate_value()
+                    .component()
+                    .unwrap()
+                    .template_address()
+                    == template
+            {
+                address.as_component_address()
+            } else {
+                None
+            }
+        })
+        .expect("listing component not found");
+    drop(created);
+
+    // While active, the escrow holds exactly the listed NFT and nothing else.
+    // Engine semantics: an NFT vault's `balance()` is its TOKEN COUNT, so one escrowed
+    // NFT reads as Amount 1; the vault carries no fungible value on top of that.
+    let (escrow_resource, escrow_amount, escrow_ids) = escrow_holding(&mut t, listing);
+    assert_eq!(escrow_resource, collection);
+    assert_eq!(
+        escrow_amount,
+        Amount::from(escrow_ids.len() as u64),
+        "vault.balance() counts the escrowed NFTs"
+    );
+    assert_eq!(escrow_ids, vec![nft_id.clone()]);
+
+    let payee_before = account_balance(&mut t, payee, quote);
+    let seller_before = account_balance(&mut t, seller, quote);
+    t.execute_expect_success(
+        t.transaction()
+            .call_method(buyer, "withdraw", args![quote, Amount::from(PRICE)])
+            .put_last_instruction_output_on_workspace("payment")
+            .call_method(listing, "buy", args![Workspace("payment"), buyer])
+            .build_and_seal(&buyer_secret),
+        vec![buyer_proof],
+    );
+
+    // Payment landed on the account the SELLER nominated, and nowhere else.
+    assert_eq!(
+        account_balance(&mut t, payee, quote) - payee_before,
+        Amount::from(PRICE)
+    );
+    assert_eq!(
+        account_balance(&mut t, seller, quote),
+        seller_before,
+        "the NFT-holding account is not the settlement destination unless it nominated itself"
+    );
+    assert_eq!(
+        account_balance(&mut t, buyer, collection),
+        Amount::from(1u64)
+    );
+
+    // The escrow is empty afterwards. This is what "no residual escrow" means.
+    let (after_resource, after_amount, after_ids) = escrow_holding(&mut t, listing);
+    assert_eq!(
+        after_resource, collection,
+        "the escrow vault still exists and names its resource"
+    );
+    assert_eq!(after_amount, Amount::zero());
+    assert!(
+        after_ids.is_empty(),
+        "a sold listing must escrow nothing; found {after_ids:?}"
+    );
+
+    // A sold listing cannot be cancelled back into existence, even by the signer.
+    let cancel_after_sell = t
+        .transaction()
+        .call_method(listing, "cancel", args![])
+        .build_and_seal(&seller_secret);
+    t.execute_expect_failure(cancel_after_sell, vec![seller_proof]);
+    assert_eq!(
+        account_balance(&mut t, buyer, collection),
+        Amount::from(1u64)
+    );
+    let (_, final_amount, final_ids) = escrow_holding(&mut t, listing);
+    assert_eq!(final_amount, Amount::zero());
+    assert!(final_ids.is_empty());
+}
+
+/// LIVE DISCOVERY (Esmeralda 2026-10-07, tx 73246824... / ab5267e1...): after a cancel the
+/// escrow vault is empty AND the listing's stored status is terminal, so a subsequent buy
+/// is refused on status rather than on an absent NFT.
+#[test]
+fn m06_cancelled_listing_escrows_nothing_and_refuses_every_settlement() {
+    let mut t = new_test();
+    let (quote_faucet, quote) = create_fungible_faucet(&mut t, "wUSD");
+    let nft_id = NonFungibleId::from_u64(42);
+    let (nft_faucet, collection) = create_nft_faucet(&mut t, nft_id.clone(), "COLG");
+    let (seller, seller_proof, seller_secret) = t.create_funded_account();
+    let (buyer, buyer_proof, buyer_secret) = t.create_funded_account();
+    fund_nft(&mut t, nft_faucet, seller);
+    fund(&mut t, quote_faucet, buyer);
+    let listing = create_listing(
+        &mut t,
+        seller,
+        seller_proof.clone(),
+        &seller_secret,
+        collection,
+        nft_id.clone(),
+        quote,
+        Amount::from(PRICE),
+        0,
+    );
+
+    t.execute_expect_success(
+        t.transaction()
+            .call_method(listing, "cancel", args![])
+            .build_and_seal(&seller_secret),
+        vec![seller_proof.clone()],
+    );
+    let (_, amount, ids) = escrow_holding(&mut t, listing);
+    assert_eq!(amount, Amount::zero());
+    assert!(
+        ids.is_empty(),
+        "a cancelled listing must escrow nothing; found {ids:?}"
+    );
+    assert_eq!(
+        account_balance(&mut t, seller, collection),
+        Amount::from(1u64),
+        "cancellation returns the exact NFT to the seller"
+    );
+
+    // Buy is refused on the listing's status, not incidentally.
+    let reason = t
+        .transaction()
+        .call_method(buyer, "withdraw", args![quote, Amount::from(PRICE)])
+        .put_last_instruction_output_on_workspace("payment")
+        .call_method(listing, "buy", args![Workspace("payment"), buyer])
+        .build_and_seal(&buyer_secret);
+    let failure = t.execute_expect_failure(reason, vec![buyer_proof]);
+    assert!(format!("{failure:?}").contains("Listing is not active"));
+
+    // A second cancel is refused too.
+    let duplicate = t
+        .transaction()
+        .call_method(listing, "cancel", args![])
+        .build_and_seal(&seller_secret);
+    t.execute_expect_failure(duplicate, vec![seller_proof]);
+}
+
 #[test]
 fn m04_expired_listing_cannot_be_bought_at_the_consensus_epoch_boundary() {
     let mut t = new_test();

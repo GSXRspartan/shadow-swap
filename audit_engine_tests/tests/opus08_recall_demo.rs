@@ -43,20 +43,18 @@ fn faucet_fungible(t: &mut TemplateTest, symbol: &str) -> (ComponentAddress, Res
 
 fn hostile_factory(t: &mut TemplateTest, func: &str) -> (ComponentAddress, ResourceAddress) {
     let tpl = t.get_template_address("Hostile");
-    let res = t.execute_expect_success(
+    t.execute_expect_success(
         t.transaction()
             .call_function(tpl, func, args![])
             .build_and_seal(t.secret_key()),
         vec![],
     );
-    let component = res.finalize.execution_results[0]
-        .get_value("$.0")
-        .unwrap()
-        .unwrap();
-    let resource = res.finalize.execution_results[0]
-        .get_value("$.1")
-        .unwrap()
-        .unwrap();
+    // v0.46.0 retired `FinalizeResult.execution_results` (upstream #2859); the harness captures
+    // the constructor's return tuple itself and exposes it via `TemplateTest::return_values()`.
+    // The JSONPath addressing is unchanged: `$.0` is the component, `$.1` the resource.
+    let out = &t.return_values()[0];
+    let component = out.get_value::<ComponentAddress>("$.0").unwrap().unwrap();
+    let resource = out.get_value::<ResourceAddress>("$.1").unwrap().unwrap();
     (component, resource)
 }
 

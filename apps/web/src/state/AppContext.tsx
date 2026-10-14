@@ -360,12 +360,16 @@ export function AppProvider({
     // is perfectly reachable but has no templates published yet is NOT an
     // outage, and a network we cannot read is NOT an empty market. Collapsing
     // either pair is the dishonest-empty-state bug this app exists to avoid.
+    // `RATE_LIMITED` is a third fact again: the host is answering, this client
+    // asked too fast. It is a warning, not an unavailable indexer.
     const health =
       result.state === 'INDEXER_UNAVAILABLE' || result.state === 'WRONG_NETWORK'
         ? presentHealth({ status: 'UNAVAILABLE', source: result.source, reason: result.unavailableReason ?? 'The indexer could not be read.' })
-        : result.state === 'PROTOCOL_AVAILABLE'
-          ? presentHealth({ status: 'SYNCED', source: result.source, reason: undefined })
-          : presentHealth({ status: 'UNAVAILABLE', source: result.source, reason: result.detail ?? 'No pools are published for this deployment.' });
+        : result.state === 'RATE_LIMITED'
+          ? presentHealth({ status: 'UNAVAILABLE', source: result.source, reason: result.unavailableReason ?? 'The indexer is rate-limiting this browser. Wait a moment and refresh.' })
+          : result.state === 'PROTOCOL_AVAILABLE'
+            ? presentHealth({ status: 'SYNCED', source: result.source, reason: undefined })
+            : presentHealth({ status: 'UNAVAILABLE', source: result.source, reason: result.detail ?? 'No pools are published for this deployment.' });
     setMarket({ loading: false, discovery: result, pools: result.pools, health });
   }, [discovery, providedPools]);
 

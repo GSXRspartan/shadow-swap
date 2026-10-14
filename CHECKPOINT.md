@@ -1,3 +1,51 @@
+# END-OF-RUN CHECKPOINT (2026-10-13) — v0.46.0 migration + live NFT/AMM verification
+
+> Supersedes only the facts it contradicts below; all prior checkpoint sections are retained.
+
+## B1. Outcome
+Repository migrated to the Ootle **v0.46.0** cohort (release commit `cc8a83bcab88e03e0fcf760d2652ab6f1e067d8a`).
+Live esmeralda confirmed on Protocol V2 (epoch ≥12220; observed 12234). The local wallet
+daemon was upgraded 0.45.0 → 0.46.0 with a verified pre-migration backup, and the full NFT
+marketplace + AMM swap write paths were executed live. Full record:
+`docs/OOTLE_V046_MIGRATION.md`.
+
+## B2. Daemon upgrade (rollback point exists)
+Backup `v042-esmeralda-bootstrap.backup-pre046-20261013-142449` verified BEFORE any 0.46
+binary ran (`integrity_check ok`, 26 tables, 2 accounts). Binary sha256
+`7e4b21c5…733aa9` matched the official sidecar. 0.46 migrated the DB **in place**
+(27 tables, both accounts intact, 690 txs). `wallet.get_info` → 0.46.0 / esmeralda / byte 38.
+Runs with `--authentication none` (loopback only; config file untouched).
+
+## B3. Live bug found and fixed: NonFungibleId dual rendering
+`NonFungibleId` is a positional tuple `[1,["…"]]` inside component CBOR state but a **named
+variant object** `{"String":"…"}` inside vault `resource_container`. The escrow reader used
+the tuple form; every previously inspected escrow was empty, so the defect never executed.
+Fixture had encoded vault ids in the component form — the tests could not have caught it.
+Fixed in `marketplaceSubstate.ts` (both renderings accepted, malformed still refused),
+fixture corrected, 3 regressions added, and the test file was **added to the package test
+script, which had never included it**.
+
+## B4. Live evidence on v0.46 (all committed, all reconciled)
+- FixedPriceListing create→buy: txs `54b4ab30…` (fee 3291), `cd8d111e…` (4419) → SOLD, escrow empty.
+- ItemOffer create→accept: txs `9164094b…` (3657), `00f6eba0…` (5123) → ACCEPTED, escrow empty.
+- CollectionBid create→fill: txs `30ebfe17…` (3708), `c219b2ae…` (5081) → FILLED, escrow empty.
+- Pool swap 1000 tTARI→LPTESTA: tx `00557411…` (3604); reserves 595664/604684 → 596664/603674;
+  product invariant increased (fee retained); min-out satisfied.
+- One rejection proved v0.46 structured codes live: `Execution failure (InsufficientFunds)`.
+- Balances reconcile **exactly**: A 49 987 978, B 1 638 456 (arithmetic in §10.3).
+- Dry-run fee receipts show `WasmExecution` / `NativeExecution` line items (v0.46 metering).
+
+## B5. Test status (local, Windows)
+protocol-client 220 pass (now incl. marketplace_substate 38), web 346 pass, executor 13 pass,
+wallet-adapter pass, web build + typecheck clean, Rust crates 36 + 22 + 10 pass.
+`audit_engine_tests` remains **Windows-unbuildable** (Cranelift); CI-only.
+
+## B6. Open items (full table in the migration doc)
+WASM shape-cap measurement (needs publish dry-run), engine suite under v0.46 (CI),
+wallet-extension behaviour under #2855 (app-side handling verified correct in code).
+
+---
+
 # END-OF-RUN CHECKPOINT (2026-09-25) — market-data foundation
 
 > Supersedes only the facts it contradicts below; all prior checkpoint sections are retained.

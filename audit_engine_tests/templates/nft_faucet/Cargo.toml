@@ -9,7 +9,7 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
-tari_template_lib = { git = "https://github.com/tari-project/tari-ootle.git", rev = "9c626062673760530ffb075b6b006a67becebe5a" }
+tari_template_lib = { git = "https://github.com/tari-project/tari-ootle.git", rev = "cc8a83bcab88e03e0fcf760d2652ab6f1e067d8a" }
 
 [profile.release]
 opt-level = "z"

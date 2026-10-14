@@ -211,7 +211,13 @@ export class WalletdExecutor {
       dry_run: true,
       signing_key_ids: [],
     });
-    const requiredFees = dry?.required_fees ?? null;
+    // v0.46.0 added `FinalizeResult.total_fees_required`: what COMMITTING the whole
+    // transaction was priced at. It can exceed the envelope's `required_fees` (which
+    // carries an estimate allowance on top of what was actually charged), and the fee
+    // transaction commits alone when only the fee intent is accepted. Gating on the
+    // envelope figure alone would therefore let through a transaction the node refuses,
+    // so the gate takes the larger of the two. Absent fields are simply not considered.
+    const requiredFees = authoritativeRequiredFees(dry);
     if (requiredFees !== null && Number(requiredFees) > ceiling) {
       throw new ExecutorError(
         `REFUSED: estimated fee ${requiredFees} exceeds the per-transaction ceiling ${ceiling} micro-tTARI for op ${p.opId}.`,
@@ -343,8 +349,16 @@ function extractComponent(addr) {
 /**
  * "Did the engine accept this?" from a dry-run's ExecuteResult.
  *
- * walletd dry-run returns `result` as an ExecuteResult: `{ events, fee_receipt,
- * result: { Accept | Reject | AcceptFeeRejectRest } }`.
+ * walletd dry-run returns `result` as an ExecuteResult whose `finalize.result` is a
+ * `TransactionResult`: `{ Accept } | { AcceptFeeRejectRest } | { Reject }`.
+ *
+ * That OUTER variant set is unchanged in v0.46.0 — the new v0.46 outcomes
+ * (`FeePaymentInMainIntent`, `Abort { reason }`, `ForeignShardGroupDecidedToAbort`) are
+ * `RejectReason` variants that sit INSIDE `Reject`/`AcceptFeeRejectRest`, so they are still
+ * reported under the same key. What did change is that some of those reasons are unit
+ * variants, serialized as a bare string rather than an object, so anything that reaches
+ * into a reject reason must not assume it is an object. `describeRejectReason` below is the
+ * one place that looks, and it handles both.
  */
 function extractOutcomeOk(executeResult) {
   // Dry-run wraps the FinalizeResult under `finalize`; a committed result has the
@@ -358,25 +372,65 @@ function extractOutcomeOk(executeResult) {
 }
 
 /**
+ * A stable label for why a transaction was rejected, or `null` when there was none.
+ *
+ * Fail-safe by construction: an unrecognised reason is returned as `UNRECOGNISED` rather
+ * than dropped, so a newly added v0.46 variant can never be silently mistaken for success.
+ */
+export function describeRejectReason(result) {
+  const inner = result?.finalize?.result ?? result?.result ?? result;
+  if (!inner || typeof inner !== 'object') return null;
+  const reason = 'Reject' in inner ? inner.Reject : 'AcceptFeeRejectRest' in inner ? inner.AcceptFeeRejectRest[1] : undefined;
+  if (reason === undefined) return null;
+  // A unit RejectReason variant arrives as a bare string ("FeePaymentInMainIntent").
+  if (typeof reason === 'string') return reason;
+  if (typeof reason !== 'object') return 'UNRECOGNISED';
+  const [key, value] = Object.entries(reason)[0] ?? [];
+  if (key === undefined) return 'UNRECOGNISED';
+  // v0.46: ExecutionFailure carries a structured `code`; prefer it over the free-text message,
+  // which reaches consensus as prose and is not a stable contract.
+  if (key === 'ExecutionFailure' && value && typeof value === 'object' && typeof value.code === 'string') {
+    return `ExecutionFailure:${value.code}`;
+  }
+  return key;
+}
+
+/**
+ * The fee a transaction must be able to clear, or `null` when no figure is available.
+ *
+ * Takes the larger of the envelope estimate and v0.46's `finalize.total_fees_required`,
+ * because the latter is what the commit-or-reject decision was actually made against and
+ * the two are not guaranteed to agree.
+ */
+function authoritativeRequiredFees(dry) {
+  const candidates = [dry?.required_fees, dry?.result?.finalize?.total_fees_required, dry?.total_fees_required];
+  const present = candidates.filter((v) => v !== undefined && v !== null).map(Number).filter((v) => Number.isFinite(v));
+  return present.length === 0 ? null : Math.max(...present);
+}
+
+/**
  * Normalise a `transactions.wait_result`/`get_result` payload into a compact,
  * ledgerable outcome.
  *
- * Real v0.43 shape:
- *   { status: "Accepted" | "Rejected" | ...,
- *     transaction_id,
- *     result: {               // ExecuteResult
- *       fee_receipt: { total_fees_paid, total_fee_payment, ... },
- *       result: { Accept: { up_substates: [[substate_id, value], ...], down_substates } }
- *     } }
+ * Shape: `{ status: "Accepted" | "Rejected" | ..., transaction_id,
+ *   result: { fee_receipt: { total_fees_paid, total_fee_payment, ... },
+ *             result: { Accept: { up_substates: [[substate_id, value], ...] } } } }`
+ *
+ * The ACCEPTED/REJECTED decision keys off the `TransactionResult` variant, whose set is
+ * unchanged in v0.46.0; the specific reason is recorded separately by `describeRejectReason`
+ * so a v0.46 abort is legible in the ledger instead of collapsing to a bare "REJECTED".
  */
 export function summariseResult(res) {
-  const out = { status: 'UNKNOWN', actualFee: null, epoch: null, components: [], resources: [], templates: [] };
+  const out = { status: 'UNKNOWN', actualFee: null, epoch: null, components: [], resources: [], templates: [], rejectReason: null };
   if (!res || typeof res !== 'object') return out;
   const exec = res.result ?? res; // ExecuteResult
   const status = res.status;
   const accept = exec?.result?.Accept;
   if (status === 'Accepted' || accept) out.status = 'COMMITTED';
-  else if (status === 'Rejected' || exec?.result?.Reject || exec?.result?.AcceptFeeRejectRest) out.status = 'REJECTED';
+  else if (status === 'Rejected' || exec?.result?.Reject || exec?.result?.AcceptFeeRejectRest) {
+    out.status = 'REJECTED';
+    out.rejectReason = describeRejectReason(exec);
+  }
 
   const fee = exec?.fee_receipt?.total_fees_paid;
   if (fee !== undefined) out.actualFee = fee;

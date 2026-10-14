@@ -7,15 +7,16 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
-# Pinned to the v0.45.0 release commit (9c62606), the official release the Protocol-V1
-# Esmeralda network runs. Every Tari/Ootle crate below comes from that one workspace so the
-# template ABI and the engine that executes it are never a mixed cohort. The published Pool v2
-# artifact was built at a43773e (v0.42.0) and remains the on-chain identity; this rev is the
-# development/build cohort only.
-tari_template_abi = { git = "https://github.com/tari-project/tari-ootle.git", rev = "9c626062673760530ffb075b6b006a67becebe5a" }
+# Pinned to the v0.46.0 release commit (cc8a83b), the official release the Esmeralda network runs
+# after activating Protocol V2 at epoch 12220. Every Tari/Ootle crate below comes from that one
+# workspace so the template ABI and the engine that executes it are never a mixed cohort. The
+# published Pool v2 artifact was built at a43773e (v0.42.0) and remains the on-chain identity — it
+# was verified still decoding identically under live v0.46.0 on 2026-10-13, so it was NOT
+# republished; this rev is the development/build cohort only.
+tari_template_abi = { git = "https://github.com/tari-project/tari-ootle.git", rev = "cc8a83bcab88e03e0fcf760d2652ab6f1e067d8a" }
 # `precision` (192-bit intermediate math) and `extra-arith` (checked_sqrt) are required by the
 # overflow-safe LP/AMM math in lib.rs; both pass through to tari_template_lib_types and are WASM-safe.
-tari_template_lib = { git = "https://github.com/tari-project/tari-ootle.git", rev = "9c626062673760530ffb075b6b006a67becebe5a", features = ["precision", "extra-arith"] }
+tari_template_lib = { git = "https://github.com/tari-project/tari-ootle.git", rev = "cc8a83bcab88e03e0fcf760d2652ab6f1e067d8a", features = ["precision", "extra-arith"] }
 
 # NOTE: Real engine tests live in the standalone host crate `audit_engine_tests/`, which points
 # tari_template_test_tooling at this template directory and compiles it to WASM. They are kept out

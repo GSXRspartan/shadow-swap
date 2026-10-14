@@ -189,23 +189,29 @@ fn main() { Pool::new(arg!["a"], arg!["b"], ${feeBps}u16); }`;
     }
     case 'read-pool': {
       const pool = req(flags, 'pool');
-      // NOTE: get_a_resource/get_b_resource are DenyAll on the pool (not in the granted
-      // method set), so an ownerless pool refuses them. The pair is read from
-      // get_pool_balances (AllowAll), which returns both resources with their reserves.
-      const manifest = `fn main() {
-  let pool = arg!["pool"];
-  pool.fee_bps();
-  pool.lp_resource();
-  pool.lp_total_supply();
-  pool.locked_lp_supply();
-  pool.get_pool_balances();
-}`;
-      const dry = await ex.rpc('transactions.submit_manifest', { manifest, variables: { pool }, max_fee: 100_000, dry_run: true, signing_key_ids: [] });
-      const er = dry.result.finalize.execution_results;
-      const names = ['fee_bps', 'lp_resource', 'lp_total_supply', 'locked_lp_supply', 'pool_balances'];
-      const fields = {};
-      er.forEach((r, i) => { fields[names[i] ?? `r${i}`] = decodeValue(r.indexed?.value); });
-      emit({ pool, fields });
+      // Read the pool's state from its OWN SUBSTATES, not by calling its getters.
+      //
+      // v0.46.0 (upstream #2859) stopped recording template return values in the
+      // transaction result — `FinalizeResult.execution_results` is retired — so the old
+      // `fee_bps(); lp_resource(); ...` dry-run manifest no longer returns anything to
+      // read. The supported readback is component state, and `decodePoolState` is the same
+      // strict decoder the product quote path uses: it pins the published template address
+      // and checks each reserve vault actually holds the declared pair leg.
+      //
+      // This is also cheaper (a read pays no execution metering) and stronger (it verifies
+      // the vaults rather than trusting the component's own getters).
+      const facts = await readPoolState(ex, pool);
+      emit({
+        pool,
+        resourceA: facts.resourceA,
+        resourceB: facts.resourceB,
+        reserveA: facts.reserveA,
+        reserveB: facts.reserveB,
+        feeBps: facts.feeBps,
+        lpResource: facts.lpResource,
+        lpTotalSupply: facts.totalLpSupply,
+        lockedLpSupply: facts.lockedLpSupply,
+      });
       break;
     }
     default:
@@ -214,17 +220,21 @@ fn main() { Pool::new(arg!["a"], arg!["b"], ${feeBps}u16); }`;
   }
 }
 
-/** Decode the manifest read-value CBOR shapes into plain JS where obvious. */
-function decodeValue(v) {
-  if (v && typeof v === 'object' && v['@cbor'] === 'tag' && v.tag === 131) {
-    return 'resource_' + v.value?.hex;
-  }
-  if (v && typeof v === 'object' && v['@cbor'] === 'map') {
-    const out = {};
-    for (const [k, val] of v.entries ?? []) out[decodeValue(k)] = val;
-    return out;
-  }
-  return v;
+/**
+ * Decode a pool's authoritative state from its substates.
+ *
+ * Uses the same strict `decodePoolState` the product quote path uses, so a value shown here
+ * is one the app would itself accept — not a second, weaker parse of the same pool.
+ */
+async function readPoolState(ex, pool) {
+  const { decodePoolState } = await import('../../packages/protocol-client/dist/esm/poolSubstate.js');
+  const reader = {
+    read: async (address) => {
+      const r = await ex.rpc('substates.get', { substate_id: address });
+      return r?.substate_from_remote?.substate;
+    },
+  };
+  return decodePoolState(reader, pool);
 }
 
 function render(command, obj) {

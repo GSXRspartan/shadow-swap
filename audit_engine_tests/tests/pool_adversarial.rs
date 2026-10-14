@@ -105,17 +105,21 @@ fn fund_once(ctx: &mut Ctx, faucet_component: ComponentAddress) {
 }
 
 /// Instantiate the Hostile factory (returns `(Component<Self>, ResourceAddress)`); returns
-/// the component address (execution result path `$.0`).
+/// the component address.
+///
+/// v0.46.0 retired `FinalizeResult.execution_results` (upstream #2859), so the constructor's
+/// return tuple is taken from `TemplateTest::return_values()`, which the harness fills from its
+/// `CaptureOutputsModule`. The JSONPath addressing is unchanged: `$.0` is still the component.
 fn hostile_component(t: &mut TemplateTest) -> ComponentAddress {
     let tpl = t.get_template_address("Hostile");
-    let res = t.execute_expect_success(
+    t.execute_expect_success(
         t.transaction()
             .call_function(tpl, "safe_fungible", args![])
             .build_and_seal(t.secret_key()),
         vec![],
     );
-    res.finalize.execution_results[0]
-        .get_value("$.0")
+    t.return_values()[0]
+        .get_value::<ComponentAddress>("$.0")
         .unwrap()
         .unwrap()
 }
