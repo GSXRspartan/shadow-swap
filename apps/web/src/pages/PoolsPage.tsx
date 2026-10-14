@@ -124,16 +124,24 @@ export function PoolsPage() {
   );
 
   /**
-   * The five states are kept apart because each one is a different fact about
+   * The six states are kept apart because each one is a different fact about
    * the world with a different operator response:
    *
    *   INDEXER_UNAVAILABLE   the chain could not be read
+   *   RATE_LIMITED          the chain is answering; this client asked too fast
    *   WRONG_NETWORK         the chain was read and it is not the one we permit
    *   PROTOCOL_NOT_DEPLOYED the chain is reachable; our templates are unpublished
    *   PROTOCOL_DEPLOYED_EMPTY templates are live; no component instantiated yet
    *   PROTOCOL_AVAILABLE    pool components exist on chain
+   *
+   * `RATE_LIMITED` is deliberately NOT rendered as an outage. Since Ootle v0.46.0
+   * rate-limits every public indexer read route, and discovery issues a burst of
+   * pages, a throttle is usually this app's own request rate. Telling the user the
+   * indexer is down would be a false claim about the network, and the remedy
+   * ("wait a moment, then refresh") is different from an outage's.
    */
   const state = market.discovery.state;
+  const isRateLimited = state === 'RATE_LIMITED';
   const isOutage = state === 'INDEXER_UNAVAILABLE' || state === 'WRONG_NETWORK';
   const isEmptyDeployment = state === 'PROTOCOL_NOT_DEPLOYED' || state === 'PROTOCOL_DEPLOYED_EMPTY';
   const candidates = market.discovery.candidates;
@@ -152,6 +160,12 @@ export function PoolsPage() {
           </button>
         </div>
       </div>
+
+      {isRateLimited && (
+        <Notice tone="info" title="Indexer rate limit reached">
+          The indexer is answering but is throttling this browser. Wait a moment and refresh. The chain is reachable; this is a request-rate limit, not an outage.
+        </Notice>
+      )}
 
       {isOutage && (
         <Notice tone="warn" title={state === 'WRONG_NETWORK' ? 'Refusing this network' : 'Pool discovery unavailable'}>

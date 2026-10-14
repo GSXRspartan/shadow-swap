@@ -46,17 +46,21 @@ fn faucet_fungible(t: &mut TemplateTest, symbol: &str) -> ResourceAddress {
 }
 
 /// Call a zero-arg Hostile factory function that returns (Component, ResourceAddress); returns the
-/// resource address (execution result path `$.1`).
+/// resource address.
+///
+/// v0.46.0 retired `FinalizeResult.execution_results` (upstream #2859); the harness now captures
+/// the constructor's return tuple itself and exposes it via `TemplateTest::return_values()`. The
+/// JSONPath addressing is unchanged: `$.1` is still the resource.
 fn hostile_resource(t: &mut TemplateTest, func: &str) -> ResourceAddress {
     let tpl = t.get_template_address("Hostile");
-    let res = t.execute_expect_success(
+    t.execute_expect_success(
         t.transaction()
             .call_function(tpl, func, args![])
             .build_and_seal(t.secret_key()),
         vec![],
     );
-    res.finalize.execution_results[0]
-        .get_value("$.1")
+    t.return_values()[0]
+        .get_value::<ResourceAddress>("$.1")
         .unwrap()
         .unwrap()
 }
