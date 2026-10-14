@@ -14,16 +14,21 @@ publish = false
 [dependencies]
 
 [dev-dependencies]
-# One cohort, one revision: the v0.45.0 release commit (9c62606). The engine and test tooling that
-# execute the templates in tests must be the same build the Protocol-V1 Esmeralda validators run,
-# or a test pass proves nothing about the network.
-tari_template_test_tooling = { git = "https://github.com/tari-project/tari-ootle.git", rev = "9c626062673760530ffb075b6b006a67becebe5a" }
-tari_template_lib = { git = "https://github.com/tari-project/tari-ootle.git", rev = "9c626062673760530ffb075b6b006a67becebe5a" }
-tari_template_abi = { git = "https://github.com/tari-project/tari-ootle.git", rev = "9c626062673760530ffb075b6b006a67becebe5a" }
-tari_ootle_transaction = { git = "https://github.com/tari-project/tari-ootle.git", rev = "9c626062673760530ffb075b6b006a67becebe5a" }
-tari_ootle_common_types = { git = "https://github.com/tari-project/tari-ootle.git", rev = "9c626062673760530ffb075b6b006a67becebe5a" }
-tari_engine_types = { git = "https://github.com/tari-project/tari-ootle.git", rev = "9c626062673760530ffb075b6b006a67becebe5a" }
-# NOT a floating "0.24": the v0.45.0 workspace pins tari_crypto 0.24.0 (it was bumped from 0.23.x in
-# this release). tari_engine_types 0.45.0 requires tari_crypto ^0.24, so this must match or the
-# cohort is unresolvable.
+# One cohort, one revision: the v0.46.0 release commit (cc8a83b). The engine and test tooling that
+# execute the templates in tests must be the same build the Esmeralda validators run, or a test
+# pass proves nothing about the network. Esmeralda activated Protocol V2 at epoch 12220, so the
+# network cohort is v0.46.0 — a v0.45 harness would prove the superseded protocol.
+#
+# v0.46.0 retired `FinalizeResult.execution_results` (#2859): template return values are no longer
+# recorded in the transaction result. `TemplateTest::expect_return(index)` replaces the old
+# `res.finalize.execution_results[0].get_value(...)` reads.
+tari_template_test_tooling = { git = "https://github.com/tari-project/tari-ootle.git", rev = "cc8a83bcab88e03e0fcf760d2652ab6f1e067d8a" }
+tari_template_lib = { git = "https://github.com/tari-project/tari-ootle.git", rev = "cc8a83bcab88e03e0fcf760d2652ab6f1e067d8a" }
+tari_template_abi = { git = "https://github.com/tari-project/tari-ootle.git", rev = "cc8a83bcab88e03e0fcf760d2652ab6f1e067d8a" }
+tari_ootle_transaction = { git = "https://github.com/tari-project/tari-ootle.git", rev = "cc8a83bcab88e03e0fcf760d2652ab6f1e067d8a" }
+tari_ootle_common_types = { git = "https://github.com/tari-project/tari-ootle.git", rev = "cc8a83bcab88e03e0fcf760d2652ab6f1e067d8a" }
+tari_engine_types = { git = "https://github.com/tari-project/tari-ootle.git", rev = "cc8a83bcab88e03e0fcf760d2652ab6f1e067d8a" }
+# NOT a floating "0.24": the v0.46.0 workspace still pins tari_crypto 0.24.0 (unchanged from
+# v0.45.0). tari_engine_types 0.46.0 requires tari_crypto ^0.24, so this must match or the cohort
+# is unresolvable.
 tari_crypto = "0.24.0"

@@ -68,19 +68,26 @@ export const CANONICAL_TARI_RESOURCE = 'resource_0101010101010101010101010101010
 export const TARI_UNITS_PER_TARI = 1_000_000;
 
 /**
- * The five deployment states this app distinguishes.
+ * The six deployment states this app distinguishes.
  *
- * `INDEXER_UNAVAILABLE` and `WRONG_NETWORK` are failures. `PROTOCOL_NOT_DEPLOYED`
- * and `PROTOCOL_DEPLOYED_EMPTY` are SUCCESSFUL answers that happen to be empty.
- * Collapsing either pair is a lie in a specific direction: reporting an outage
- * as an empty market tells a user their funds have no venue, and reporting an
+ * `INDEXER_UNAVAILABLE`, `RATE_LIMITED` and `WRONG_NETWORK` are failures.
+ * `PROTOCOL_NOT_DEPLOYED` and `PROTOCOL_DEPLOYED_EMPTY` are SUCCESSFUL answers that
+ * happen to be empty. Collapsing either pair is a lie in a specific direction: reporting
+ * an outage as an empty market tells a user their funds have no venue, and reporting an
  * empty deployment as an outage tells them the network is down when it is fine.
+ *
+ * `RATE_LIMITED` is its own state because Ootle v0.46.0 put rate limits on every public
+ * indexer read route (#2823). The host is UP and answering; this client asked too fast.
+ * Folding that into `INDEXER_UNAVAILABLE` would blame the indexer for the app's own
+ * request rate and tell a user the network is down when it is not. It is also the one
+ * failure the user can fix by waiting rather than by retrying later.
  */
 export type ProtocolDeploymentState =
   | 'PROTOCOL_NOT_DEPLOYED'
   | 'PROTOCOL_DEPLOYED_EMPTY'
   | 'PROTOCOL_AVAILABLE'
   | 'INDEXER_UNAVAILABLE'
+  | 'RATE_LIMITED'
   | 'WRONG_NETWORK';
 
 /** One row of `GET /templates/catalogue`. */
@@ -112,7 +119,7 @@ export interface IndexerDiscoverySuccess {
 
 export interface IndexerDiscoveryFailure {
   readonly ok: false;
-  readonly state: 'INDEXER_UNAVAILABLE' | 'WRONG_NETWORK';
+  readonly state: 'INDEXER_UNAVAILABLE' | 'RATE_LIMITED' | 'WRONG_NETWORK';
   readonly detail: string;
 }
 
@@ -125,8 +132,8 @@ export type IndexerDiscoveryResult = IndexerDiscoverySuccess | IndexerDiscoveryF
  * check.
  */
 export interface IndexerTransport {
-  getJson(url: string): Promise<{ ok: true; payload: unknown } | { ok: false; reason: string }>;
-  postJson(url: string, body: unknown): Promise<{ ok: true; payload: unknown } | { ok: false; reason: string }>;
+  getJson(url: string): Promise<{ ok: true; payload: unknown } | { ok: false; reason: string; rateLimited?: boolean }>;
+  postJson(url: string, body: unknown): Promise<{ ok: true; payload: unknown } | { ok: false; reason: string; rateLimited?: boolean }>;
 }
 
 function record(value: unknown): Record<string, unknown> | undefined {
@@ -242,7 +249,7 @@ export class TariIndexerDiscovery {
    *
    * An empty catalogue is a successful answer meaning "not published here".
    */
-  async listPublishedTemplates(templateName: string): Promise<{ ok: true; entries: TemplateCatalogueEntry[] } | { ok: false; reason: string }> {
+  async listPublishedTemplates(templateName: string): Promise<{ ok: true; entries: TemplateCatalogueEntry[] } | { ok: false; reason: string; rateLimited?: boolean }> {
     const collected: TemplateCatalogueEntry[] = [];
     let cursor: string | undefined;
     for (let page = 0; page < 20; page += 1) {
@@ -252,7 +259,7 @@ export class TariIndexerDiscovery {
           : { name_filter: templateName, limit: String(CATALOGUE_PAGE_LIMIT), after: cursor },
       );
       const result = await this.transport.getJson(this.url(`/templates/catalogue?${query}`));
-      if (!result.ok) return { ok: false, reason: result.reason };
+      if (!result.ok) return { ok: false, reason: result.reason, ...(result.rateLimited === true ? { rateLimited: true } : {}) };
       const bag = record(result.payload);
       if (bag === undefined) return { ok: false, reason: 'The template catalogue response was not a JSON object.' };
       const raw = bag.entries;
@@ -297,7 +304,7 @@ export class TariIndexerDiscovery {
    * transaction spent) is deliberately ignored, because a spent substate is not
    * a live pool.
    */
-  private async scanReceiptComponents(): Promise<{ ok: true; ids: string[]; pages: number } | { ok: false; reason: string }> {
+  private async scanReceiptComponents(): Promise<{ ok: true; ids: string[]; pages: number } | { ok: false; reason: string; rateLimited?: boolean }> {
     const ids = new Set<string>();
     let cursor: string | undefined;
     let pages = 0;
@@ -308,7 +315,7 @@ export class TariIndexerDiscovery {
           : { limit: String(RECEIPT_PAGE_LIMIT), ordering: 'Descending', last_id: cursor },
       );
       const result = await this.transport.getJson(this.url(`/transaction-receipts?${query}`));
-      if (!result.ok) return { ok: false, reason: result.reason };
+      if (!result.ok) return { ok: false, reason: result.reason, ...(result.rateLimited === true ? { rateLimited: true } : {}) };
       const bag = record(result.payload);
       if (bag === undefined) return { ok: false, reason: 'The transaction receipt response was not a JSON object.' };
       const receipts = bag.receipts;
@@ -352,10 +359,10 @@ export class TariIndexerDiscovery {
   async componentsOfTemplates(
     templateAddresses: readonly string[],
     knownComponents: readonly string[] = [],
-  ): Promise<{ ok: true; components: DiscoveredComponent[]; pages: number } | { ok: false; reason: string }> {
+  ): Promise<{ ok: true; components: DiscoveredComponent[]; pages: number } | { ok: false; reason: string; rateLimited?: boolean }> {
     const wanted = new Set(templateAddresses);
     const scan = await this.scanReceiptComponents();
-    if (!scan.ok) return { ok: false, reason: scan.reason };
+    if (!scan.ok) return { ok: false, reason: scan.reason, ...(scan.rateLimited === true ? { rateLimited: true } : {}) };
     // Durable registry: fold in KNOWN component ids (protocol seed + prior-discovery
     // cache) so a pool that has aged out of the receipt window is still re-read. These
     // are untrusted ADDRESSES only — each is reverified below from its own on-chain
@@ -375,7 +382,7 @@ export class TariIndexerDiscovery {
       // (v0.42 sent `{ substate_ids: [...] }` and an array of wrappers — both the
       // request field and the response container changed).
       const result = await this.transport.postJson(this.url('/substates/fetch'), { requests: batch, cached_only: false });
-      if (!result.ok) return { ok: false, reason: result.reason };
+      if (!result.ok) return { ok: false, reason: result.reason, ...(result.rateLimited === true ? { rateLimited: true } : {}) };
       const bag = record(result.payload);
       if (bag === undefined) return { ok: false, reason: 'The batch substate response was not a JSON object.' };
       const substates = record(bag.substates);
@@ -422,7 +429,11 @@ export class TariIndexerDiscovery {
 
     const catalogue = await this.listPublishedTemplates(templateName);
     if (!catalogue.ok) {
-      return { ok: false, state: 'INDEXER_UNAVAILABLE', detail: `The template catalogue could not be read. ${catalogue.reason}` };
+      return {
+        ok: false,
+        state: catalogue.rateLimited === true ? 'RATE_LIMITED' : 'INDEXER_UNAVAILABLE',
+        detail: `The template catalogue could not be read. ${catalogue.reason}`,
+      };
     }
     if (catalogue.entries.length === 0) {
       return {
@@ -437,7 +448,11 @@ export class TariIndexerDiscovery {
 
     const found = await this.componentsOfTemplates(catalogue.entries.map((entry) => entry.templateAddress), knownComponents);
     if (!found.ok) {
-      return { ok: false, state: 'INDEXER_UNAVAILABLE', detail: `Published templates were found, but their components could not be read. ${found.reason}` };
+      return {
+        ok: false,
+        state: found.rateLimited === true ? 'RATE_LIMITED' : 'INDEXER_UNAVAILABLE',
+        detail: `Published templates were found, but their components could not be read. ${found.reason}`,
+      };
     }
     return {
       ok: true,

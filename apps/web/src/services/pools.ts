@@ -369,7 +369,10 @@ export class IndexerPoolDiscovery implements PoolDiscoverySource {
       source: this.name,
       // A "nothing to show" answer is still an ANSWER, so it must not be dressed up
       // as an outage. Only the two failure states carry an `unavailableReason`.
-      unavailableReason: result.state === 'INDEXER_UNAVAILABLE' || result.state === 'WRONG_NETWORK' ? result.detail : undefined,
+      unavailableReason:
+        result.state === 'INDEXER_UNAVAILABLE' || result.state === 'WRONG_NETWORK' || result.state === 'RATE_LIMITED'
+          ? result.detail
+          : undefined,
       ...(result.state === 'PROTOCOL_NOT_DEPLOYED' || result.state === 'PROTOCOL_DEPLOYED_EMPTY' ? { detail: result.detail } : {}),
     };
   }

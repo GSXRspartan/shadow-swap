@@ -6,7 +6,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { WalletdExecutor, ExecutorError, summariseResult, MAX_FEE_PER_TX_MICRO, EXPECTED_NETWORK, EXPECTED_NETWORK_BYTE, assertAuditedPoolTemplate, CURRENT_POOL_TEMPLATE } from './walletd.mjs';
+import { WalletdExecutor, ExecutorError, summariseResult, describeRejectReason, MAX_FEE_PER_TX_MICRO, EXPECTED_NETWORK, EXPECTED_NETWORK_BYTE, assertAuditedPoolTemplate, CURRENT_POOL_TEMPLATE } from './walletd.mjs';
 
 test('pool instantiation refuses every template except the audited Pool v2', () => {
   // The shipped default used to be the SUPERSEDED v1 template (ef2bc1b0…), so this guard
@@ -90,4 +90,60 @@ test('summariseResult is UNKNOWN for an unrecognised shape, never a false COMMIT
   assert.equal(summariseResult(undefined).status, 'UNKNOWN');
   assert.equal(summariseResult({}).status, 'UNKNOWN');
   assert.equal(summariseResult({ status: 'Pending' }).status, 'UNKNOWN');
+});
+
+// ---------------------------------------------------------------------------
+// Ootle v0.46.0 regressions.
+//
+// v0.46.0 (upstream #2859) retired FinalizeResult.execution_results, so the getter-based
+// readback path is gone and the wire gained fields this executor must not misread.
+// ---------------------------------------------------------------------------
+
+test('summariseResult classifies every v0.46 RejectReason as REJECTED, never COMMITTED', () => {
+  // The OUTER TransactionResult variant set is unchanged in v0.46, so `Reject` still keys
+  // the verdict. These are the reasons v0.46 added or reshaped. Two of them are UNIT
+  // variants and arrive as a BARE STRING, which is the shape a naive reader gets wrong.
+  const reasons = [
+    'FeePaymentInMainIntent',                                        // NEW unit variant
+    { Abort: { reason: 'LockInputsFailed' } },                       // NEW struct variant
+    { ForeignShardGroupDecidedToAbort: { start_shard: 0, end_shard: 1, abort_reason: 'ExecutionFailure' } },
+    { ExecutionFailure: { code: 'InsufficientFunds', message: 'vault short' } },
+    { InsufficientFeesPaid: 'short' },
+  ];
+  for (const reason of reasons) {
+    const res = { status: 'Rejected', result: { fee_receipt: { total_fees_paid: 0 }, result: { Reject: reason } } };
+    const out = summariseResult(res);
+    assert.equal(out.status, 'REJECTED', `reason ${JSON.stringify(reason)} must be REJECTED`);
+    assert.notEqual(out.rejectReason, null, `reason ${JSON.stringify(reason)} must be labelled`);
+  }
+});
+
+test('describeRejectReason prefers the structured code over the free-text message', () => {
+  // v0.46 gives ExecutionFailure a stable `code`. The rendered message reaches consensus
+  // as prose, so branching on it would be reading a string that is not a contract.
+  // (Argument is an ExecuteResult, the shape summariseResult passes in.)
+  const exec = { result: { Reject: { ExecutionFailure: { code: 'OutOfCompute', message: 'execution ran past the fee' } } } };
+  assert.equal(describeRejectReason(exec), 'ExecutionFailure:OutOfCompute');
+});
+
+test('describeRejectReason handles a unit RejectReason delivered as a bare string', () => {
+  assert.equal(describeRejectReason({ result: { Reject: 'FeePaymentInMainIntent' } }), 'FeePaymentInMainIntent');
+});
+
+test('describeRejectReason reads the reason out of AcceptFeeRejectRest too', () => {
+  // The fee intent committed but the main intent did not: money moved, so this must be
+  // reported as REJECTED and must still carry a reason.
+  const res = {
+    status: 'Rejected',
+    result: { result: { AcceptFeeRejectRest: [{ up_substates: [], down_substates: [] }, { Abort: { reason: 'LockInputsFailed' } }] } },
+  };
+  const out = summariseResult(res);
+  assert.equal(out.status, 'REJECTED');
+  assert.equal(out.rejectReason, 'Abort');
+});
+
+test('describeRejectReason returns null for an accepted result and UNRECOGNISED never silently', () => {
+  assert.equal(describeRejectReason({ result: { Accept: { up_substates: [] } } }), null);
+  // A reason that is neither a string nor a recognised object must surface, not vanish.
+  assert.equal(describeRejectReason({ result: { Reject: 42 } }), 'UNRECOGNISED');
 });
