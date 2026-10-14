@@ -380,7 +380,10 @@ fn escrow_holding(
         .read_only_state_store()
         .get_vaults_for_component(listing)
         .expect("listing escrow vault readable");
-    let (_, vault) = vaults.iter().next().expect("listing has exactly one escrow vault");
+    let (_, vault) = vaults
+        .iter()
+        .next()
+        .expect("listing has exactly one escrow vault");
     (
         vault.resource_address(),
         vault.balance(),
@@ -410,7 +413,11 @@ fn m05_settled_listing_holds_nothing_in_escrow_and_pays_the_signed_settlement_ac
     let template = t.get_template_address("FixedPriceListing");
     let created = t.execute_expect_success(
         t.transaction()
-            .call_method(seller, "withdraw_non_fungible", args![collection, nft_id.clone()])
+            .call_method(
+                seller,
+                "withdraw_non_fungible",
+                args![collection, nft_id.clone()],
+            )
             .put_last_instruction_output_on_workspace("nft")
             .call_function(
                 template,
@@ -425,7 +432,12 @@ fn m05_settled_listing_holds_nothing_in_escrow_and_pays_the_signed_settlement_ac
         .up_iter()
         .find_map(|(address, substate)| {
             if address.is_component()
-                && *substate.substate_value().component().unwrap().template_address() == template
+                && *substate
+                    .substate_value()
+                    .component()
+                    .unwrap()
+                    .template_address()
+                    == template
             {
                 address.as_component_address()
             } else {
@@ -438,7 +450,11 @@ fn m05_settled_listing_holds_nothing_in_escrow_and_pays_the_signed_settlement_ac
     // While active, the escrow holds exactly the listed NFT and nothing else.
     let (escrow_resource, escrow_amount, escrow_ids) = escrow_holding(&mut t, listing);
     assert_eq!(escrow_resource, collection);
-    assert_eq!(escrow_amount, Amount::zero(), "an NFT escrow has no fungible amount");
+    assert_eq!(
+        escrow_amount,
+        Amount::zero(),
+        "an NFT escrow has no fungible amount"
+    );
     assert_eq!(escrow_ids, vec![nft_id.clone()]);
 
     let payee_before = account_balance(&mut t, payee, quote);
@@ -462,11 +478,17 @@ fn m05_settled_listing_holds_nothing_in_escrow_and_pays_the_signed_settlement_ac
         seller_before,
         "the NFT-holding account is not the settlement destination unless it nominated itself"
     );
-    assert_eq!(account_balance(&mut t, buyer, collection), Amount::from(1u64));
+    assert_eq!(
+        account_balance(&mut t, buyer, collection),
+        Amount::from(1u64)
+    );
 
     // The escrow is empty afterwards. This is what "no residual escrow" means.
     let (after_resource, after_amount, after_ids) = escrow_holding(&mut t, listing);
-    assert_eq!(after_resource, collection, "the escrow vault still exists and names its resource");
+    assert_eq!(
+        after_resource, collection,
+        "the escrow vault still exists and names its resource"
+    );
     assert_eq!(after_amount, Amount::zero());
     assert!(
         after_ids.is_empty(),
@@ -479,7 +501,10 @@ fn m05_settled_listing_holds_nothing_in_escrow_and_pays_the_signed_settlement_ac
         .call_method(listing, "cancel", args![])
         .build_and_seal(&seller_secret);
     t.execute_expect_failure(cancel_after_sell, vec![seller_proof]);
-    assert_eq!(account_balance(&mut t, buyer, collection), Amount::from(1u64));
+    assert_eq!(
+        account_balance(&mut t, buyer, collection),
+        Amount::from(1u64)
+    );
     let (_, final_amount, final_ids) = escrow_holding(&mut t, listing);
     assert_eq!(final_amount, Amount::zero());
     assert!(final_ids.is_empty());
