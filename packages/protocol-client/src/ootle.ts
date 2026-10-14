@@ -18,6 +18,8 @@ import {
 import { Listing, ItemOffer, CollectionBid } from './marketplace.js';
 import { decodePoolState } from './poolSubstate.js';
 import type { PoolIdentityExpectations } from './poolSubstate.js';
+import { decodeListing, decodeItemOffer, decodeCollectionBid, setMarketplaceCurrentEpoch } from './marketplaceSubstate.js';
+import type { MarketplaceComponentFacts, MarketplaceEscrow } from './marketplaceSubstate.js';
 
 // ---------------------------------------------------------------------------
 // Pool readback
@@ -134,10 +136,40 @@ export function parsePoolState(envelope: EnvelopeInput): PoolState {
   return state;
 }
 
+/**
+ * Identity constraints only the caller can pin for a marketplace read.
+ *
+ * `templateAddress` is REQUIRED for the raw struct path, because the flat-field fallback
+ * that exists for test doubles cannot succeed against a real component. `epoch` is what
+ * expiry is judged against; supplying it is what makes a read reproducible.
+ */
+export interface MarketplaceIdentityExpectations {
+  /** Published template address; accepts `template_<hex>` or a bare 64-hex key. */
+  templateAddress: string;
+  /** Consensus epoch to evaluate `expires_at_epoch` against. */
+  epoch?: string | number | bigint;
+}
+
+/** A marketplace read plus what the component's escrow vault actually holds. */
+export type MarketplaceAuthoritativeRead<T> = ExecutionAuthoritativeRead<T> & {
+  escrow?: MarketplaceEscrow;
+};
+
 export interface OotleReadbackProvider extends PoolReadbackProvider {
-  readListing(listingAddress: string): Promise<ExecutionAuthoritativeRead<Listing>>;
-  readItemOffer(offerAddress: string): Promise<ExecutionAuthoritativeRead<ItemOffer>>;
-  readCollectionBid(bidAddress: string): Promise<ExecutionAuthoritativeRead<CollectionBid>>;
+  readListing(listingAddress: string, expect?: MarketplaceIdentityExpectations): Promise<MarketplaceAuthoritativeRead<Listing>>;
+  readItemOffer(offerAddress: string, expect?: MarketplaceIdentityExpectations): Promise<MarketplaceAuthoritativeRead<ItemOffer>>;
+  readCollectionBid(bidAddress: string, expect?: MarketplaceIdentityExpectations): Promise<MarketplaceAuthoritativeRead<CollectionBid>>;
+}
+
+function marketplaceFreshness(address: string, templateName: string, source: ReadSource, epoch?: string | number | bigint): Freshness {
+  const identity: FreshnessIdentity = {
+    stateIdentity: `${address}@${templateName}`,
+    readAtUnixMs: Date.now(),
+    // The consensus epoch is recorded as a raw decimal string, never a JS number, for
+    // the same reason every on-chain amount in this client is a string.
+    ...(epoch !== undefined ? { epoch: epoch.toString() } : {}),
+  };
+  return { source, identity };
 }
 
 /**
@@ -210,9 +242,39 @@ export function createOotleReadbackProvider(reader: AuthoritativeSubstateReader,
         return { status: 'UNAVAILABLE', reason: (error as Error).message };
       }
     },
-    async readListing(address: string): Promise<ExecutionAuthoritativeRead<Listing>> {
+/**
+     * Marketplace readback: raw struct decode when the transport can do it.
+     *
+     * The three marketplace templates store a STRUCT, not flat named fields, so the
+     * flat-field path below can never succeed against a real component. When the
+     * reader exposes `readRaw` the struct decoder is therefore the production path and
+     * a decode failure is UNAVAILABLE — never a downgrade to a shape that does not
+     * exist on chain. `expect.templateAddress` is the caller pinning the published
+     * template, so a component that merely resembles a listing cannot be accepted.
+     */
+    async readListing(address: string, expect?: MarketplaceIdentityExpectations): Promise<ExecutionAuthoritativeRead<Listing>> {
+      if (typeof reader.readRaw === 'function' && expect?.templateAddress !== undefined) {
+        try {
+          if (expect.epoch !== undefined) setMarketplaceCurrentEpoch(expect.epoch);
+          const facts: MarketplaceComponentFacts = await decodeListing(
+            { read: (at) => reader.readRaw!(at) },
+            address,
+            expect.templateAddress,
+          );
+          if (facts.listing === undefined) return { status: 'UNAVAILABLE', reason: `Component ${address} did not decode as a FixedPriceListing` };
+          const found: MarketplaceAuthoritativeRead<Listing> = {
+            status: 'FOUND',
+            value: facts.listing,
+            freshness: marketplaceFreshness(address, 'FixedPriceListing', source, expect.epoch),
+            escrow: facts.escrow,
+          };
+          return found;
+        } catch (error) {
+          return { status: 'UNAVAILABLE', reason: (error as Error).message };
+        }
+      }
       const read = await readEnvelope(address, 'FixedPriceListing');
-      if (read.status === 'UNAVAILABLE') return { status: 'UNAVAILABLE', reason: read.reason };
+      if (read.status === 'UNAVAILABLE') return read;
       const e = read.value;
       const parsedStatus = parseStatus(field(e, 'status'), LISTING_STATUSES, 'listing');
       if (!parsedStatus.ok) return { status: 'UNAVAILABLE', reason: parsedStatus.reason };
@@ -232,9 +294,25 @@ export function createOotleReadbackProvider(reader: AuthoritativeSubstateReader,
         freshness: read.freshness,
       };
     },
-    async readItemOffer(address: string): Promise<ExecutionAuthoritativeRead<ItemOffer>> {
+    async readItemOffer(address: string, expect?: MarketplaceIdentityExpectations): Promise<ExecutionAuthoritativeRead<ItemOffer>> {
+      if (typeof reader.readRaw === 'function' && expect?.templateAddress !== undefined) {
+        try {
+          if (expect.epoch !== undefined) setMarketplaceCurrentEpoch(expect.epoch);
+          const facts = await decodeItemOffer({ read: (at) => reader.readRaw!(at) }, address, expect.templateAddress);
+          if (facts.itemOffer === undefined) return { status: 'UNAVAILABLE', reason: `Component ${address} did not decode as an ItemOffer` };
+          const found: MarketplaceAuthoritativeRead<ItemOffer> = {
+            status: 'FOUND',
+            value: facts.itemOffer,
+            freshness: marketplaceFreshness(address, 'ItemOffer', source, expect.epoch),
+            escrow: facts.escrow,
+          };
+          return found;
+        } catch (error) {
+          return { status: 'UNAVAILABLE', reason: (error as Error).message };
+        }
+      }
       const read = await readEnvelope(address, 'ItemOffer');
-      if (read.status === 'UNAVAILABLE') return { status: 'UNAVAILABLE', reason: read.reason };
+      if (read.status === 'UNAVAILABLE') return read;
       const e = read.value;
       const parsedStatus = parseStatus(field(e, 'status'), ITEM_OFFER_STATUSES, 'item-offer');
       if (!parsedStatus.ok) return { status: 'UNAVAILABLE', reason: parsedStatus.reason };
@@ -254,9 +332,25 @@ export function createOotleReadbackProvider(reader: AuthoritativeSubstateReader,
         freshness: read.freshness,
       };
     },
-    async readCollectionBid(address: string): Promise<ExecutionAuthoritativeRead<CollectionBid>> {
+    async readCollectionBid(address: string, expect?: MarketplaceIdentityExpectations): Promise<ExecutionAuthoritativeRead<CollectionBid>> {
+      if (typeof reader.readRaw === 'function' && expect?.templateAddress !== undefined) {
+        try {
+          if (expect.epoch !== undefined) setMarketplaceCurrentEpoch(expect.epoch);
+          const facts = await decodeCollectionBid({ read: (at) => reader.readRaw!(at) }, address, expect.templateAddress);
+          if (facts.collectionBid === undefined) return { status: 'UNAVAILABLE', reason: `Component ${address} did not decode as a CollectionBid` };
+          const found: MarketplaceAuthoritativeRead<CollectionBid> = {
+            status: 'FOUND',
+            value: facts.collectionBid,
+            freshness: marketplaceFreshness(address, 'CollectionBid', source, expect.epoch),
+            escrow: facts.escrow,
+          };
+          return found;
+        } catch (error) {
+          return { status: 'UNAVAILABLE', reason: (error as Error).message };
+        }
+      }
       const read = await readEnvelope(address, 'CollectionBid');
-      if (read.status === 'UNAVAILABLE') return { status: 'UNAVAILABLE', reason: read.reason };
+      if (read.status === 'UNAVAILABLE') return read;
       const e = read.value;
       const parsedStatus = parseStatus(field(e, 'status'), COLLECTION_BID_STATUSES, 'collection-bid');
       if (!parsedStatus.ok) return { status: 'UNAVAILABLE', reason: parsedStatus.reason };
