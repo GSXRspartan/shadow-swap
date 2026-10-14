@@ -10,13 +10,17 @@
  * totals are computed with `BigInt`, never with JS `Number`.
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import type { CollectionBid } from '@tari-ootle/protocol-client';
 import { buildCollectionView, type MarketplaceSource } from '../services/marketplace.js';
+import { useApp } from '../state/AppContext.js';
 import { formatUnits, formatAddress, UNAVAILABLE } from '../lib/format.js';
 import { NftCard } from './NftCard.js';
+import { MarketplaceActionDialog } from './MarketplaceActionDialog.js';
+import { MARKETPLACE_TEMPLATES, type MarketplaceAction } from '../services/marketplaceActions.js';
 import { Badge, Card, CardHeader, DataRow, EmptyState, LoadingBlock, Notice, SegmentedControl } from './primitives.js';
 
-type Tab = 'items' | 'listings' | 'offers' | 'activity';
+type Tab = 'items' | 'listings' | 'offers' | 'bids' | 'activity';
 
 export function CollectionPanel({
   source,
@@ -118,22 +122,29 @@ export function CollectionPanel({
                 { value: 'items', label: 'Items' },
                 { value: 'listings', label: 'Listings' },
                 { value: 'offers', label: 'Offers' },
+                { value: 'bids', label: 'Bids' },
                 { value: 'activity', label: 'Activity' },
               ]}
             />
           }
         />
-        <CollectionTab
-          tab={tab}
-          market={market}
-          items={items}
-          quoteDecimals={quoteDecimals}
-          quoteSymbol={quoteSymbol}
-          onSelectItem={onSelectItem}
-        />
+        {tab === 'bids' ? (
+          <div style={{ padding: 'var(--s-4)' }}>
+            <BidsPanel source={source} collectionResource={collectionResource} quoteResource={quoteResource} quoteDecimals={quoteDecimals} quoteSymbol={quoteSymbol} />
+          </div>
+        ) : (
+          <CollectionTab
+            tab={tab}
+            market={market}
+            items={items}
+            quoteDecimals={quoteDecimals}
+            quoteSymbol={quoteSymbol}
+            onSelectItem={onSelectItem}
+          />
+        )}
       </Card>
 
-      <CollectionBidForm quoteResource={quoteResource} quoteDecimals={quoteDecimals} quoteSymbol={quoteSymbol} />
+      <CollectionBidForm collectionResource={collectionResource} quoteResource={quoteResource} quoteDecimals={quoteDecimals} quoteSymbol={quoteSymbol} />
     </div>
   );
 }
@@ -291,14 +302,9 @@ function CollectionTab({
  * `pricePerNft × quantity` product the escrow contract will require, never from
  * a JS `Number` multiplication, so amounts above 2^53 stay exact.
  */
-function CollectionBidForm({ quoteResource, quoteDecimals, quoteSymbol }: { quoteResource: string | undefined; quoteDecimals: string; quoteSymbol: string }) {
-  const [priceRaw, setPriceRaw] = useState('');
-  const [quantity, setQuantity] = useState('');
-
-  const total = useMemo(() => {
-    if (!/^\d+$/.test(priceRaw) || !/^\d+$/.test(quantity)) return undefined;
-    return (BigInt(priceRaw) * BigInt(quantity)).toString();
-  }, [priceRaw, quantity]);
+function CollectionBidForm({ collectionResource, quoteResource, quoteDecimals, quoteSymbol }: { collectionResource: string; quoteResource: string | undefined; quoteDecimals: string; quoteSymbol: string }) {
+  const { wallet } = useApp();
+  const [pendingAction, setPendingAction] = useState<MarketplaceAction | undefined>(undefined);
 
   return (
     <Card className="stack">
@@ -309,52 +315,173 @@ function CollectionBidForm({ quoteResource, quoteDecimals, quoteSymbol }: { quot
         </Notice>
       ) : (
         <>
-          <div className="grid-2">
-            <div className="field">
-              <label className="label" htmlFor="bid-price">
-                Price per NFT
-              </label>
-              <input
-                id="bid-price"
-                className="input"
-                inputMode="numeric"
-                pattern="[0-9]*"
-                value={priceRaw}
-                onChange={(event) => setPriceRaw(event.target.value.replace(/[^\d]/g, ''))}
-                aria-describedby="bid-price-hint"
-              />
-              <span className="hint" id="bid-price-hint">
-                Raw units of {formatAddress(quoteResource, 8, 6)}, in the quote asset's base units ({quoteDecimals} decimals).
-              </span>
-            </div>
-            <div className="field">
-              <label className="label" htmlFor="bid-quantity">
-                Quantity
-              </label>
-              <input
-                id="bid-quantity"
-                className="input"
-                inputMode="numeric"
-                pattern="[0-9]*"
-                value={quantity}
-                onChange={(event) => setQuantity(event.target.value.replace(/[^\d]/g, ''))}
-              />
-            </div>
-          </div>
-          <DataRow label="Total escrow" value={total === undefined ? UNAVAILABLE : `${formatUnits(total, quoteDecimals, { maxFractionDigits: 4 })} ${quoteSymbol}`} title="Exact BigInt product of price and quantity." />
+          <DataRow
+            label="Escrows"
+            value={`${quoteSymbol} (${quoteDecimals} decimals)`}
+            title="The full price multiplied by the quantity is escrowed up front when the transaction settles."
+          />
           <Notice tone="info" title="Escrowed in full">
-            A collection bid escrows the full total up front. Partial fills release the unused remainder; expiry and cancellation refund what is left.
+            A collection bid escrows the full total up front. Partial fills release the unused remainder; expiry and cancellation refund what is
+            left.
           </Notice>
-          <button type="button" className="btn btn--primary" disabled>
-            Sign bid
+          <button
+            type="button"
+            className="btn btn--primary"
+            disabled={wallet.status !== 'CONNECTED'}
+            onClick={() =>
+              setPendingAction({
+                kind: 'PLACE_COLLECTION_BID',
+                buyerAccount: wallet.account ?? '',
+                collectionResource,
+                quoteResource: quoteResource as string,
+                pricePerNftRaw: '0',
+                quantityRaw: '1',
+                expiryEpoch: 0,
+              })
+            }
+          >
+            Place a bid
           </button>
-          <p className="hint">
-            Bid construction requires a connected wallet that can reread this quote book authoritatively. The button stays disabled until then rather
-            than presenting an action that could not complete.
-          </p>
+          {wallet.status !== 'CONNECTED' && <p className="hint">Connect a wallet to place a bid.</p>}
         </>
       )}
+
+      {pendingAction !== undefined && (
+        <MarketplaceActionDialog
+          request={{ action: pendingAction, quoteDecimals }}
+          onClose={() => setPendingAction(undefined)}
+          onDone={() => setPendingAction(undefined)}
+        />
+      )}
     </Card>
+  );
+}
+
+/**
+ * Open collection bids, read from chain state.
+ *
+ * Every row's status comes from the component itself, never from the discovery
+ * index. That distinction is the whole reason this panel exists separately from the
+ * market summary: a bid that has been FILLED still appears in a discovery index for
+ * a while, and showing it as open would invite someone to fill it a second time.
+ *
+ * A bid belonging to the connected account offers Cancel, which refunds whatever
+ * escrow remains. A bid belonging to someone else does not offer it at all — an
+ * action the chain would reject is not a control to show.
+ */
+function BidsPanel({ source, collectionResource, quoteResource, quoteDecimals, quoteSymbol }: { source: MarketplaceSource; collectionResource: string; quoteResource: string | undefined; quoteDecimals: string; quoteSymbol: string }) {
+  const { wallet, readback } = useApp();
+  const [bids, setBids] = useState<CollectionBid[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  const [pendingAction, setPendingAction] = useState<MarketplaceAction | undefined>(undefined);
+
+  const refresh = useCallback(async () => {
+    if (quoteResource === undefined) {
+      setLoaded(true);
+      return;
+    }
+    const found = await source.findBids(collectionResource, quoteResource);
+    setBids(found);
+    setLoaded(true);
+  }, [source, collectionResource, quoteResource]);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  // A settled bid must stop being presented as open the moment it settles, so the
+  // panel rereads the authoritative status rather than trusting what discovery said
+  // when the page loaded.
+  useEffect(() => {
+    const provider = readback();
+    if (provider === undefined || bids.length === 0) return;
+    let cancelled = false;
+    void (async () => {
+      const verified = await Promise.all(
+        bids.map(async (bid) => {
+          // Pinned to the published CollectionBid template. Without the pin the
+          // readback falls back to a legacy flat-field decode, which is exactly the
+          // downgrade this protocol refuses: a bid component that is not the one
+          // this deployment published must fail closed rather than parse.
+          const read = await provider.readCollectionBid(bid.bidAddress, { templateAddress: MARKETPLACE_TEMPLATES.CollectionBid });
+          return read.status === 'FOUND' ? read.value.status : bid.status;
+        }),
+      );
+      if (!cancelled) setBids((current) => current.map((bid, index) => ({ ...bid, status: verified[index] ?? bid.status })));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [readback, bids]);
+
+  if (quoteResource === undefined) {
+    return <EmptyState title="No quote book" detail="A collection bid is escrowed in one specific payment resource, so bids are not shown until this collection has a known quote book." />;
+  }
+  if (!loaded) return <LoadingBlock label="Reading bids from chain" />;
+  if (bids.length === 0) return <EmptyState title="No open bids" detail="Nobody has bid on this collection in this payment resource." />;
+
+  return (
+    <div className="stack">
+      <div className="table-wrap">
+        <table className="table">
+          <caption className="sr-only">Collection bids</caption>
+          <thead>
+            <tr>
+              <th scope="col">Price per item</th>
+              <th scope="col">Quantity</th>
+              <th scope="col">Status</th>
+              <th scope="col">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {bids.map((bid) => {
+              const mine = wallet.account !== undefined && bid.buyerAccount === wallet.account;
+              return (
+                <tr key={bid.bidAddress}>
+                  <td className="num">
+                    {formatUnits(bid.pricePerNft, quoteDecimals, { maxFractionDigits: 6 })} {quoteSymbol}
+                  </td>
+                  <td className="num">{bid.remainingQuantity}</td>
+                  <td>
+                    <Badge tone={bid.status === 'ACTIVE' ? 'ok' : bid.status === 'FILLED' ? 'info' : 'neutral'}>{bid.status}</Badge>
+                  </td>
+                  <td>
+                    {mine && bid.status === 'ACTIVE' ? (
+                      <button
+                        type="button"
+                        className="btn btn--sm"
+                        onClick={() =>
+                          setPendingAction({
+                            kind: 'CANCEL_COLLECTION_BID',
+                            bidAddress: bid.bidAddress,
+                            buyerAccount: bid.buyerAccount,
+                            collectionResource,
+                            quoteResource: bid.quoteResource,
+                            refundAmountRaw: bid.remainingEscrow,
+                          })
+                        }
+                      >
+                        Cancel and refund
+                      </button>
+                    ) : (
+                      <span className="hint">{mine ? 'Settled' : 'Fill from the item page'}</span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {pendingAction !== undefined && (
+        <MarketplaceActionDialog
+          request={{ action: pendingAction, quoteDecimals }}
+          onClose={() => setPendingAction(undefined)}
+          onDone={() => void refresh()}
+        />
+      )}
+    </div>
   );
 }
 
