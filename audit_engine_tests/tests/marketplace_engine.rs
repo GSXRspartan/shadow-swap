@@ -385,9 +385,9 @@ fn escrow_holding(
         .next()
         .expect("listing has exactly one escrow vault");
     (
-        vault.resource_address(),
+        *vault.resource_address(),
         vault.balance(),
-        vault.get_non_fungible_ids(),
+        vault.get_non_fungible_ids().iter().cloned().collect(),
     )
 }
 
@@ -406,7 +406,7 @@ fn m05_settled_listing_holds_nothing_in_escrow_and_pays_the_signed_settlement_ac
     // A THIRD account the seller nominates as the settlement destination. This is the
     // live shape: the seller chooses where payment lands, and nothing may change it
     // afterwards.
-    let (payee, payee_proof, _) = t.create_funded_account();
+    let (payee, _, _) = t.create_funded_account();
     fund_nft(&mut t, nft_faucet, seller);
     fund(&mut t, quote_faucet, buyer);
 
