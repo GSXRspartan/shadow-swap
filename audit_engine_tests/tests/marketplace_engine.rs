@@ -448,12 +448,14 @@ fn m05_settled_listing_holds_nothing_in_escrow_and_pays_the_signed_settlement_ac
     drop(created);
 
     // While active, the escrow holds exactly the listed NFT and nothing else.
+    // Engine semantics: an NFT vault's `balance()` is its TOKEN COUNT, so one escrowed
+    // NFT reads as Amount 1; the vault carries no fungible value on top of that.
     let (escrow_resource, escrow_amount, escrow_ids) = escrow_holding(&mut t, listing);
     assert_eq!(escrow_resource, collection);
     assert_eq!(
         escrow_amount,
-        Amount::zero(),
-        "an NFT escrow has no fungible amount"
+        Amount::from(escrow_ids.len() as u64),
+        "vault.balance() counts the escrowed NFTs"
     );
     assert_eq!(escrow_ids, vec![nft_id.clone()]);
 
