@@ -1,0 +1,16 @@
+<!--
+  Maskable icon.
+
+  Android crops a maskable icon to whatever shape the launcher's mask is, which on
+  most devices is a circle inscribed in the safe zone. Anything outside the
+  central 80% can be cut away, so this variant moves the glyph inward and drops the
+  rounded-rect background entirely — the mask supplies the shape. Using the plain
+  `icon.svg` here instead would clip the arc ends on a circular mask.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none" role="img" aria-label="Shadow Swap">
+  <title>Shadow Swap</title>
+  <rect width="24" height="24" fill="#080a0e"/>
+  <path d="M7.6 15.2c1.9 0 1.9-6 3.8-6s1.9 6 3.8 6 1.7-3.4 2.8-3.4" stroke="#f0b429" stroke-width="1.6" stroke-linecap="round"/>
+  <circle cx="7.6" cy="15.2" r="1.4" fill="#f0b429"/>
+  <circle cx="17.4" cy="11.8" r="1.4" fill="#8b96a8"/>
+</svg>

@@ -1,6 +1,6 @@
 # live-executor — guarded Esmeralda testnet AMM executor
 
-A small, reviewed developer tool that executes the Liquidity Protocol's AMM
+A small, reviewed developer tool that executes Shadow Swap's AMM
 lifecycle against a **local** Tari Ootle wallet daemon on the **Esmeralda
 testnet**, by submitting human-readable Tari **manifests** through the daemon's
 documented `transactions.submit_manifest` JSON-RPC.

@@ -1,7 +1,7 @@
 {
-  "name": "Ootle Liquidity (testnet)",
-  "short_name": "Ootle LQ",
-  "description": "Non-custodial liquidity protocol for Tari Ootle. Experimental software on a test network.",
+  "name": "Shadow Swap (testnet)",
+  "short_name": "Shadow Swap",
+  "description": "Shadow Swap — non-custodial liquidity and NFT trading on Tari's Ootle network. Trade Tari assets, provide liquidity, explore NFT markets. Experimental software on a test network.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#080a0e",
@@ -12,6 +12,12 @@
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any"
+    },
+    {
+      "src": "/icon-maskable.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
     }
   ]
 }

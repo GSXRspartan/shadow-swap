@@ -19,6 +19,13 @@ import { useApp } from '../state/AppContext.js';
 import { explorerUrl } from '../lib/sanitize.js';
 import { formatAddress, UNAVAILABLE } from '../lib/format.js';
 import { Badge, Card, CardHeader, EmptyState, Notice, type BadgeTone } from '../components/primitives.js';
+import {
+  describeResumeRefusal,
+  needsAttention,
+  resumeBlockReason,
+  type PendingWalletRequest,
+  type ResumeRefusal,
+} from '../lib/pendingRequests.js';
 
 const STATE_TONE: Record<OperationState, BadgeTone> = {
   PENDING: 'info',
@@ -49,17 +56,22 @@ const CLAIMED_EXPLANATION =
   'Stored in this browser as CONFIRMED. Local storage can be edited by any script on this origin, so this is a claim. Reconcile it against the chain before treating it as settled.';
 
 export function ActivityPage() {
-  const { executionWallets } = useApp();
+  const { executionWallets, walletBridge, wallet } = useApp();
   const [records, setRecords] = useState<OperationRecord[]>([]);
   const [integrity, setIntegrity] = useState<{ ok: boolean; reason?: string; count: number }>({ ok: true, count: 0 });
   const [reconciling, setReconciling] = useState<string | undefined>(undefined);
   const [verdicts, setVerdicts] = useState<Map<string, { resubmissionAllowed: boolean; reason: string; finalState: OperationState }>>(new Map());
+  const [pending, setPending] = useState<PendingWalletRequest[]>([]);
+  const [resumeBusy, setResumeBusy] = useState<string | undefined>(undefined);
+  const [resumeOutcome, setResumeOutcome] = useState<Map<string, string>>(new Map());
 
   const refresh = useCallback(async () => {
     const [list, check] = await Promise.all([listOperations(100), historyIntegrity()]);
     setRecords(list);
     setIntegrity(check);
-  }, []);
+    const bridge = walletBridge();
+    setPending(bridge === undefined ? [] : [...bridge.pendingRequests()]);
+  }, [walletBridge]);
 
   useEffect(() => {
     void refresh();
@@ -85,6 +97,57 @@ export function ActivityPage() {
     [executionWallets, refresh],
   );
 
+  /**
+   * Ask the WALLET what happened to a durable request, then act on its answer.
+   *
+   * There is deliberately no "Submit anyway" control anywhere on this panel. The
+   * button re-reads the request's real state; if the wallet says approved it
+   * submits exactly that request, by id. A request the user has not approved, or
+   * one bound to a different account/network, produces an explanation instead of a
+   * submission.
+   */
+  const runResume = useCallback(
+    async (record: PendingWalletRequest) => {
+      const bridge = walletBridge();
+      const account = wallet.account;
+      if (bridge === undefined || account === undefined) return;
+      setResumeBusy(record.operationId);
+      try {
+        const outcome = await bridge.resumePendingRequest(record, { account, network: wallet.networkId ?? '' });
+        setResumeOutcome((existing) => {
+          const next = new Map(existing);
+          next.set(
+            record.operationId,
+            outcome.submitted
+              ? `Submitted as ${formatAddress(outcome.transactionId, 10, 8)}. Reconcile below to confirm it committed.`
+              : outcome.state === 'AWAITING_APPROVAL'
+                ? 'Still waiting for you in the wallet. Nothing has been submitted.'
+                : outcome.state === 'UNKNOWN'
+                  ? 'The wallet did not give a definite answer. Nothing was submitted and this request is still open — check your wallet.'
+                  : outcome.detail ?? 'The wallet settled this request without submitting anything further.',
+          );
+          return next;
+        });
+        await refresh();
+      } catch (error) {
+        setResumeOutcome((existing) => {
+          const next = new Map(existing);
+          next.set(record.operationId, (error as Error).message);
+          return next;
+        });
+      } finally {
+        setResumeBusy(undefined);
+      }
+    },
+    [walletBridge, wallet.account, wallet.networkId, refresh],
+  );
+
+  const liveAccount = wallet.account;
+  const liveNetwork = wallet.networkId ?? '';
+  const blocking = pending.find(
+    (p) => needsAttention(p) && (liveAccount === undefined || p.approvedAccount === liveAccount) && p.approvedNetwork === liveNetwork,
+  );
+
   return (
     <div className="stack" style={{ gap: 'var(--s-4)' }}>
       <div className="spread" style={{ flexWrap: 'wrap' }}>
@@ -99,6 +162,23 @@ export function ActivityPage() {
           {integrity.reason}
         </Notice>
       )}
+
+      {blocking !== undefined && (
+        <Notice tone="warn" title="A transaction is waiting for your approval">
+          A {blocking.operation.replace(/_/g, ' ').toLowerCase()} request is open in your wallet and has not been submitted. Approve or
+          cancel it there. Starting another transaction while this one is open would create a second request for the same intent, and approving
+          both would execute both.
+        </Notice>
+      )}
+
+      <PendingApprovalPanel
+        pending={pending}
+        busy={resumeBusy}
+        outcomes={resumeOutcome}
+        liveAccount={liveAccount}
+        liveNetwork={liveNetwork}
+        onResume={(record) => void runResume(record)}
+      />
 
       {records.length === 0 ? (
         <Card>
@@ -147,6 +227,93 @@ export function ActivityPage() {
         </div>
       </Card>
     </div>
+  );
+}
+
+function PendingApprovalPanel({
+  pending,
+  busy,
+  outcomes,
+  liveAccount,
+  liveNetwork,
+  onResume,
+}: {
+  pending: readonly PendingWalletRequest[];
+  busy: string | undefined;
+  outcomes: ReadonlyMap<string, string>;
+  liveAccount: string | undefined;
+  liveNetwork: string;
+  onResume: (record: PendingWalletRequest) => void;
+}) {
+  if (pending.length === 0) return null;
+  return (
+    <Card className="stack">
+      <CardHeader title="Wallet approvals" />
+      <p className="hint">
+        Durable requests this browser created. Reopening a page does not lose them: each entry is the wallet's own request id, and checking it
+        asks your wallet what really happened rather than assuming.
+      </p>
+      <div className="stack">
+        {pending.map((record) => {
+          // Refusals are computed from the LIVE session against the persisted record.
+          // Every mismatch blocks, so a tampered ledger can stop a resume but can
+          // never cause one.
+          const refusal: ResumeRefusal | undefined =
+            liveAccount === undefined ? 'ACCOUNT_CHANGED' : resumeBlockReason(record, { account: liveAccount, network: liveNetwork });
+          const blocked = refusal !== undefined && refusal !== 'NOT_BLOCKING';
+          const outcome = outcomes.get(record.operationId);
+          return (
+            <div key={record.operationId} className="stack" style={{ gap: 'var(--s-2)', padding: 'var(--s-3)', border: '1px solid var(--border, rgba(255,255,255,.08))', borderRadius: 'var(--r-2)' }}>
+              <div className="spread" style={{ flexWrap: 'wrap' }}>
+                <div className="stack" style={{ gap: 2, minWidth: 0 }}>
+                  <span style={{ fontWeight: 600 }}>{record.operation.replace(/_/g, ' ').toLowerCase()}</span>
+                  <span className="hint mono truncate" title={record.operationId}>
+                    {record.operationId}
+                  </span>
+                </div>
+                <Badge tone={record.state === 'REJECTED' || record.state === 'FAILED' ? 'danger' : 'warn'}>
+                  {record.state.replace(/_/g, ' ').toLowerCase()}
+                </Badge>
+              </div>
+
+              <div className="grid-2">
+                <div className="stack" style={{ gap: 2, minWidth: 0 }}>
+                  <span className="label">Wallet request</span>
+                  <span className="mono hint" style={{ wordBreak: 'break-all' }}>
+                    {record.requestId}
+                  </span>
+                </div>
+                <div className="stack" style={{ gap: 2, minWidth: 0 }}>
+                  <span className="label">Approved by</span>
+                  <span className="mono hint" style={{ wordBreak: 'break-all' }}>
+                    {formatAddress(record.approvedAccount, 10, 8)} on {record.approvedNetwork}
+                  </span>
+                </div>
+              </div>
+
+              {blocked && refusal !== undefined && (
+                <Notice tone="warn" title="Cannot resume from this session">
+                  {describeResumeRefusal(refusal)}
+                </Notice>
+              )}
+
+              {outcome !== undefined && (
+                <Notice tone={outcome.startsWith('Submitted') ? 'info' : 'warn'} title="Result">
+                  {outcome}
+                </Notice>
+              )}
+
+              <div className="row" style={{ gap: 'var(--s-2)', flexWrap: 'wrap' }}>
+                <button type="button" className="btn btn--sm" disabled={blocked || liveAccount === undefined || busy === record.operationId} onClick={() => onResume(record)}>
+                  {busy === record.operationId ? 'Checking with the wallet…' : 'Check status in my wallet'}
+                </button>
+                {blocked && <span className="hint">This request belongs to a different account or network.</span>}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </Card>
   );
 }
 

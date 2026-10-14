@@ -12,6 +12,7 @@ import {
   TransactionLookup,
   reconcileUnknownSubmission,
 } from './execution.js';
+import { isAwaitingApprovalReason } from './execution_flow.js';
 
 export type ProtocolOperationKind =
   // AMM
@@ -190,6 +191,14 @@ export async function reconcileOperation(record: OperationRecord, lookup: Transa
 /**
  * Pre-submit guard. Callers MUST call this before handing a transaction to a signer.
  * Fails closed: UNKNOWN and SUBMITTED records can never be silently submitted again.
+ *
+ * A `PENDING` record that is awaiting wallet approval is ALSO refused. This is the
+ * case that closes the duplicate-broadcast window: the wallet holds a live durable
+ * request carrying exactly this intent, and approving it later — in this tab or the
+ * next one — would execute it. Starting a second submission for the same operation
+ * id would mean two live requests for one intent, and the user approving both means
+ * two executions. The record must instead be resumed by its request id, or explicitly
+ * discarded, first.
  */
 export function requireFreshSubmissionAllowed(record: OperationRecord): void {
   if (record.state === 'CONFIRMED') {
@@ -200,5 +209,10 @@ export function requireFreshSubmissionAllowed(record: OperationRecord): void {
   }
   if (record.state === 'UNKNOWN') {
     throw new Error(`Operation ${record.operationId} is UNKNOWN; reconcile by durable identifier before any resubmission`);
+  }
+  if (isAwaitingApprovalReason(record.failureReason)) {
+    throw new Error(
+      `Operation ${record.operationId} has a live wallet request awaiting approval; approve, cancel, or resume that request instead of starting a second submission`,
+    );
   }
 }

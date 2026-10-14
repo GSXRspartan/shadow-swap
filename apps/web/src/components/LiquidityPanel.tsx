@@ -54,6 +54,17 @@ export function LiquidityPanel({ pool }: { pool: PoolDescriptor }) {
   const canRead = wallet.status === 'CONNECTED' && readback() !== undefined;
   const balanceA = balanceOf(pool.base.resourceAddress);
   const balanceB = balanceOf(pool.quote.resourceAddress);
+  /**
+   * The connected account's LP position.
+   *
+   * Looked up by the LP resource the pool component itself declared, never by
+   * guessing one from the pair — a pool's LP token is its own resource, and a
+   * position measured against the wrong one is meaningless. Undefined when the pool
+   * does not report one or the wallet has never held any; the UI says so rather
+   * than showing zero, because "no LP resource" and "a zero balance" are different
+   * facts with different consequences for the remove flow.
+   */
+  const lpBalance = pool.lpResource === undefined ? undefined : balanceOf(pool.lpResource);
 
   useEffect(() => {
     setPreview(undefined);
@@ -239,7 +250,14 @@ export function LiquidityPanel({ pool }: { pool: PoolDescriptor }) {
         </>
       ) : (
         <>
-          <Field label="LP amount" trailing={<span className="hint">Balance {UNAVAILABLE}</span>}>
+          <Field
+            label="LP amount"
+            trailing={
+              <span className="hint">
+                Balance {lpBalance === undefined ? UNAVAILABLE : formatUnits(lpBalance, '0', { maxFractionDigits: 6 })}
+              </span>
+            }
+          >
             {(id) => (
               <input id={id} className="input" inputMode="numeric" pattern="[0-9]*" value={lpAmount} onChange={(event) => setLpAmount(event.target.value.replace(/[^\d]/g, ''))} />
             )}
@@ -251,15 +269,30 @@ export function LiquidityPanel({ pool }: { pool: PoolDescriptor }) {
                 type="button"
                 className="btn btn--sm"
                 aria-pressed={percentage === percent}
+                disabled={lpBalance === undefined || lpBalance === '0'}
                 onClick={() => {
+                  if (lpBalance === undefined) return;
+                  // Exact integer percentage of the position, floored. BigInt only:
+                  // an LP balance is a raw u64 and a JS number would silently round
+                  // it, so the user could be asked to burn a fraction they do not
+                  // hold. Rounding UP is what could do real damage here, which is why
+                  // the floor is explicit rather than incidental.
+                  const burn = (BigInt(lpBalance) * BigInt(percent)) / 100n;
                   setPercentage(percent);
-                  setMessage({ tone: 'warn', title: 'LP balance unavailable', detail: 'This build cannot read your LP balance without a provider that exposes LP holdings. Enter an amount explicitly.' });
+                  setLpAmount(burn.toString());
+                  setMessage(undefined);
                 }}
               >
                 {percent}%
               </button>
             ))}
           </div>
+          {lpBalance === undefined && (
+            <p className="hint">
+              Your LP balance is shown when this pool reports the LP resource it actually mints and the wallet holds it. Enter an amount explicitly
+              until then.
+            </p>
+          )}
           {preview?.kind === 'remove' && (
             <div className="stack" style={{ gap: 'var(--s-2)' }}>
               <DataRow label={`Expected ${pool.base.symbol}`} value={formatUnits(preview.expectedA, pool.base.decimals, { maxFractionDigits: 6 })} title="Proportional redemption from the read-time reserves." />

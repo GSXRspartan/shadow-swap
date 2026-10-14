@@ -34,7 +34,7 @@ import { toAmmPreview, toMarketplacePreview } from '@tari-ootle/wallet-adapter';
 import { historyStore } from './history.js';
 import { asRawExecutionAmount, asResourceAddress } from '../lib/tradeBoundary.js';
 import { verifyIdentity, type ExecutionIdentity, type LiveIdentityInput, type IdentityCheck } from '../lib/executionIdentity.js';
-import { diffReviewForIntent, type TransactionReview } from '../lib/review.js';
+import { diffReviewForIntent, reviewFingerprint, type TransactionReview } from '../lib/review.js';
 
 export interface ExecutionWallets {
   /** The generic wallet seam. */
@@ -52,6 +52,13 @@ export interface ExecutionWallets {
     reviewedRequest: Readonly<Record<string, unknown>>,
   ): Promise<TransactionResult>;
   getTransactionStatus(txId: string): Promise<{ status: string; epoch?: number; error?: string }>;
+  /**
+   * A durable wallet request that is still unresolved for this account and network.
+   *
+   * Read immediately before a signer is invoked. See the duplicate-submission guard
+   * in `executeSwap` for why this exists.
+   */
+  blockingPendingRequest?(): { operationId: string; operation: string } | undefined;
 }
 
 export interface SigningContext {
@@ -68,6 +75,16 @@ export interface SigningContext {
    * protocol depends on would have nothing to resume by.
    */
   operationId?: string;
+  /**
+   * Fingerprint of the review the user actually saw.
+   *
+   * Persisted alongside the durable request id so a resumed submission can prove it
+   * is submitting the transaction that was approved. A persisted id alone is only
+   * half a binding: without the fingerprint it would be a bare pointer that a
+   * tampered ledger could aim at a transaction the user never reviewed. A mismatch
+   * refuses the resume.
+   */
+  reviewFingerprint?: string;
 }
 
 function statusFrom(raw: string): ChainTransactionStatus {
@@ -142,12 +159,29 @@ export class ReviewMismatchError extends Error {
   }
 }
 
+export class PendingApprovalError extends Error {
+  constructor(readonly pending: { operationId: string; operation: string }) {
+    super(
+      `A ${pending.operation} request for ${pending.operationId} is already awaiting approval in your wallet. ` +
+        `Approve or cancel it there before starting another transaction — approving both would execute both.`,
+    );
+    this.name = 'PendingApprovalError';
+  }
+}
+
 /**
  * Construct → verify identity → sign → submit → persist, via the
  * protocol-client's own flow.
  *
- * Two gates run immediately before the signing call:
+ * Three gates run immediately before the signing call:
  *
+ *   0. NO CONCURRENT APPROVAL. If a durable wallet request is still unresolved for
+ *      this account and network, a new one is refused. The duplicate-submission
+ *      hazard is specific: the first request is already minted and already contains
+ *      this exact intent, so it can be approved at any later moment. Pressing the
+ *      button again mints a second request; approving both popups executes both.
+ *      Nothing about this is detectable after the fact, so it is prevented here,
+ *      where the second request would be created.
  *   1. IDENTITY. The provider object, its implementation fingerprint, the
  *      network, the account, and the advertised capabilities are all re-derived
  *      live and compared against the snapshot the user reviewed. Any change
@@ -156,7 +190,7 @@ export class ReviewMismatchError extends Error {
  *   2. REVIEW. The review is re-diffed against the intent that will be signed.
  *      A mismatch aborts. This is the machine check behind "shown == signed".
  *
- * Both run on every submission, not once per session.
+ * All three run on every submission, not once per session.
  */
 export async function executeSwap<TIntent>(wallets: ExecutionWallets, input: ExecuteSwapInput<TIntent>): Promise<FlowResult> {
   input.recordInput.resources = input.recordInput.resources.map((resource, index) => asResourceAddress(resource, `resources[${index}]`));
@@ -164,6 +198,12 @@ export async function executeSwap<TIntent>(wallets: ExecutionWallets, input: Exe
   if (input.recordInput.quote !== undefined) {
     asRawExecutionAmount(input.recordInput.quote.quotedOutput, 'quote.quotedOutput');
     asRawExecutionAmount(input.recordInput.quote.minOutput, 'quote.minOutput');
+  }
+
+  // Gate 0: time-of-check before any request is minted.
+  const pending = wallets.blockingPendingRequest?.();
+  if (pending !== undefined && pending.operationId !== input.recordInput.operationId) {
+    throw new PendingApprovalError(pending);
   }
 
   // Gate 1: time-of-check / time-of-use.
@@ -191,8 +231,14 @@ export async function executeSwap<TIntent>(wallets: ExecutionWallets, input: Exe
       // the amounts it is asked to sign are the amounts the user was shown. The
       // durable operation id travels with it so the wallet's transaction-request
       // id can be bound to the durable record, which is what makes a reload
-      // resumable by id instead of losing the outcome.
-      const result = await wallets.signAndSubmit(envelope.preview, { ...input.context, operationId: input.recordInput.operationId }, input.review.walletRequest);
+      // resumable by id instead of losing the outcome — and the review's
+      // fingerprint travels too, so the resumed submission can be proven to be
+      // the same transaction that was reviewed rather than one re-derived here.
+      const result = await wallets.signAndSubmit(envelope.preview, {
+        ...input.context,
+        operationId: input.recordInput.operationId,
+        reviewFingerprint: input.context.reviewFingerprint ?? reviewFingerprint(input.review),
+      }, input.review.walletRequest);
       return { ...envelope, transactionId: result.transactionId, epoch: result.epoch };
     },
     async submit(signed: WalletEnvelope) {

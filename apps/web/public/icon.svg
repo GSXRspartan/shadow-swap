@@ -1,4 +1,16 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none" role="img" aria-label="Ootle Liquidity">
+<!--
+  Shadow Swap mark.
+
+  Two arcs meeting at a single point: two sides of a pool exchanging. The accent
+  arc is the side being traded into, the muted arc the side being traded from, and
+  the shared node between them is the liquidity itself. That reading is deliberate
+  — it is the one thing the product does that nothing else in the Tari stack does.
+
+  Drawn as geometry rather than imported artwork so it inherits the live accent
+  token. No fonts, no external references, no raster.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none" role="img" aria-label="Shadow Swap">
+  <title>Shadow Swap</title>
   <rect width="24" height="24" rx="6" fill="#080a0e"/>
   <rect x="1.25" y="1.25" width="21.5" height="21.5" rx="6" stroke="#3a4356" stroke-width="1.5"/>
   <path d="M6 15.5c2.2 0 2.2-7 4.4-7s2.2 7 4.4 7 2.2-4 3.2-4" stroke="#f0b429" stroke-width="1.75" stroke-linecap="round"/>

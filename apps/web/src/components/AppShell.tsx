@@ -211,14 +211,14 @@ export function AppShell({ children }: { children: ReactNode }) {
           className="row"
           style={{ maxWidth: 'var(--shell-max)', margin: '0 auto', padding: '0 var(--s-4)', minHeight: 'var(--nav-h)', gap: 'var(--s-4)' }}
         >
-          <Link to="/pools" className="row" style={{ gap: 'var(--s-2)', flex: 'none' }} aria-label="Tari Ootle Liquidity Protocol — pools">
+          <Link to="/pools" className="row" style={{ gap: 'var(--s-2)', flex: 'none' }} aria-label="Shadow Swap — pools">
             <ProtocolMark />
             {/* Hidden below 1024px by the stylesheet: on a narrow header the
                 wordmark is what overflows under wider font metrics, and the
                 mark + wordmark pair keeps its identity through the link's
                 aria-label. */}
             <span className="shell-header-branding" style={{ fontWeight: 600, letterSpacing: '-0.01em', whiteSpace: 'nowrap' }}>
-              Ootle Liquidity
+              Shadow Swap
             </span>
           </Link>
 
