@@ -502,6 +502,21 @@ test('secrets: preimage names may appear only as rejection rules, never with a v
       if (typeof e.templateAddress === 'string' && e.templateAddress) allowed.add(e.templateAddress.replace(/^template_/, ''));
     }
   }
+  // The three marketplace templates. They enter the bundle because a CREATE action
+  // pins the template address it will call, and a create has no component address to
+  // reread — so the template address is the only pre-submission identity check there
+  // is. These are the exact deployments whose flows settled live on Esmeralda
+  // (FixedPriceListing SOLD, ItemOffer ACCEPTED, CollectionBid FILLED): public
+  // on-chain identities in the same category as the canonical TARI key, not secret
+  // material. Derived from the module under test rather than retyped here, so the
+  // allowlist cannot drift from what the app actually pins.
+  //
+  // This test found them: it is the reason the create path ships with a registry
+  // entry rather than an unexplained hex literal in the bundle.
+  const { MARKETPLACE_TEMPLATES } = require('../build-test/services/marketplaceActions.js');
+  for (const address of Object.values(MARKETPLACE_TEMPLATES)) {
+    if (typeof address === 'string' && address) allowed.add(address.replace(/^template_/, ''));
+  }
   for (const literal of new Set(hexLiterals)) {
     assert.ok(
       allowed.has(literal),

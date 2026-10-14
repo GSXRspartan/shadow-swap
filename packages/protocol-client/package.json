@@ -1,7 +1,7 @@
 {
   "name": "@tari-ootle/protocol-client",
   "version": "0.1.0",
-  "description": "Protocol client for Tari Ootle liquidity protocol",
+  "description": "Shadow Swap protocol client: authoritative pool and marketplace reads for Tari Ootle",
   "type": "commonjs",
   "main": "dist/index.js",
   "module": "dist/esm/index.js",
