@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Tari Ootle Liquidity Protocol Wallet",
+  "name": "Shadow Swap Signer",
   "version": "0.1.0",
-  "description": "Browser extension signer for the Tari Ootle liquidity protocol. Non-custodial, permission-based.",
+  "description": "Shadow Swap browser signer. Non-custodial, permission-based.",
   "permissions": [
     "storage",
     "activeTab",

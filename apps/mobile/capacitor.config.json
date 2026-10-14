@@ -1,6 +1,6 @@
 {
   "appId": "com.tari.ootle.liquidity",
-  "appName": "Tari Ootle Liquidity",
+  "appName": "Shadow Swap",
   "webDir": "www",
   "bundledWebRuntime": false,
   "plugins": {

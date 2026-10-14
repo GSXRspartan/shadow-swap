@@ -429,6 +429,7 @@ export function AppProvider({
               resourceA: state.resourceA,
               resourceB: state.resourceB,
               ...(state.feeBps === undefined ? {} : { feeBps: state.feeBps }),
+              ...(state.lpResource === undefined ? {} : { lpResource: state.lpResource }),
             },
             wallet.balances,
           );
