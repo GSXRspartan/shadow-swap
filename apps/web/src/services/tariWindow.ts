@@ -905,16 +905,46 @@ export async function submitViaTransactionRequest(
 ): Promise<TariSignResult | { pendingRequestId: string }> {
   const requestId = await createTransactionRequest(provider, operation);
   await hooks.onRequestId(requestId);
+  return resumeTransactionRequest(provider, requestId, hooks);
+}
 
+/**
+ * Drive the approve/submit half of the trio for a request that ALREADY EXISTS.
+ *
+ * This is the reload path. `submitViaTransactionRequest` mints a new request; this
+ * takes the durable id the app persisted before the page could go away and asks the
+ * wallet what actually happened to it.
+ *
+ * The three outcomes are distinguished exactly as they must be:
+ *
+ *   - `PENDING`   -> the human still has not answered. Returned as a value, not
+ *                    thrown, so the caller can keep the id and try again later. It
+ *                    is NOT a submission and NOT a failure.
+ *   - `APPROVED`  -> submitted ONCE, by id. The submit call carries no payload, so
+ *                    nothing here can re-derive, mutate, or replace what the user
+ *                    approved.
+ *   - `SUBMITTED` -> an earlier page load already broadcast it. The stored result is
+ *                    returned so the duplicate is recognised rather than repeated.
+ *
+ * `REJECTED`, `FAILED`, and an unrecognised status all fail closed without submitting.
+ * An unrecognised status is the important one: a provider that grows a new status must
+ * not be silently treated as "settled", because that would let a request whose fate is
+ * actually unknown disappear.
+ */
+export async function resumeTransactionRequest(
+  provider: TariProvider,
+  requestId: string,
+  hooks: TransactionRequestHooks,
+): Promise<TariSignResult | { pendingRequestId: string }> {
+  if (typeof requestId !== 'string' || requestId === '') {
+    throw new TariProviderError('A resume requires the durable requestId that was persisted.', 'MALFORMED_REPLY');
+  }
   const outcome = await pollTransactionRequest(provider, requestId);
   switch (outcome.state) {
     case 'PENDING':
-      // The human has not answered. Nothing is submitted and nothing is an
-      // error; the durable id is already persisted for a later resume.
       return { pendingRequestId: requestId };
 
     case 'APPROVED': {
-      // Exactly one submission, by id.
       const result = await submitTransactionRequest(provider, requestId);
       await hooks.onSubmitted(result);
       return result;

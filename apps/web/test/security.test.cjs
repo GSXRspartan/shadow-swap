@@ -75,10 +75,12 @@ test('secrets: no secret-bearing protocol field is read, logged, or rendered by 
   for (const file of sourceFiles) {
     const text = fs.readFileSync(file, 'utf8');
     // A DETECTOR is not a USE. `errorMessage.ts` names secret-shaped patterns in
-    // order to strip them, and `storage.ts` names forbidden persisted fields in
-    // order to reject them. Both are the defence, not a leak.
+    // order to strip them, `storage.ts` names forbidden persisted fields in order
+    // to reject them, and `pendingRequests.ts` names them again for the durable
+    // wallet-request ledger, which rejects rather than stores. All three are the
+    // defence, not a leak.
     const relative = path.relative(appRoot, file).split(path.sep).join('/');
-    const isDetector = /^src\/lib\/(errorMessage|storage)\.ts$/.test(relative);
+    const isDetector = /^src\/lib\/(errorMessage|storage|pendingRequests)\.ts$/.test(relative);
     const codeLines = text
       .split('\n')
       .filter((line) => !line.trim().startsWith('*') && !line.trim().startsWith('//') && !line.trim().startsWith('/*'))

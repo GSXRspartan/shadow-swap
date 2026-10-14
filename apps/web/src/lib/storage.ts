@@ -12,10 +12,18 @@
  *   | key                        | class                       | sensitivity |
  *   |----------------------------|-----------------------------|-------------|
  *   | ootle.operations.v1        | operation history (display) | low: ids, kinds, states, amounts |
+ *   | ootle.pendingRequests.v1   | durable wallet-request ids  | low: request id + review fingerprint, per operation |
  *   | __ootle_probe__            | storage probe, removed      | none        |
  *
  * Nothing else is written. No key material, no preimage, no seed, no capability
  * advertisement, no network choice, and no gate flag.
+ *
+ * `ootle.pendingRequests.v1` holds the wallet's durable transaction-request id so a
+ * reload can resume an approval instead of losing it. It deliberately holds NO
+ * instructions, NO amounts, NO nonce, and NO signature: submission takes only the
+ * `requestId` the wallet already approved, so there is nothing in that key that
+ * could be replayed even if it were fully attacker-readable. See
+ * `lib/pendingRequests.ts` for its own allowlist and trust model.
  *
  * On load every record is schema-validated and re-classified. A record whose
  * persisted state is `CONFIRMED` is still re-verified against the chain before
@@ -24,14 +32,20 @@
  */
 
 import type { OperationRecord, OperationState } from '@tari-ootle/protocol-client';
+import { PENDING_REQUEST_STORAGE_KEY } from './pendingRequests.js';
 
 export const STORAGE_KEYS = {
   operationHistory: 'ootle.operations.v1',
+  pendingRequests: PENDING_REQUEST_STORAGE_KEY,
   storageProbe: '__ootle_probe__',
 } as const;
 
 /** The exact set of keys this app is permitted to write. */
-export const ALLOWED_STORAGE_KEYS: ReadonlySet<string> = new Set([STORAGE_KEYS.operationHistory, STORAGE_KEYS.storageProbe]);
+export const ALLOWED_STORAGE_KEYS: ReadonlySet<string> = new Set([
+  STORAGE_KEYS.operationHistory,
+  STORAGE_KEYS.pendingRequests,
+  STORAGE_KEYS.storageProbe,
+]);
 
 /** Fields that must never appear in persisted state under any circumstances. */
 export const FORBIDDEN_PERSISTED_FIELDS: ReadonlyArray<string> = [
@@ -208,6 +222,11 @@ export function trustLevel(record: OperationRecord): 'AUTHORITATIVE_REQUIRED' | 
 export function storageInventory(): ReadonlyArray<{ key: string; class: string; containsSecrets: boolean }> {
   return [
     { key: STORAGE_KEYS.operationHistory, class: 'operation history (display cache only)', containsSecrets: false },
+    {
+      key: STORAGE_KEYS.pendingRequests,
+      class: 'durable wallet-request ids (no instructions, no amounts, no nonce, no signature)',
+      containsSecrets: false,
+    },
     { key: STORAGE_KEYS.storageProbe, class: 'availability probe, written then immediately removed', containsSecrets: false },
   ];
 }
