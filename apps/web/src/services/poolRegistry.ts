@@ -65,6 +65,26 @@ export interface RegistryStorage {
   setItem(key: string, value: string): void;
 }
 
+/**
+ * `localStorage` if it is present and usable, else `undefined`. Never throws.
+ *
+ * Sandboxed iframes, disabled-cookies contexts, and some embedded browsers make
+ * touching `localStorage` throw on ACCESS, not on write, so even the property read
+ * is inside the try. `undefined` disables the durable cache, which costs
+ * discoverability and nothing else — the cache is never a source of truth.
+ *
+ * Shared by the pool and marketplace registries so both get the same behaviour.
+ */
+export function safeLocalStorage(): RegistryStorage | undefined {
+  try {
+    const ls = (globalThis as { localStorage?: RegistryStorage }).localStorage;
+    if (ls && typeof ls.getItem === 'function' && typeof ls.setItem === 'function') return ls;
+  } catch {
+    // ignore
+  }
+  return undefined;
+}
+
 function storageKey(network: string): string {
   return `${STORAGE_PREFIX}${network}`;
 }

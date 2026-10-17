@@ -112,16 +112,22 @@ export function PoolsPage() {
     }
   };
 
-  const health = presentHealth(
-    market.discovery.state === 'PROTOCOL_AVAILABLE' && market.discovery.pools.length > 0
-      ? { status: 'SYNCED', source: market.discovery.source }
-      : market.discovery.state === 'PROTOCOL_NOT_DEPLOYED' || market.discovery.state === 'PROTOCOL_DEPLOYED_EMPTY'
-        ? // The network answered. This is not an outage, so it is not dressed as
-          // one: an empty deployment reads as "nothing published yet", never as
-          // "indexer down" and never as "no liquidity".
-          { status: 'UNAVAILABLE', source: market.discovery.source, reason: market.discovery.detail ?? 'No pools are published for this deployment.' }
-        : { status: 'UNAVAILABLE', source: market.discovery.source, reason: market.discovery.unavailableReason },
-  );
+  /*
+   * Health comes from `market.health` and is NOT re-derived here.
+   *
+   * This page used to compute its own badge from
+   * `PROTOCOL_AVAILABLE && market.discovery.pools.length > 0`, while
+   * `AppContext.refreshPools` computed the same badge from the deployment state
+   * alone. The two disagreed on the live network — the header said "Data: Synced"
+   * and this page said "Data Unavailable" — over the same fact, on the same screen,
+   * at the same moment.
+   *
+   * The context's rule is the correct one and is already documented there: the
+   * DEPLOYMENT state decides the badge, because a reachable network whose pool
+   * components need a wallet to decode is not an outage, and a network that
+   * cannot be read is not an empty market. One derivation, one badge.
+   */
+  const health = market.health;
 
   /**
    * The six states are kept apart because each one is a different fact about
@@ -185,14 +191,25 @@ export function PoolsPage() {
             // A failed discovery is NOT a zero. Rendering "0 pools" when the
             // request failed tells a user their money has no market, which is a
             // different and much stronger claim than "we could not find out".
+            //
+            // And a count must describe the ROWS BELOW IT. The body lists decoded
+            // pools when a wallet has read them, and otherwise lists discovered
+            // components whose state only the wallet can decode. An earlier draft
+            // always used `filtered.length`, so a page listing one component
+            // component header read "0 pools" — the exact false negative this
+            // comment exists to prevent, one level down from the outage case.
             isOutage && market.pools.length === 0
               ? 'Pool list unavailable'
               : state === 'PROTOCOL_NOT_DEPLOYED'
                 ? 'Templates not published yet'
-                : `${filtered.length} pool${filtered.length === 1 ? '' : 's'}`
+                : market.pools.length > 0
+                  ? `${filtered.length} pool${filtered.length === 1 ? '' : 's'}`
+                  : candidates.length > 0
+                    ? `${candidates.length} pool component${candidates.length === 1 ? '' : 's'} discovered`
+                    : 'No pools'
           }
           actions={
-            <div className="field" style={{ maxWidth: 280 }}>
+            <div className="field" style={{ maxWidth: 280, width: '100%', minWidth: 0 }}>
               <label className="sr-only" htmlFor="pool-search">
                 Search pools
               </label>
@@ -203,6 +220,13 @@ export function PoolsPage() {
                 placeholder="Search pair or pool address"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
+                disabled={market.pools.length === 0}
+                style={{ width: '100%', minWidth: 0 }}
+                title={
+                  market.pools.length === 0
+                    ? 'Search applies to decoded pools. Connect a wallet to read reserves, then pair and address search become available.'
+                    : 'Filter by pair or by pool component address.'
+                }
               />
             </div>
           }
