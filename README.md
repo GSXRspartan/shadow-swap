@@ -6,7 +6,7 @@
 
 [![Node Tests](https://github.com/GSXRspartan/shadow-swap/actions/workflows/node-tests.yml/badge.svg)](https://github.com/GSXRspartan/shadow-swap/actions/workflows/node-tests.yml)
 [![Security Engine Tests](https://github.com/GSXRspartan/shadow-swap/actions/workflows/security-engine-tests.yml/badge.svg)](https://github.com/GSXRspartan/shadow-swap/actions/workflows/security-engine-tests.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](#licensing)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 `Swift` `TypeScript` `Rust` — **Esmeralda testnet** — **mainnet disabled**
 
@@ -500,9 +500,12 @@ reporting path.
 
 ## Licensing
 
-Declared **MIT** in `package.json`.
+MIT. The text is in [`LICENSE`](LICENSE); every workspace `package.json` declares
+`"license": "MIT"`.
 
-> **Gap:** no `LICENSE` file is committed yet, so the licence badge above links to a
-> section rather than to the licence text. That is a real omission and should be
-> closed before the repository is published anywhere public. Third-party dependency
-> licences are listed in [`docs/THIRD_PARTY_LICENSES.md`](docs/THIRD_PARTY_LICENSES.md).
+> Attribution note: the repository's commits carry two author identities (the GitHub
+> account and an engineering pseudonym). The licence names both via the standard
+> "and contributors" form rather than asserting they are, or are not, the same
+> person. Third-party dependency licences — and the explicit "nothing was copied"
+> record for each — are listed in
+> [`docs/THIRD_PARTY_LICENSES.md`](docs/THIRD_PARTY_LICENSES.md).
