@@ -511,6 +511,32 @@ textarea {
   }
 }
 
+/* --- Header navigation ------------------------------------------------------
+ * The primary nav is the only navigation this app has: there is no drawer and no
+ * overflow menu to fall back on, so all three routes must stay reachable at every
+ * supported width. Below 420px the labels are tightened rather than collapsed,
+ * because a hidden route is a route that does not exist.
+ *
+ * The `min-width: 0` on the flex child is what lets the row shrink instead of
+ * pushing the wallet control past the viewport edge: without it, `flex: 1` refuses
+ * to go below its content's intrinsic width and the controls overlap the nav.
+ */
+.ss-headernav {
+  min-width: 0;
+  flex-wrap: nowrap;
+}
+
+@media (max-width: 420px) {
+  .ss-headernav {
+    gap: 0 !important;
+  }
+  .ss-headernav .btn {
+    padding-left: 6px;
+    padding-right: 6px;
+    font-size: var(--text-xs);
+  }
+}
+
 /* No horizontal page overflow at any width, including 360px. */
 .grid-2,
 .grid-3,
@@ -654,5 +680,635 @@ textarea {
 @media (hover: none) {
   .tooltip {
     display: none;
+  }
+}
+
+/* ==================================================================
+   SHADOW SWAP — SURFACE & MOTION LAYER
+
+   Everything above this line is the existing, working application
+   shell. Everything below is additive: no rule here overrides a
+   functional rule above, and removing this whole block would leave
+   the app fully functional and merely plainer. That property is
+   deliberate — the redesign must never be able to break a trading
+   control by changing how it looks.
+   ================================================================== */
+
+/* --- Ambient depth -------------------------------------------------
+   A single fixed backdrop rather than per-card gradients. One radial
+   wash behind the whole page costs one composited layer instead of
+   one per card, which matters on the low-end devices this app is
+   expected to run on. It is `pointer-events: none` so it can never
+   intercept a click intended for a control beneath it. */
+.ss-ambient {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(1100px 620px at 12% -8%, rgba(74, 222, 128, 0.07), transparent 62%),
+    radial-gradient(900px 560px at 92% 4%, rgba(167, 139, 250, 0.07), transparent 58%),
+    radial-gradient(1000px 700px at 50% 108%, rgba(45, 212, 191, 0.05), transparent 60%);
+}
+
+.ss-shell {
+  position: relative;
+  z-index: 1;
+}
+
+/* --- Glass surface -------------------------------------------------
+   Frosted panel used for the header and for primary action cards.
+   `backdrop-filter` is progressive enhancement: where it is
+   unsupported the background colour alone is still opaque enough to
+   read text over, so nothing is lost. */
+.ss-glass {
+  background: color-mix(in srgb, var(--surface-2) 82%, transparent);
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+  border: 1px solid var(--line-2);
+}
+
+.ss-card {
+  position: relative;
+  border-radius: var(--r-lg);
+  border: 1px solid var(--line-2);
+  background: var(--grad-surface), var(--surface-2);
+  box-shadow: var(--shadow-2);
+  overflow: hidden;
+}
+
+/* A hairline of brand colour along the top edge. Reads as a lit
+   surface rather than a flat rectangle, and costs one gradient. */
+.ss-card--lit::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--brand-line), transparent);
+}
+
+.ss-card--liquidity {
+  border-color: var(--teal-line);
+  background: var(--grad-liquidity), var(--surface-2);
+}
+.ss-card--liquidity::before {
+  background: linear-gradient(90deg, transparent, var(--teal), transparent);
+}
+
+.ss-card--marketplace {
+  border-color: var(--violet-line);
+  background: var(--grad-marketplace), var(--surface-2);
+}
+.ss-card--marketplace::before {
+  background: linear-gradient(90deg, transparent, var(--violet), transparent);
+}
+
+.ss-card--interactive {
+  transition: border-color var(--dur) var(--ease), transform var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+}
+.ss-card--interactive:hover {
+  border-color: var(--line-strong);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-3);
+}
+@media (prefers-reduced-motion: reduce) {
+  .ss-card--interactive:hover {
+    transform: none;
+  }
+}
+
+/* --- Buttons -------------------------------------------------------- */
+
+.ss-btn {
+  --btn-bg: var(--surface-3);
+  --btn-fg: var(--text-1);
+  --btn-line: var(--line-2);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s-2);
+  padding: 0 var(--s-4);
+  height: 40px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--btn-line);
+  background: var(--btn-bg);
+  color: var(--btn-fg);
+  font-weight: 550;
+  font-size: var(--text-base);
+  cursor: pointer;
+  white-space: nowrap;
+  user-select: none;
+  transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease),
+    transform var(--dur-fast) var(--ease), opacity var(--dur-fast) var(--ease);
+}
+.ss-btn:hover:not(:disabled) {
+  border-color: var(--line-strong);
+  background: var(--surface-4);
+}
+.ss-btn:active:not(:disabled) {
+  transform: translateY(1px);
+}
+.ss-btn:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+
+.ss-btn--primary {
+  --btn-bg: linear-gradient(180deg, var(--brand-bright), var(--brand-deep));
+  --btn-fg: #04140a;
+  --btn-line: transparent;
+  font-weight: 650;
+  box-shadow: 0 6px 20px -10px var(--brand-glow);
+}
+.ss-btn--primary:hover:not(:disabled) {
+  background: linear-gradient(180deg, var(--brand-bright), var(--brand));
+  border-color: transparent;
+}
+
+.ss-btn--ghost {
+  --btn-bg: transparent;
+  --btn-line: var(--line-2);
+  --btn-fg: var(--text-2);
+}
+.ss-btn--ghost:hover:not(:disabled) {
+  --btn-fg: var(--text-1);
+}
+
+.ss-btn--lg {
+  height: 48px;
+  padding: 0 var(--s-6);
+  font-size: var(--text-lg);
+  border-radius: var(--r-lg);
+}
+.ss-btn--block {
+  width: 100%;
+}
+.ss-btn--sm {
+  height: 32px;
+  padding: 0 var(--s-3);
+  font-size: var(--text-sm);
+}
+
+/* --- Hero ----------------------------------------------------------- */
+
+.ss-hero {
+  position: relative;
+  padding: var(--s-16) var(--s-5) var(--s-12);
+  overflow: hidden;
+}
+@media (min-width: 900px) {
+  .ss-hero {
+    padding: var(--s-20) var(--s-10) var(--s-16);
+  }
+}
+
+.ss-hero__grid {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.5;
+  background-image:
+    linear-gradient(var(--line-1) 1px, transparent 1px),
+    linear-gradient(90deg, var(--line-1) 1px, transparent 1px);
+  background-size: 56px 56px;
+  mask-image: radial-gradient(720px 460px at 30% 34%, #000, transparent 78%);
+  -webkit-mask-image: radial-gradient(720px 460px at 30% 34%, #000, transparent 78%);
+}
+
+.ss-hero__inner {
+  position: relative;
+  z-index: 1;
+  max-width: 1180px;
+  margin: 0 auto;
+  display: grid;
+  gap: var(--s-10);
+  align-items: center;
+  grid-template-columns: minmax(0, 1fr);
+}
+@media (min-width: 1000px) {
+/*
+ * Hero artwork.
+ *
+ * A single raster layer, deliberately NOT an <img>: it is decorative, the element
+ * that carries it is aria-hidden, and an empty alt node would add nothing a screen
+ * reader could use. One background layer is also one composited layer, which is
+ * what keeps this affordable on the low-end phones the app targets.
+ *
+ * THE SCRIM IS LOAD-BEARING, NOT POLISH. The artwork is dark, but "dark" is not a
+ * contrast guarantee — the headline's measured ratio must not depend on what a
+ * particular image happens to contain behind it. The gradient re-establishes a
+ * known background under the copy column, so the text contrast is a property of
+ * the stylesheet rather than of the asset.
+ */
+.ss-hero__art {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(100deg, var(--surface-0) 4%, rgba(6, 8, 12, 0.86) 34%, rgba(6, 8, 12, 0.45) 62%, rgba(6, 8, 12, 0.9) 100%),
+    url('/hero-liquidity.webp');
+  background-size: cover, cover;
+  background-position: center, center right;
+  background-repeat: no-repeat;
+  -webkit-mask-image: linear-gradient(180deg, #000 55%, transparent 96%);
+  mask-image: linear-gradient(180deg, #000 55%, transparent 96%);
+}
+
+/*
+ * Below 900px the two hero columns stack, so the artwork's focal point would sit
+ * behind the copy instead of beside it. Re-centring it and strengthening the scrim
+ * keeps the composition intentional rather than accidental on a phone.
+ */
+@media (max-width: 899px) {
+  .ss-hero__art {
+    background-image:
+      linear-gradient(180deg, rgba(6, 8, 12, 0.9) 0%, rgba(6, 8, 12, 0.82) 45%, rgba(6, 8, 12, 0.95) 100%),
+      url('/hero-liquidity.webp');
+    background-position: center, 68% center;
+    opacity: 0.85;
+  }
+}
+
+.ss-hero__inner {
+
+    grid-template-columns: minmax(0, 1.08fr) minmax(0, 0.92fr);
+    gap: var(--s-16);
+  }
+}
+
+.ss-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: 5px var(--s-3);
+  border-radius: var(--r-full);
+  border: 1px solid var(--brand-line);
+  background: var(--brand-wash);
+  color: var(--brand);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  /* `align-self` is load-bearing, not cosmetic. `.stack` is a column flexbox with
+     the default `align-items: stretch`, so this pill was being stretched to the
+     full column width and its border read as a horizontal rule running off to the
+     right of the label. Shrink-to-fit is what makes it a badge. */
+  align-self: flex-start;
+  max-width: 100%;
+}
+
+
+.ss-display {
+  font-size: clamp(2.1rem, 6.2vw, 3.6rem);
+  line-height: 1.04;
+  font-weight: 750;
+  letter-spacing: -0.035em;
+  color: var(--text-1);
+}
+.ss-display em {
+  font-style: normal;
+  background: linear-gradient(100deg, var(--brand) 0%, var(--teal) 55%, var(--violet) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.ss-lede {
+  font-size: clamp(var(--text-lg), 2.1vw, var(--text-2xl));
+  line-height: 1.55;
+  color: var(--text-2);
+  max-width: 58ch;
+}
+
+.ss-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-3);
+}
+
+/* --- Stat strip ------------------------------------------------------
+   Every figure here is either a network constant (byte 38), a
+   read-only protocol parameter (30 bps), or a link to the thing that
+   reports it. NO TVL, NO APR, NO volume, NO user counts: there is no
+   honest source for those on a testnet, and a landing page that
+   invents them is worse than one that omits them. */
+.ss-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--s-3);
+}
+@media (min-width: 760px) {
+  .ss-stats {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.ss-stat {
+  padding: var(--s-4);
+  border-radius: var(--r-md);
+  border: 1px solid var(--line-1);
+  background: var(--surface-2);
+}
+.ss-stat__value {
+  font-size: var(--text-xl);
+  font-weight: 650;
+  color: var(--text-1);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+.ss-stat__label {
+  font-size: var(--text-xs);
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-top: 2px;
+}
+
+/* --- Feature panels --------------------------------------------------- */
+
+.ss-features {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--s-4);
+}
+@media (min-width: 720px) {
+  .ss-features {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (min-width: 1200px) {
+  .ss-features {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.ss-feature {
+  padding: var(--s-5);
+  border-radius: var(--r-lg);
+  border: 1px solid var(--line-2);
+  background: var(--grad-surface), var(--surface-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  min-width: 0;
+  transition: border-color var(--dur) var(--ease), transform var(--dur) var(--ease);
+}
+.ss-feature:hover {
+  border-color: var(--line-strong);
+}
+@media (prefers-reduced-motion: reduce) {
+  .ss-feature:hover {
+    transform: none;
+  }
+}
+.ss-feature__title {
+  font-size: var(--text-lg);
+  font-weight: 650;
+  color: var(--text-1);
+  letter-spacing: -0.015em;
+}
+.ss-feature__body {
+  font-size: var(--text-md);
+  color: var(--text-2);
+  line-height: 1.6;
+}
+
+.ss-feature__icon {
+  width: 38px;
+  height: 38px;
+  border-radius: var(--r-md);
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line-2);
+  background: var(--surface-3);
+  flex: none;
+}
+
+/* --- Pool card -------------------------------------------------------- */
+
+.ss-poolcard {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  padding: var(--s-5);
+  border-radius: var(--r-lg);
+  border: 1px solid var(--line-2);
+  background: var(--grad-liquidity), var(--surface-2);
+  overflow: hidden;
+  min-width: 0;
+  transition: border-color var(--dur) var(--ease), transform var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+}
+.ss-poolcard:hover {
+  border-color: var(--teal-line);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-3);
+}
+@media (prefers-reduced-motion: reduce) {
+  .ss-poolcard:hover {
+    transform: none;
+  }
+}
+
+.ss-poolcard__pair {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  min-width: 0;
+}
+.ss-poolcard__glyphs {
+  display: flex;
+  flex: none;
+}
+.ss-poolcard__glyphs > * + * {
+  margin-left: -10px;
+}
+
+.ss-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.ss-metric__label {
+  font-size: var(--text-xs);
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.ss-metric__value {
+  font-size: var(--text-lg);
+  font-weight: 600;
+  color: var(--text-1);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.015em;
+  overflow-wrap: anywhere;
+}
+.ss-metric__sub {
+  font-size: var(--text-xs);
+  color: var(--text-3);
+  overflow-wrap: anywhere;
+}
+
+.ss-metrics-2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--s-3);
+}
+
+/* --- Asset row --------------------------------------------------------- */
+
+.ss-asset {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  min-width: 0;
+  padding: var(--s-3);
+  border-radius: var(--r-md);
+  border: 1px solid var(--line-1);
+  background: var(--surface-input);
+}
+.ss-asset__text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.3;
+}
+.ss-asset__symbol {
+  font-weight: 600;
+  color: var(--text-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ss-asset__id {
+  font-size: var(--text-xs);
+  color: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* --- Chips -------------------------------------------------------------- */
+
+.ss-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  padding: 3px var(--s-2);
+  border-radius: var(--r-full);
+  border: 1px solid var(--line-2);
+  background: var(--surface-3);
+  color: var(--text-2);
+  font-size: var(--text-xs);
+  font-weight: 550;
+  white-space: nowrap;
+}
+.ss-chip--brand {
+  border-color: var(--brand-line);
+  background: var(--brand-wash);
+  color: var(--brand);
+}
+.ss-chip--teal {
+  border-color: var(--teal-line);
+  background: var(--teal-wash);
+  color: var(--teal);
+}
+.ss-chip--violet {
+  border-color: var(--violet-line);
+  background: var(--violet-wash);
+  color: var(--violet);
+}
+.ss-chip--up {
+  border-color: rgba(52, 211, 153, 0.34);
+  background: var(--up-wash);
+  color: var(--up);
+}
+.ss-chip--down {
+  border-color: rgba(251, 113, 133, 0.34);
+  background: var(--down-wash);
+  color: var(--down);
+}
+
+
+/* --- Sticky action bar ---------------------------------------------------
+   The primary action in a long panel stays reachable without hunting for it.
+   On a phone this docks to the bottom above the safe-area inset. */
+.ss-actionbar {
+  position: sticky;
+  bottom: var(--s-2);
+  z-index: 20;
+  padding: var(--s-3);
+  border-radius: var(--r-lg);
+  border: 1px solid var(--line-2);
+  background: var(--surface-overlay);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow: var(--shadow-3);
+}
+@media (max-width: 720px) {
+  .ss-actionbar {
+    bottom: 0;
+    margin: 0 calc(var(--s-4) * -1) calc(var(--s-4) * -1);
+    padding: var(--s-3) var(--s-4) calc(var(--s-3) + env(safe-area-inset-bottom));
+    border-radius: 0;
+    border-left: none;
+    border-right: none;
+    border-bottom: none;
+  }
+}
+
+/* --- Scrollbars ------------------------------------------------------------
+   Thin and dark. A default light scrollbar on a near-black surface is the most
+   common way a dark UI ends up looking broken, and `scrollbar-color` is the
+   only way to fix it without shipping a library. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--line-strong);
+  border-radius: var(--r-full);
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--text-3);
+  background-clip: content-box;
+}
+
+/* --- Numerals -------------------------------------------------------------- */
+.num,
+.ss-metric__value,
+.ss-stat__value,
+table td,
+table th {
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- Forced colours: restore the surface hierarchy ---------------------- */
+@media (forced-colors: active) {
+  .ss-card,
+  .ss-feature,
+  .ss-poolcard,
+  .ss-asset,
+  .ss-btn,
+  .ss-chip,
+  .ss-actionbar {
+    border: 1px solid CanvasText;
+    forced-color-adjust: none;
+    background: Canvas;
+    color: CanvasText;
+  }
+  .ss-btn--primary {
+    background: Highlight;
+    color: HighlightText;
   }
 }

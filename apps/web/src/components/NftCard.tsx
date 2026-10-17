@@ -3,8 +3,11 @@
  *
  * Renders only what discovery returned, with the exact identities always
  * reachable. Handles a missing image, a broken image, and hostile metadata
- * without breaking the layout: media is optional, the fallback is a neutral
- * placeholder, and every string is sanitised upstream.
+ * without breaking the layout: media is optional, the fallback is a generated
+ * fingerprint of the item's real identity, and every string is sanitised upstream.
+ *
+ * The fallback is NOT artwork and must never become artwork. See the comment at
+ * the placeholder for why a picture here would be a lie.
  */
 
 import { useEffect, useState } from 'react';
@@ -13,6 +16,7 @@ import { loadNftMetadata, type NftMetadata } from '../services/nftMetadata.js';
 import { formatUnits, UNAVAILABLE } from '../lib/format.js';
 import { safeLabel } from '../lib/sanitize.js';
 import { Badge } from './primitives.js';
+import { NftIdentityPlaceholder } from './brand.js';
 
 export interface NftCardInput {
   collectionResource: string;
@@ -79,9 +83,21 @@ export function NftCard({ item }: { item: NftCardInput }) {
             style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
           />
         ) : (
-          <span className="hint" style={{ padding: 'var(--s-2)', textAlign: 'center' }}>
-            {imageBroken ? 'Image could not be loaded' : 'No media supplied'}
-          </span>
+          /*
+           * No artwork: show a generated fingerprint of the item's REAL identity.
+           *
+           * Deliberately not a mascot, a stock illustration, or generated "art".
+           * A user glancing at this grid would read any picture as something they
+           * own. The Esmeralda collections are test assets, so a picture here
+           * would assert an identity that does not exist. This shows the resource
+           * address and item id — which is what actually distinguishes one item
+           * from another — over geometry derived from that same address.
+           */
+          <NftIdentityPlaceholder
+            nftId={item.nftId}
+            collectionResource={item.collectionResource}
+            label={imageBroken ? 'artwork unavailable' : 'no artwork supplied'}
+          />
         )}
       </div>
 
