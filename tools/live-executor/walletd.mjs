@@ -140,8 +140,22 @@ export class WalletdExecutor {
    * Authenticate against a `--authentication none` daemon. v0.43 requires the
    * `credentials` field; `{None:null}` is the no-auth variant and the daemon
    * returns a short-lived Admin JWT. No password or secret is involved.
+   *
+   * WALLETD_API_KEY takes precedence when set: a daemon running WITH
+   * authentication (WebAuthn/passkey or an operator-created API key) rejects
+   * `auth.request` entirely, so the only credential that can work is one the
+   * operator minted in the web UI and exported for this purpose. The key is
+   * read from the environment at call time — it is never defaulted, logged,
+   * written to disk, or committed — and every request it signs still goes to
+   * the loopback URL asserted above, with the fail-closed network preflight
+   * unchanged.
    */
   async authenticate() {
+    const apiKey = process.env.WALLETD_API_KEY;
+    if (apiKey !== undefined && apiKey.trim() !== '') {
+      this.token = apiKey.trim();
+      return this.token;
+    }
     const result = await this.rpc(
       'auth.request',
       { permissions: ['Admin'], duration: null, credentials: { None: null } },
@@ -157,12 +171,44 @@ export class WalletdExecutor {
   /**
    * Fail-closed network identity preflight. Refuses anything that is not the
    * expected esmeralda testnet identity, BEFORE any transaction is built.
+   *
+   * The identity source is `wallet.get_info`, not `settings.get`: `wallet.get_info`
+   * is PUBLIC on every daemon auth mode, while `settings.get` requires the
+   * `Settings(Read)` permission an operator-scoped API key need not carry. Both
+   * report the same facts (network name, network byte); the preflight needs
+   * exactly those two, so preferring the public read keeps the check available
+   * to the least-privileged credential without weakening it in any way. The
+   * richer `settings.get` read (epoch, indexer URL) is used only when the
+   * credential happens to have `Settings(Read)`, and its absence is not an error.
    */
   async verifyNetwork() {
-    const settings = await this.rpc('settings.get');
-    const net = settings?.network ?? {};
-    const name = String(net.name ?? '');
-    const byte = Number(net.byte);
+    const info = await this.rpc('wallet.get_info');
+    let name = String(info?.network ?? '');
+    let byte = Number(info?.network_byte ?? 0);
+    let extra = {};
+    if (!name || byte === 0) {
+      throw new ExecutorError('walletd wallet.get_info returned no usable network identity');
+    }
+    try {
+      const settings = await this.rpc('settings.get');
+      const net = settings?.network ?? {};
+      const sName = String(net.name ?? '');
+      const sByte = Number(net.byte);
+      // Cross-check: two identity sources must agree, or something is wrong
+      // with the endpoint we are talking to.
+      if (sName && sByte && (sName !== name || sByte !== byte)) {
+        throw new ExecutorError(
+          `REFUSED: walletd identity sources disagree (wallet.get_info ${name}/${byte} vs settings.get ${sName}/${sByte}).`,
+        );
+      }
+      extra = { epoch: settings.current_epoch, indexerUrl: settings.indexer_url };
+    } catch (error) {
+      if (!(error instanceof ExecutorError) || !/Insufficient permissions/.test(error.message)) {
+        throw error;
+      }
+      // `Settings(Read)` not granted to this credential: the public identity
+      // above is authoritative for the preflight, so this is not an error.
+    }
     if (/mainnet/i.test(name) || byte === 0) {
       throw new ExecutorError(`REFUSED: walletd reports a mainnet-shaped network (${name}, byte ${byte}).`);
     }
@@ -171,7 +217,7 @@ export class WalletdExecutor {
         `REFUSED: walletd network is "${name}" (byte ${byte}); this tool only runs against ${EXPECTED_NETWORK} (byte ${EXPECTED_NETWORK_BYTE}).`,
       );
     }
-    return { network: name, networkByte: byte, epoch: settings.current_epoch, indexerUrl: settings.indexer_url };
+    return { network: name, networkByte: byte, epoch: extra.epoch, indexerUrl: extra.indexerUrl };
   }
 
   /** The default (fee-paying) account component address. */
