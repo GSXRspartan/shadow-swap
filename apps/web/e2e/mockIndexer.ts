@@ -24,6 +24,7 @@
  * and the decoded `fields` come from the reference wallet provider.
  */
 import type { Page, Route } from '@playwright/test';
+import { WSTABLE_HEX } from './rawPoolSubstates.js';
 
 export interface MockIndexerOptions {
   /** Return an HTTP error from the catalogue instead of a well-formed body. */
@@ -32,6 +33,22 @@ export interface MockIndexerOptions {
   hostile?: boolean;
   /** Report our `Pool` template as unpublished (an empty deployment). */
   unpublished?: boolean;
+  /**
+   * Serve ONE FixedPriceListing component alongside the pools, so the
+   * marketplace discovery source — which reads `/transaction-receipts` and
+   * `/substates/fetch` exactly as production does — has something to decode.
+   *
+   * OPT-IN, and deliberately not the default: the security suite asserts that
+   * the DEFAULT mock yields an honest empty marketplace, so adding a listing
+   * to the default would silently change what "no NFT collection is fabricated
+   * when discovery returns nothing" means. Presentation captures pass
+   * `marketplace: true` explicitly.
+   *
+   * The listing is synthetic sample data — a synthetic collection resource and
+   * item id priced in synthetic wSTABLE, escrow empty (not yet sold). No real
+   * artwork is involved; the card renders its identity fingerprint.
+   */
+  marketplace?: boolean;
   /**
    * How `GET /info` answers, which is the network-identity preflight the app
    * performs before it trusts any discovery content.
@@ -130,6 +147,64 @@ function componentSubstate(templateAddress: string) {
   };
 }
 
+// ---------------------------------------------------------------------------
+// OPT-IN marketplace fixture (options.marketplace). Nothing below is served
+// unless the caller passes `marketplace: true`.
+// ---------------------------------------------------------------------------
+
+/** The published FixedPriceListing template, in the BARE hex form the route serves. */
+export const LISTING_TEMPLATE_ADDRESS = '612114e382c28205ee5d4d24754dbdb13351d648237e880b77c991d5f2fa2329';
+
+/** A synthetic collection resource and its one listed item. */
+// Object keys in this wire shape are 64 lowercase-hex characters; the decoder
+// refuses anything else, so a short or non-hex id would decode to nothing.
+const COLLECTION_HEX = '07'.repeat(32);
+/** The synthetic collection's full resource address, for routes that name it. */
+export const MARKETPLACE_COLLECTION_RESOURCE = `resource_${COLLECTION_HEX}`;
+export const LISTING_COMPONENT = 'component_listing_ootsuki_0001';
+const LISTING_NFT_VAULT_HEX = 'a1'.repeat(32);
+const LISTING_SELLER_HEX = 'b2'.repeat(32);
+
+const tagResource = (hex: string) => ({ '@cbor': 'tag', tag: 131, value: { '@cbor': 'bytes', hex } });
+const tagVault = (hex: string) => ({ '@cbor': 'tag', tag: 132, value: { '@cbor': 'bytes', hex } });
+const tagComponent = (hex: string) => ({ '@cbor': 'tag', tag: 128, value: { '@cbor': 'bytes', hex } });
+
+/**
+ * The FixedPriceListing body in the 8-field layout the decoder requires:
+ * [nft_vault, nft_resource, nft_id, quote_resource, price, seller_account,
+ *  expires_at_epoch, status]. Escrow empty (status 0 = Active, never expires).
+ */
+function listingComponentState() {
+  return {
+    Component: {
+      header: { template_address: LISTING_TEMPLATE_ADDRESS, owner_rule: 'None', access_rules: { method_access: {}, default: 'DenyAll' } },
+      body: {
+        state: [
+          tagVault(LISTING_NFT_VAULT_HEX),
+          tagResource(COLLECTION_HEX),
+          [1, ['0001']],
+          tagResource(WSTABLE_HEX),
+          '42000000',
+          tagComponent(LISTING_SELLER_HEX),
+          0,
+          [0, []],
+        ],
+      },
+    },
+  };
+}
+
+/** An NFT escrow vault holding nothing yet — the item has not sold. */
+const listingEscrowVault = () => ({
+  Vault: { resource_container: { NonFungible: { address: 'resource_' + COLLECTION_HEX, token_ids: [] } }, freeze_flags: 0 },
+});
+
+/** The extra substates marketplace discovery reads, keyed by the address it asks for. */
+export const MARKETPLACE_SUBSTATES: Record<string, unknown> = {
+  [LISTING_COMPONENT]: listingComponentState(),
+  ['vault_' + LISTING_NFT_VAULT_HEX]: listingEscrowVault(),
+};
+
 /**
  * Intercept the production indexer origin. `options` selects the behaviour under
  * test so a single flow can prove both the honest and the degraded path.
@@ -198,6 +273,7 @@ export async function mockIndexer(page: Page, options: MockIndexerOptions = {}):
         return;
       }
       const ids = [POOL_COMPONENT, SAFE_POOL_COMPONENT];
+      if (options.marketplace === true) ids.push(LISTING_COMPONENT);
       await json(receipts(options.hostile ? [...ids, ...HOSTILE_COMPONENT_IDS] : ids));
       return;
     }
@@ -217,9 +293,13 @@ export async function mockIndexer(page: Page, options: MockIndexerOptions = {}):
       // that this chain does not have is correctly dropped at reverification, rather
       // than being echoed back as a phantom pool.
       const known = new Set<string>([POOL_COMPONENT, SAFE_POOL_COMPONENT, ...(options.hostile ? HOSTILE_COMPONENT_IDS : [])]);
-      const substates = Object.fromEntries(
-        requested.filter((id) => known.has(id)).map((id) => [id, componentSubstate(POOL_TEMPLATE_ADDRESS)]),
-      );
+      if (options.marketplace === true) for (const id of Object.keys(MARKETPLACE_SUBSTATES)) known.add(id);
+      const substates: Record<string, unknown> = {};
+      for (const id of requested.filter((candidate) => known.has(candidate))) {
+        // A marketplace substate carries its OWN body (a listing is not a pool
+        // with its fields blanked), so it is served verbatim.
+        substates[id] = MARKETPLACE_SUBSTATES[id] ?? componentSubstate(POOL_TEMPLATE_ADDRESS);
+      }
       await json({ substates });
       return;
     }
