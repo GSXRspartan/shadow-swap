@@ -11,12 +11,11 @@
  * WHAT IT MUST NEVER CAPTURE.
  *
  *   - A private wallet address, key, request id, or any other secret.
- *   - Private or unreleased character artwork. This harness installs NO provider
- *     and NO indexer, so every page renders its disconnected, empty, or
+ *   - Any private or unreleased artwork of any kind. This harness installs NO
+ *     provider and NO indexer, so every page renders its disconnected, empty, or
  *     unavailable state — which is also the state that most needs looking at.
- *
- * Because there is no wallet connected, no live address can appear in a capture
- * even by accident. That is a property of the harness, not a scrubber.
+ *   - No live wallet can be connected here, so no live address can appear in a
+ *     capture even by accident. That is a property of the harness, not a scrubber.
  */
 
 import { chromium, devices, type Page } from '@playwright/test';

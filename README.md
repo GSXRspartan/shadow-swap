@@ -88,23 +88,12 @@ into a public pool today would break the confidentiality the asset exists to pro
 
 ### Future Tari L1/L2 routing
 
-A cross-layer router (Minotari L1 burn/claim → Ootle L2 swap) is designed and
+A cross-layer router (Minotari L1 burn/claim ↔ Ootle L2 swap) is designed and
 documented but **not live**. The browser provider gap that blocks it is tracked in
 [`docs/TARI_BROWSER_ATOMIC_SWAP_PROVIDER_GAP.md`](docs/TARI_BROWSER_ATOMIC_SWAP_PROVIDER_GAP.md).
 
-### Shadow Swap and Atomic Swap
-
-These are separate products with related branding, not two halves of one:
-
-- **Atomic Swap** is an asset-creation and direct-exchange application.
-- **Shadow Swap** is the liquidity and trading venue that other tools feed.
-
-They share the Tari stack and the Shadow identity. There is **no technical
-integration between them in this repository** — no shared contract, no shared
-state, no shared call path. They are related the way a marketplace and a minting
-tool are related: you use one, then you use the other.
-
 ---
+
 
 ## Features
 
