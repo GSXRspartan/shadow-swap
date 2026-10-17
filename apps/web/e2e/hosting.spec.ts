@@ -397,7 +397,18 @@ test.describe('real Ootle/indexer reachability', () => {
   test('the NFT page also degrades honestly rather than inventing collections', async ({ page }) => {
     await page.goto(`${APP_ORIGIN_UNDER_TEST}/nfts`);
     await expect(page.getByRole('navigation', { name: 'Primary' })).toBeVisible();
-    await expect(page.getByText(/No collections/).first()).toBeVisible({ timeout: 30_000 });
+    // The honest outcome is one of two, and the page must show one of them:
+    //   - the chain answered and reported no marketplace component, or
+    //   - the read did not happen, and the page says why.
+    // The old assertion pinned the literal string "No collections", which named
+    // the EMPTY case; the copy now distinguishes "empty" from "could not read",
+    // which is the whole point, so the assertion matches either honest wording.
+    await expect(
+      page.getByText(/No live marketplace components|Discovery unavailable/).first(),
+    ).toBeVisible({ timeout: 30_000 });
+    // And it must say, in words, that nothing is invented to fill the grid.
+    await expect(page.getByText(/Nothing is fabricated|No placeholder collection/).first()).toBeVisible();
+    // No fabricated collection entries at all: the browse list renders no cards.
     const body = await page.locator('body').innerText();
     expect(body.includes('FIXTURE')).toBe(false);
   });

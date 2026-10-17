@@ -224,8 +224,10 @@ export async function mockIndexer(page: Page, options: MockIndexerOptions = {}):
       return;
     }
 
-    // The marketplace surface keeps its older envelope; that query protocol is
-    // unchanged by v0.42.0.
+    // The optional operator-run discovery service (`VITE_NFT_DISCOVERY_URL`)
+    // keeps this older `{query, params}` envelope. The DEFAULT marketplace
+    // source reads the chain through the routes handled above, so this catch-all
+    // is only reached by a deployment that opts into the dedicated service.
     let body: unknown = { data: [] };
     try {
       const payload = (route.request().postDataJSON() ?? {}) as { query?: string };

@@ -253,15 +253,19 @@ test('a hostile NFT metadata document cannot execute or inject', async ({ page }
   await open(page, '/nfts');
   const pwned = await page.evaluate(() => (window as unknown as { __nftPwned?: number }).__nftPwned);
   expect(pwned).toBeUndefined();
-  // No collection exists, so the page says so rather than inventing one.
-  await expect(badge(page, /No collections|discovery/)).toBeVisible();
+  // No collection exists, so the page says so rather than inventing one: either
+  // the chain answered and was empty, or the read did not happen and a reason
+  // is shown. Both are honest; neither may be dressed up as data.
+  await expect(badge(page, /No live marketplace components|Discovery unavailable/)).toBeVisible();
 });
 
 test('no NFT collection is fabricated when discovery returns nothing', async ({ page }) => {
   await mockIndexer(page);
   await open(page, '/nfts');
-  await expect(badge(page, /No collections/)).toBeVisible();
-  await expect(badge(page, /not fabricated|returned no collections/)).toBeVisible();
+  // The empty-chain notice is the honest word for "nothing here".
+  await expect(badge(page, /No live marketplace components/)).toBeVisible();
+  // And it states, in words, that nothing is invented to fill the grid.
+  await expect(badge(page, /Nothing is fabricated/)).toBeVisible();
 });
 
 // ---------------------------------------------------------------------------
