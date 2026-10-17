@@ -18,6 +18,20 @@ const NAV_ITEMS = [
   { to: '/activity', label: 'Activity' },
 ] as const;
 
+/**
+ * The testnet badge is NOT a separate header chip.
+ *
+ * `NetworkBadge` already renders the network's `badge` (`TESTNET` / `DEVNET`),
+ * and it is rendered on exactly one row per breakpoint — the inline row at
+ * >= 1024px, the secondary row below it. Adding a second, independently-placed
+ * TESTNET chip produced two of them side by side on desktop and one per row on
+ * mobile, which read as a rendering fault and, worse, spent the horizontal space
+ * that the primary nav needs on the narrowest supported viewports.
+ *
+ * The invariant is therefore: exactly one testnet indicator per breakpoint, and
+ * it always travels with the network name.
+ */
+
 const HEALTH_TONE: Record<string, BadgeTone> = {
   SYNCED: 'ok',
   SYNCING: 'info',
@@ -211,18 +225,18 @@ export function AppShell({ children }: { children: ReactNode }) {
           className="row"
           style={{ maxWidth: 'var(--shell-max)', margin: '0 auto', padding: '0 var(--s-4)', minHeight: 'var(--nav-h)', gap: 'var(--s-4)' }}
         >
-          <Link to="/pools" className="row" style={{ gap: 'var(--s-2)', flex: 'none' }} aria-label="Shadow Swap — pools">
+          <Link to="/" className="row" style={{ gap: 'var(--s-3)', flex: 'none', textDecoration: 'none' }} aria-label="Shadow Swap — home">
             <ProtocolMark />
             {/* Hidden below 1024px by the stylesheet: on a narrow header the
                 wordmark is what overflows under wider font metrics, and the
                 mark + wordmark pair keeps its identity through the link's
                 aria-label. */}
-            <span className="shell-header-branding" style={{ fontWeight: 600, letterSpacing: '-0.01em', whiteSpace: 'nowrap' }}>
+            <span className="shell-header-branding" style={{ fontWeight: 700, letterSpacing: '-0.02em', whiteSpace: 'nowrap', fontSize: 'var(--text-lg)' }}>
               Shadow Swap
             </span>
           </Link>
 
-          <nav aria-label="Primary" className="row" style={{ gap: 2, flex: 1, minWidth: 0 }}>
+          <nav aria-label="Primary" className="row ss-headernav" style={{ gap: 2, flex: 1, minWidth: 0 }}>
             {NAV_ITEMS.map((item) => (
               <NavLink
                 key={item.to}
@@ -297,7 +311,16 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
       )}
 
-      <main id="main" style={{ flex: 1, width: '100%', maxWidth: 'var(--shell-max)', margin: '0 auto', padding: 'var(--s-4)' }}>
+      {/*
+        Ambient backdrop. One fixed radial wash behind the whole app rather than a
+        gradient per card: it costs a single composited layer instead of one per
+        surface, which matters on the low-end phones this app is expected to run
+        on. `pointer-events: none` so it can never intercept a click aimed at a
+        control beneath it.
+      */}
+      <div className="ss-ambient" aria-hidden="true" />
+
+      <main id="main" className="ss-shell" style={{ flex: 1, width: '100%', maxWidth: 'var(--shell-max)', margin: '0 auto', padding: 'var(--s-4)' }}>
         {children}
       </main>
 

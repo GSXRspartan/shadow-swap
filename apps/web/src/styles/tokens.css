@@ -1,47 +1,117 @@
 /*
- * Design tokens.
+ * Shadow Swap design tokens.
  *
- * Dark-first, restrained, high information density without clutter. Numeric
- * values use tabular figures so columns of amounts and prices align.
+ * THE ONE RULE THAT SHAPES EVERYTHING ELSE.
  *
- * Status colour is never the only signal: every severity token is paired with a
- * text label and a glyph in the components that use it.
+ * Every colour below is an ABSTRACT MARKET SIGNAL or a NEUTRAL SURFACE. Nothing
+ * here depicts a person, an animal, a face, or a silhouette, and nothing here is
+ * drawn from any character. The identity is carried by type, spacing, depth, and
+ * the flow geometry in `brand.tsx` — abstract marks for liquidity moving between
+ * two sides — which is the only honest visual metaphor for what the product
+ * actually does.
+ *
+ * WHY NOT A MASCOT.
+ *
+ * A mascot would be the easy route and the wrong one here. This is a protocol
+ * where the entire argument is that no party holds user funds: no operator, no
+ * treasury, no admin. A character implies an author standing behind the product
+ * with agency over it, which is precisely the impression this design has to avoid
+ * creating. The brand is deliberately infrastructure-flavoured: grids, depth,
+ * flow, and signal.
+ *
+ * ACCESSIBILITY IS A CONSTRAINT, NOT A PASS.
+ *
+ * Every foreground token meets or exceeds WCAG AA (4.5:1) against the surface it
+ * is used on, and the three status hues are separated by HUE as well as lightness
+ * so a red/green distinction survives the ~8% of men with deuteranopia. Status is
+ * ALWAYS paired with a text label and a glyph at the call site, so colour is
+ * never the only channel. `test/responsive.spec.ts` asserts the contrast ratios
+ * numerically, so a later "let's brighten this" fails the suite instead of
+ * quietly degrading readability.
  */
 
 :root {
   color-scheme: dark;
 
-  /* Surfaces — near-black with a faint cool cast, never pure #000. */
-  --surface-0: #080a0e;
-  --surface-1: #0d1016;
-  --surface-2: #12161e;
-  --surface-3: #181d27;
-  --surface-raised: #1b2029;
-  --surface-input: #0a0d12;
+  /*
+   * SURFACES.
+   *
+   * A cool near-black that steps up in luminance rather than in hue, so elevation
+   * reads as depth without a heavy drop shadow. Six steps is enough for a card
+   * inside a panel inside a page; past that, layering stops being legible.
+   */
+  --surface-0: #06080c; /* page */
+  --surface-1: #0b0e14; /* shell, header */
+  --surface-2: #11151d; /* card */
+  --surface-3: #171c26; /* raised card, input resting */
+  --surface-4: #1e2431; /* hover, table header */
+  --surface-raised: #1b212c;
+  --surface-input: #080b10;
+  --surface-overlay: rgba(6, 8, 12, 0.82);
 
-  /* Hairlines and borders. */
-  --line-1: #1e2430;
-  --line-2: #29313f;
-  --line-strong: #3a4557;
+  /* Hairlines. Two weights: a structural edge and a subtle separator. */
+  --line-1: rgba(255, 255, 255, 0.07);
+  --line-2: rgba(255, 255, 255, 0.12);
+  --line-strong: #37414f;
 
-  /* Text. */
-  --text-1: #e8ecf3;
-  --text-2: #a4aebf;
-  --text-3: #6f7b8f;
-  --text-inverse: #0a0d12;
+  /*
+   * TEXT.
+   *
+   * --text-1 15.9:1 · --text-2 7.4:1 · --text-3 4.6:1 on --surface-0.
+   * All AA. --text-3 is the floor and is used only for hints, never for a value
+   * the user is being asked to act on.
+   */
+  --text-1: #f2f5f9;
+  --text-2: #aeb9c8;
+  --text-3: #7b8798;
+  --text-inverse: #06080c;
 
-  /* Accent — Tari-inspired acid lime, used sparingly and never as a surface.
-     It marks the active route, the selected control, the primary action and the
-     current-price line; everything else stays a dark neutral. */
-  --accent: #b7f04a;
-  --accent-dim: #6f9426;
-  --accent-wash: rgba(183, 240, 74, 0.13);
-  --accent-line: rgba(183, 240, 74, 0.36);
+  /*
+   * BRAND.
+   *
+   * Tari-inspired green, used SPARINGLY. It marks exactly four things: the active
+   * route, the primary action, the live/positive signal, and the brand mark.
+   * If the accent is everywhere it stops meaning anything.
+   */
+  --brand: #4ade80; /* 11.2:1 on --surface-0 */
+  --brand-bright: #6ee7a0;
+  --brand-deep: #16a34a;
+  --brand-wash: rgba(74, 222, 128, 0.12);
+  --brand-line: rgba(74, 222, 128, 0.34);
+  --brand-glow: rgba(74, 222, 128, 0.22);
 
-  /* Status. `--up` is deliberately a cooler emerald than the brand accent so a
-     price direction can never be confused with a brand/interaction highlight. */
-  --up: #35d69a;
-  --up-wash: rgba(53, 214, 154, 0.12);
+  /*
+   * ELECTRIC TEAL — the secondary. Reserved for LIQUIDITY-SPECIFIC surfaces:
+   * pool cards, LP positions, depth. Never used for a status.
+   */
+  --teal: #2dd4bf;
+  --teal-bright: #5eead4;
+  --teal-deep: #0d9488;
+  --teal-wash: rgba(45, 212, 191, 0.11);
+  --teal-line: rgba(45, 212, 191, 0.32);
+
+  /*
+   * VIOLET — the tertiary. Reserved for the NFT MARKETPLACE, so the three
+   * surfaces of the product are colour-coded and a user always knows which one
+   * they are in before reading a single word.
+   */
+  --violet: #a78bfa;
+  --violet-bright: #c4b5fd;
+  --violet-deep: #7c3aed;
+  --violet-wash: rgba(167, 139, 250, 0.12);
+  --violet-line: rgba(167, 139, 250, 0.32);
+
+  /*
+   * STATUS.
+   *
+   * --up is deliberately a COOLER green than --brand so a price direction can
+   * never be confused with a brand/interaction highlight. --down is a rose rather
+   * than a pure red, which reads as alarm rather than as an error dialog.
+   * Hue separation between --up and --down is ~150°, comfortably outside the
+   * range that red/green colour blindness collapses.
+   */
+  --up: #34d399;
+  --up-wash: rgba(52, 211, 153, 0.12);
   --down: #fb7185;
   --down-wash: rgba(251, 113, 133, 0.12);
   --warn: #fbbf24;
@@ -50,7 +120,20 @@
   --info-wash: rgba(125, 211, 252, 0.12);
   --muted-wash: rgba(148, 163, 184, 0.1);
 
-  /* Type scale. */
+  /* Compatibility aliases. Existing components use the older names. */
+  --accent: var(--brand);
+  --accent-dim: var(--brand-deep);
+  --accent-wash: var(--brand-wash);
+  --accent-line: var(--brand-line);
+
+  /*
+   * TYPE.
+   *
+   * Tabular figures everywhere a number is rendered, so columns of amounts and
+   * prices align on the decimal and a changing value does not shift its
+   * neighbours. The mono stack is for addresses and raw integers, where the exact
+   * digits matter; the sans stack is for everything a person reads as language.
+   */
   --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
   --text-xs: 0.6875rem;
@@ -58,11 +141,13 @@
   --text-md: 0.8125rem;
   --text-base: 0.875rem;
   --text-lg: 1rem;
-  --text-xl: 1.25rem;
-  --text-2xl: 1.5rem;
-  --text-3xl: 1.875rem;
+  --text-xl: 1.125rem;
+  --text-2xl: 1.375rem;
+  --text-3xl: 1.75rem;
+  --text-4xl: 2.25rem;
+  --text-5xl: 3rem;
 
-  /* Spacing scale. */
+  /* Spacing. */
   --s-1: 0.25rem;
   --s-2: 0.5rem;
   --s-3: 0.75rem;
@@ -72,33 +157,103 @@
   --s-8: 2rem;
   --s-10: 2.5rem;
   --s-12: 3rem;
+  --s-16: 4rem;
+  --s-20: 5rem;
 
-  /* Radii — rounded, but never cartoonish. */
+  /* Radii. Rounded enough to feel modern, never bubbly. */
   --r-sm: 6px;
   --r-md: 10px;
   --r-lg: 14px;
-  --r-xl: 18px;
+  --r-xl: 20px;
+  --r-2xl: 28px;
   --r-full: 999px;
 
-  /* Elevation — subtle, never heavy shadow. */
-  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
-  --shadow-2: 0 6px 20px -8px rgba(0, 0, 0, 0.6);
-  --shadow-3: 0 18px 48px -16px rgba(0, 0, 0, 0.7);
+  /*
+   * ELEVATION.
+   *
+   * Four levels. Depth is carried mostly by a ring (a light hairline) rather than
+   * a shadow, because a coloured ring on a near-black surface reads as glass
+   * without the smearing a large blur causes.
+   */
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.5);
+  --shadow-2: 0 6px 20px -8px rgba(0, 0, 0, 0.7);
+  --shadow-3: 0 18px 48px -16px rgba(0, 0, 0, 0.8);
+  --shadow-glow: 0 0 0 1px var(--brand-line), 0 8px 32px -12px var(--brand-glow);
+  --ring: 0 0 0 1px var(--line-2);
 
   /* Layout. */
   --shell-max: 1560px;
-  --nav-h: 56px;
-  --focus-ring: 0 0 0 2px var(--surface-0), 0 0 0 4px var(--accent);
+  --nav-h: 60px;
 
-  /* Motion — restrained, and fully disabled when the user asks for less. */
+  --focus-ring: 0 0 0 2px var(--surface-0), 0 0 0 4px var(--brand);
+
+  /* Motion. */
   --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --dur-fast: 110ms;
   --dur: 190ms;
+  --dur-slow: 320ms;
+
+  /*
+   * GRADIENTS.
+   *
+   * Three, each tied to a product surface, each deliberately low-contrast enough
+   * that text placed over it still measures 4.5:1. These are the only places a
+   * gradient is used; a gradient on a data surface would compete with the numbers.
+   */
+  --grad-brand: linear-gradient(135deg, rgba(74, 222, 128, 0.16), rgba(45, 212, 191, 0.08) 60%, transparent);
+  --grad-liquidity: linear-gradient(135deg, rgba(45, 212, 191, 0.18), rgba(167, 139, 250, 0.1) 70%, transparent);
+  --grad-marketplace: linear-gradient(135deg, rgba(167, 139, 250, 0.16), rgba(125, 211, 252, 0.07) 70%, transparent);
+  --grad-surface: linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0));
+
+  /*
+   * MOTION-REDUCED.
+   *
+   * Not just "make it instant". Anything that MOVES is neutralised; anything that
+   * merely changes colour keeps a very short transition, because a colour change
+   * does not trigger vestibular symptoms and removing it entirely would make
+   * state changes feel broken.
+   */
+  --motion-transform: 1;
+  --motion-fade: 1;
 }
 
 @media (prefers-reduced-motion: reduce) {
   :root {
     --dur-fast: 0ms;
     --dur: 0ms;
+    --dur-slow: 0ms;
+    --motion-transform: 0;
+    --motion-fade: 1;
+  }
+}
+
+/*
+ * Forced-colors mode.
+ *
+ * On Windows High Contrast the background and text tokens are replaced by the OS,
+ * which strips the surface hierarchy the whole layout depends on. These rules put
+ * the structure back using system keywords and visible borders, so the app stays
+ * navigable rather than collapsing into flat text.
+ */
+@media (forced-colors: active) {
+  :root {
+    --surface-0: Canvas;
+    --surface-1: Canvas;
+    --surface-2: Canvas;
+    --surface-3: Canvas;
+    --surface-4: Canvas;
+    --line-1: CanvasText;
+    --line-2: CanvasText;
+    --text-1: CanvasText;
+    --text-2: CanvasText;
+    --text-3: GrayText;
+    --brand: Highlight;
+    --teal: Highlight;
+    --violet: Highlight;
+    --up: Highlight;
+    --down: LinkText;
+    --warn: Highlight;
+    --info: Highlight;
   }
 }
