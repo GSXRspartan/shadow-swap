@@ -2,6 +2,8 @@
 
 # Shadow Swap
 
+<img src="apps/web/public/og-card.png" alt="Shadow Swap — abstract liquidity curves converging on a single priced node over market-depth bars, on near-black" width="840" />
+
 **Shadow Swap is a non-custodial liquidity and NFT trading protocol built for Tari's Ootle network. It provides markets where users can trade compatible assets created through Tari wallets, applications, and asset-creation tools.**
 
 [![Node Tests](https://github.com/GSXRspartan/shadow-swap/actions/workflows/node-tests.yml/badge.svg)](https://github.com/GSXRspartan/shadow-swap/actions/workflows/node-tests.yml)
@@ -17,6 +19,40 @@
 > Do not use funds you cannot afford to lose. Nothing in this repository is an audit, a
 > guarantee, or a claim of production readiness — see [Project status](#project-status) and
 > [Security](#security) for exactly what has and has not been verified.
+
+---
+
+## Screenshots
+
+<div align="center">
+
+**The interface**
+
+<img src="docs/screenshots/home-market.png" alt="Shadow Swap landing page: headline, liquidity-flow artwork, market-depth panel, and testnet notice" width="820" />
+
+*Homepage — the landing page states only figures that are checkable on-chain: the 30 bps fee, zero admin keys, the four published templates, and the Esmeralda network byte.*
+
+<img src="docs/screenshots/swap-market.png" alt="Shadow Swap swap card: pay TARI, receive wSTABLE, slippage tolerance controls" width="820" />
+
+*Swap — pay and receive assets, slippage tolerance, and the minimum-received rule the protocol derives itself.*
+
+<img src="docs/screenshots/pools-market.png" alt="Shadow Swap pools list showing two discovered pools with asset-safety labels" width="820" />
+
+*Pools — discovery lists which pool components exist; reserves come from your own wallet, never from this list.*
+
+<img src="docs/screenshots/nft-market.png" alt="Shadow Swap NFT marketplace collection view with one listed item and escrow state" width="820" />
+
+*NFT marketplace — listings, offers, and collection bids, with ownership and escrow state visible per item.*
+
+</div>
+
+> [!NOTE]
+> **These screenshots are illustrative sample data, not live blockchain balances or active
+> market listings.** They were captured from the production bundle driven by the repository's
+> deterministic test fixtures (the same synthetic `TARI` / `wSTABLE` / `AAA` / `BBB` assets the
+> browser security suite uses). No wallet was connected, no live chain was queried, and no real
+> account or balance appears anywhere. On a live testnet the layout is identical; the numbers
+> are whatever the chain actually reports.
 
 ---
 
