@@ -74,12 +74,15 @@ test('nft card: a hostile image URL is dropped and the card still renders', () =
         priceSymbol: 'QUOTE',
         to: '#',
       });
-  // No injected markup, and no <img> until a validated URL exists.
+  // No injected markup, and no <img> at all until a validated URL exists.
   assert.equal(html.includes('<script'), false);
   assert.equal(html.includes('onerror='), false);
-  assert.match(html, /No media supplied/);
-  // Exact identity is still reachable.
+  assert.equal(/<img\b/i.test(html), false, 'no image element is emitted for an unvalidated URL');
+  // The placeholder states the real reason in words, not just colour.
+  assert.match(html, /No artwork supplied for item 7/);
+  // Exact identity is still reachable, both visibly and in the title attribute.
   assert.match(html, />7</);
+  assert.match(html, new RegExp(`title="${COLLECTION} / 7"`));
 });
 
 test('nft card: an unsafe image URL cannot become an img src', () => {

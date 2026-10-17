@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="color-scheme" content="dark" />
-    <meta name="theme-color" content="#080a0e" />
+    <meta name="theme-color" content="#06080c" />
     <title>Shadow Swap — Tari liquidity &amp; NFT markets (testnet)</title>
     <meta
       name="description"
@@ -25,6 +25,15 @@
       cannot drift from a deployed host and go stale the way a hardcoded domain
       would. The repository name is part of that path and is stable after the
       rename, which is why this is safe to write now.
+
+      THE IMAGE IS A PNG, NOT AN SVG, AND THAT IS NOT A PREFERENCE.
+      Twitter/X, Facebook, LinkedIn, Slack and Discord all REFUSE SVG for
+      `og:image` / `twitter:image`: the card renders with no picture at all. The
+      committed `og-card.svg` was therefore a social preview that silently did not
+      appear anywhere. `og-card.png` is 1200x630, which is the size both platforms
+      ask for, and `og:image:width` / `:height` are declared so a scraper does not
+      have to guess an aspect ratio. The SVG is retained for favicons and PWA use,
+      where SVG *is* supported.
     -->
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Shadow Swap" />
@@ -33,15 +42,22 @@
       property="og:description"
       content="Non-custodial liquidity and NFT trading on Tari's Ootle network. Trade Tari assets, provide liquidity, explore NFT markets."
     />
-    <meta property="og:image" content="https://raw.githubusercontent.com/GSXRspartan/shadow-swap/main/apps/web/public/og-card.svg" />
-    <meta property="og:image:alt" content="Shadow Swap — trade Tari assets, provide liquidity, explore NFT markets" />
+    <meta property="og:image" content="https://raw.githubusercontent.com/GSXRspartan/shadow-swap/main/apps/web/public/og-card.png" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta
+      property="og:image:alt"
+      content="Abstract green and teal liquidity curves converging on a single priced node over market-depth bars, on near-black. Shadow Swap — trade Tari assets, provide liquidity, explore NFT markets."
+    />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="Shadow Swap — Tari liquidity &amp; NFT markets" />
     <meta
       name="twitter:description"
       content="Non-custodial liquidity and NFT trading on Tari's Ootle network. Trade Tari assets, provide liquidity, explore NFT markets."
     />
-    <meta name="twitter:image" content="https://raw.githubusercontent.com/GSXRspartan/shadow-swap/main/apps/web/public/og-card.svg" />
+    <meta name="twitter:image" content="https://raw.githubusercontent.com/GSXRspartan/shadow-swap/main/apps/web/public/og-card.png" />
+    <meta name="twitter:image:alt" content="Shadow Swap — Tari liquidity and NFT markets on a test network." />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="/icon.svg" />
     <link rel="manifest" href="/manifest.json" />
@@ -63,7 +79,14 @@
                             the embedded placement unable to connect at all. No
                             'unsafe-inline' and no 'unsafe-eval' is accepted in
                             exchange: Vite emits a module script and nothing else.
-        connect-src 'self' + the two allow-listed Esmeralda indexer origins.
+        connect-src 'self' + the two allow-listed Esmeralda indexer
+                            origins, plus the public content gateways NFT
+                            metadata is fetched from. Metadata is read with
+                            fetch(), which connect-src governs - NOT img-src - so
+                            omitting them blocked every off-indexer collection
+                            and left every card showing a blank placeholder. See
+                            NFT_METADATA_GATEWAY_URLS in lib/networks.ts for the
+                            tradeoff.
                             A configured custom indexer is added at build time
                             only if it is not a private-network address; the
                             build fails rather than shipping a localhost
@@ -106,7 +129,7 @@
     -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self' https://universe.tari.mw; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https://ootle-indexer-a.tari.com https://ootle-indexer-b.tari.com; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests;"
+      content="default-src 'self'; script-src 'self' https://universe.tari.mw; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https://ootle-indexer-a.tari.com https://ootle-indexer-b.tari.com https://ipfs.io https://dweb.link https://cloudflare-ipfs.com https://gateway.pinata.cloud https://arweave.net; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests;"
     />
   </head>
   <body>

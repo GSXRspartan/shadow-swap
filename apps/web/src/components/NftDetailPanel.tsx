@@ -23,6 +23,7 @@ import { formatAddress, formatUnits, UNAVAILABLE } from '../lib/format.js';
 import { asRawExecutionAmount, asResourceAddress } from '../lib/tradeBoundary.js';
 import { Badge, Card, CardHeader, DataRow, EmptyState, Notice } from './primitives.js';
 import { MarketplaceActionDialog } from './MarketplaceActionDialog.js';
+import { NftIdentityPlaceholder } from './brand.js';
 import type { MarketplaceAction } from '../services/marketplaceActions.js';
 
 /**
@@ -314,10 +315,19 @@ export function NftDetailPanel({
                 referrerPolicy="no-referrer"
                 decoding="async"
                 onError={() => setImageBroken(true)}
-                style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
               />
             ) : (
-              <span className="hint">{imageBroken ? 'Image could not be loaded' : 'No media supplied for this item'}</span>
+              /*
+               * No artwork. Shows a fingerprint of the item's real identity —
+               * deliberately NOT a mascot, an illustration, or generated art,
+               * because a user would read any picture here as something they own.
+               */
+              <NftIdentityPlaceholder
+                nftId={nftId}
+                collectionResource={collectionResource}
+                label={imageBroken ? 'artwork unavailable' : 'no artwork supplied'}
+              />
             )}
           </div>
           <div style={{ padding: 'var(--s-4)' }} className="stack">

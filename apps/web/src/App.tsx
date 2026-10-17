@@ -5,10 +5,11 @@
  * no hidden debug route, and no route that bypasses a gate.
  */
 
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import { AppProvider } from './state/AppContext.js';
 import { AppShell } from './components/AppShell.js';
 import { PoolsPage } from './pages/PoolsPage.js';
+import { HomePage } from './pages/HomePage.js';
 import { PoolPage } from './pages/PoolPage.js';
 import { NftMarketplacePage } from './pages/NftMarketplacePage.js';
 import { CollectionRoutePage } from './pages/NftMarketplacePage.js';
@@ -21,7 +22,10 @@ export default function App() {
       <AppProvider>
         <AppShell>
           <Routes>
-            <Route path="/" element={<Navigate to="/pools" replace />} />
+            {/* The landing page is the real `/`. `/pools` stays a first-class route
+                so a bookmarked deep link keeps working after the redirect was
+                introduced. */}
+            <Route path="/" element={<HomePage />} />
             <Route path="/pools" element={<PoolsPage />} />
             <Route path="/pools/:poolComponent" element={<PoolPage />} />
             <Route path="/nfts" element={<NftMarketplacePage />} />
