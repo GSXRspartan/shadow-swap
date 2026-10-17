@@ -42,7 +42,7 @@
  * single clickjacking control and this header is omitted on purpose.
  */
 
-import { ESMERALDA_INDEXER_URLS } from './networks.js';
+import { CONNECT_ALLOWED_ORIGINS as CONNECT_ALLOWED_ORIGINS_TABLE } from './networks.js';
 
 /** The wallet dApp frame origin, pinned exactly. Never a wildcard. */
 export const WALLET_DAPP_ORIGIN = 'https://universe.tari.mw';
@@ -62,7 +62,7 @@ export const WALLET_DAPP_ORIGIN = 'https://universe.tari.mw';
  * endpoint, and adding it would also let the `deployment.test.cjs` private-
  * address assertion pass for the wrong reason.
  */
-export const CONNECT_ALLOWED_ORIGINS: readonly string[] = ESMERALDA_INDEXER_URLS;
+export const CONNECT_ALLOWED_ORIGINS: readonly string[] = CONNECT_ALLOWED_ORIGINS_TABLE;
 
 export const CONTENT_SECURITY_POLICY = [
   "default-src 'self'",

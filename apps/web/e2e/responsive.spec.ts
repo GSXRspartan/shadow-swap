@@ -69,9 +69,14 @@ test.describe('responsive: critical controls stay reachable', () => {
 
       // The brand identity must survive the wordmark being hidden below 1024px.
       // It is carried by the link's accessible name, so a screen reader and a
-      // narrow screen both still identify the product.
+      // narrow screen both still identify the product — that is the property
+      // under test. The link's TARGET is asserted only to be one of the app's
+      // real top-level routes: the brand link leads home, which is the
+      // conventional target, and was briefly pinned to /pools here before `/`
+      // became a real page instead of a redirect to /pools.
       const brand = page.getByRole('link', { name: /Shadow Swap/i }).first();
-      await expect(brand, 'the product must be identifiable at every width').toHaveAttribute('href', /pools/);
+      await expect(brand, 'the product must be identifiable at every width').toBeVisible();
+      await expect(brand).toHaveAttribute('href', /^\/$|^\/pools$/);
     });
   }
 });

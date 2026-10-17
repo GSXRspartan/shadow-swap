@@ -49,7 +49,7 @@ test('csp: connect-src cannot be widened to a wildcard or a private address', ()
   }
 });
 
-test('csp: connect-src covers exactly the configured esmeralda indexer origins', () => {
+test('csp: connect-src covers exactly the configured origins and nothing else', () => {
   // The regression this guards is real: `connect-src` and the configured endpoint
   // used to be two independent hand-written strings, and when the configured
   // hosts were replaced on 2026-09-28 the CSP would have kept allowing the dead
@@ -57,13 +57,56 @@ test('csp: connect-src covers exactly the configured esmeralda indexer origins',
   const connect = /connect-src ([^;]+)/.exec(built.CONTENT_SECURITY_POLICY);
   assert.ok(connect, 'connect-src must be declared');
   const allowed = connect[1].split(/\s+/).filter((entry) => entry !== "'self'").sort();
-  assert.deepEqual(allowed, [...networks.ESMERALDA_INDEXER_URLS].sort());
+  // EXACTLY the union, so an origin added to the header without being registered —
+  // or dropped from the header while still registered — fails here rather than
+  // shipping. That equality is the point: a permissive-looking allowlist that has
+  // quietly grown is exactly the failure this catches.
+  assert.deepEqual(allowed, [...networks.CONNECT_ALLOWED_ORIGINS].sort());
+  // Every indexer must still be reachable.
+  for (const url of networks.ESMERALDA_INDEXER_URLS) {
+    assert.ok(allowed.includes(url), `indexer ${url} must be permitted by connect-src`);
+  }
   // And the resolved production config must not name an origin outside it.
   const resolved = config.resolveConfig({ MODE: 'production', DEV: false });
   assert.deepEqual(resolved.blocking, []);
   for (const url of resolved.indexerUrls) {
     assert.ok(allowed.includes(url.replace(/\/+$/, '')), `configured origin ${url} is not permitted by connect-src`);
   }
+});
+
+test('csp: the NFT metadata gateways are https, non-local, and read-only in intent', () => {
+  // NFT metadata is fetched with `fetch()`, which `connect-src` governs. Before
+  // these origins were listed, every off-indexer collection was blocked by the
+  // browser and every card rendered a blank placeholder — the actual root cause of
+  // "the images disappeared". This test pins what that fix is allowed to contain,
+  // so a later convenience change cannot turn it into something laxer.
+  assert.ok(networks.NFT_METADATA_GATEWAY_URLS.length > 0, 'metadata must be reachable from somewhere');
+  for (const url of networks.NFT_METADATA_GATEWAY_URLS) {
+    assert.match(url, /^https:\/\//, `a metadata gateway must be https: ${url}`);
+    assert.equal(networks.localEndpointReason(url, false), undefined, `${url} must be usable outside a development build`);
+    assert.equal(/[?#]/.test(url), false, 'a gateway origin must not carry a query or fragment');
+  }
+  // No wildcard and no scheme-less entry: `connect-src https:` would defeat the
+  // whole policy, and a bare host would silently match nothing.
+  for (const url of networks.CONNECT_ALLOWED_ORIGINS) {
+    assert.match(url, /^https:\/\/[a-z0-9.-]+$/, `origin must be a plain https origin with no path: ${url}`);
+    assert.equal(url.includes('*'), false, 'connect-src must never contain a wildcard');
+  }
+});
+
+test('csp: widening connect-src for metadata did not widen anything else', () => {
+  // The metadata fix adds origins to `connect-src` ONLY. If it is ever tempting to
+  // relax another directive to make an image appear, this fails — the signer
+  // origin, the absence of object/frame, and the absence of unsafe-eval are the
+  // properties the rest of this repository's security argument rests on.
+  assert.equal(/script-src [^;]*unsafe-eval/.test(built.CONTENT_SECURITY_POLICY), false, 'no unsafe-eval, ever');
+  assert.equal(/script-src [^;]*unsafe-inline/.test(built.CONTENT_SECURITY_POLICY), false, 'no unsafe-inline in script-src');
+  assert.match(built.CONTENT_SECURITY_POLICY, /script-src 'self' https:\/\/universe\.tari\.mw;/, 'script-src must stay exactly self + the wallet connector');
+  assert.match(built.CONTENT_SECURITY_POLICY, /object-src 'none'/);
+  assert.match(built.CONTENT_SECURITY_POLICY, /frame-src 'none'/);
+  assert.match(built.CONTENT_SECURITY_POLICY, /default-src 'self'/);
+  // img-src was always permissive; it was never the blocker.
+  assert.match(built.CONTENT_SECURITY_POLICY, /img-src 'self' data: https:/);
 });
 
 test('csp: every configured esmeralda origin is https and non-local', () => {

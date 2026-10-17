@@ -21,7 +21,7 @@ import { DEFAULT_NETWORK, type FrontendNetworkId } from '../lib/networks.js';
 import { getJson, postJson } from './net.js';
 import { describeIdentity, isVerified, verifyIndexerIdentity } from './indexerIdentity.js';
 import { TariIndexerDiscovery, CANONICAL_TARI_RESOURCE, type DiscoveredComponent, type IndexerTransport, type ProtocolDeploymentState, type TemplateCatalogueEntry } from './ootleIndexer.js';
-import { knownComponents as registryKnownComponents, rememberDiscovered, type RegistryStorage } from './poolRegistry.js';
+import { knownComponents as registryKnownComponents, rememberDiscovered, safeLocalStorage, type RegistryStorage } from './poolRegistry.js';
 import type { AppConfig } from './config.js';
 
 /**
@@ -256,8 +256,15 @@ export interface PoolDiscoverySource {
   discover(): Promise<PoolDiscoveryResult>;
 }
 
-/** The real indexer REST calls, expressed through the bounded transport. */
-const REAL_INDEXER_TRANSPORT: IndexerTransport = {
+/**
+ * The real indexer REST calls, expressed through the bounded transport.
+ *
+ * Lives here so both pool discovery and marketplace discovery speak to the network
+ * through exactly one transport — one timeout policy, one body cap, one
+ * rate-limit classification. Two hand-rolled copies would drift, and the first
+ * thing to drift would be the bounded-read guarantee.
+ */
+export const REAL_INDEXER_TRANSPORT: IndexerTransport = {
   async getJson(url) {
     return getJson(url);
   },
@@ -282,17 +289,6 @@ const REAL_INDEXER_TRANSPORT: IndexerTransport = {
  * are read from the wallet at the authoritative reread, where
  * `packages/protocol-client` checks the component really is template `Pool`.
  */
-/** localStorage if present and usable, else undefined. Never throws (sandboxed/blocked contexts). */
-function safeLocalStorage(): RegistryStorage | undefined {
-  try {
-    const ls = (globalThis as { localStorage?: RegistryStorage }).localStorage;
-    if (ls && typeof ls.getItem === 'function' && typeof ls.setItem === 'function') return ls;
-  } catch {
-    // ignore
-  }
-  return undefined;
-}
-
 export class IndexerPoolDiscovery implements PoolDiscoverySource {
   readonly name: string;
   /** Set when the configured URL is unusable. Discovery then fails closed. */

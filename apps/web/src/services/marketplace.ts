@@ -14,6 +14,10 @@
 
 import {
   buildCollectionMarketData,
+  decodeCollectionBid,
+  decodeItemOffer,
+  decodeListing,
+  setMarketplaceCurrentEpoch,
   type CollectionBid,
   type CollectionMarketData,
   type ItemOffer,
@@ -25,6 +29,18 @@ import {
 } from '@tari-ootle/protocol-client';
 import { discoveryList, postJson } from './net.js';
 import type { AppConfig } from './config.js';
+import { REAL_INDEXER_TRANSPORT } from './pools.js';
+import { TariIndexerDiscovery, type DiscoveredComponent } from './ootleIndexer.js';
+import { describeIdentity, isVerified, verifyIndexerIdentity } from './indexerIdentity.js';
+import { safeLocalStorage, type RegistryStorage } from './poolRegistry.js';
+import {
+  MARKETPLACE_TEMPLATES,
+  MARKETPLACE_TEMPLATE_ADDRESSES,
+  knownComponents as registryKnownComponents,
+  rememberDiscovered as registryRememberDiscovered,
+  seededTemplateFor as registrySeededTemplateFor,
+  type MarketplaceTemplateName,
+} from './marketplaceRegistry.js';
 
 export interface NftDescriptor {
   collectionResource: string;
@@ -368,7 +384,298 @@ export function buildCollectionView(input: {
 
 export type { CollectionMarketData, Listing, ItemOffer, CollectionBid, AuthoritativeRead };
 
-export function createMarketplaceSource(config: AppConfig): MarketplaceSource {
+export function createMarketplaceSource(config: AppConfig, storage?: RegistryStorage): MarketplaceSource {
+  /*
+   * Two sources, chosen in this order, and the default is the chain.
+   *
+   * 1. `OotleIndexerMarketplaceSource` — reads real components from the configured
+   *    Ootle indexer using the routes that actually exist (`/substates/fetch`,
+   *    `/transaction-receipts`). This is the default, and it is what a deployment
+   *    with no extra services uses.
+   *
+   * 2. `IndexerMarketplaceSource` — the `{query, params}` JSON-RPC-style discovery
+   *    protocol, used only when an operator explicitly points `VITE_NFT_DISCOVERY_URL`
+   *    at a service that speaks it.
+   *
+   * WHY THE DEFAULT CHANGED, IN ONE SENTENCE: the previous default passed the bare
+   * indexer ORIGIN to the `{query, params}` source, and the Ootle indexer serves no
+   * such route — `POST /` answers 404 with no CORS headers, so every query failed
+   * and the marketplace rendered "no collections" for a network where three
+   * templates are published and readable.
+   */
+  const dedicated = config.nftDiscoveryUrl;
+  if (dedicated !== undefined) return new IndexerMarketplaceSource(dedicated);
   const url = config.indexerUrls[0];
-  return url === undefined ? new UnavailableMarketplaceSource() : new IndexerMarketplaceSource(url);
+  return url === undefined ? new UnavailableMarketplaceSource() : new OotleIndexerMarketplaceSource(config, storage);
+}
+
+/* ------------------------------------------------------------------------- *
+ * Ootle-indexer-backed discovery.
+ *
+ * Everything above is the operator-service protocol and is unchanged. Everything
+ * below reads the chain through the routes it actually has, and reuses the
+ * protocol-client's own dual-form decoders so there is exactly ONE implementation
+ * of "what does this marketplace component's state mean".
+ * ------------------------------------------------------------------------- */
+
+/**
+ * A raw-substate reader over `POST /substates/fetch`, with a per-address memo.
+ *
+ * The memo is what keeps this affordable: decoding one listing needs the component
+ * substate AND its escrow vault substate, and `componentsOfTemplates` has just read
+ * the components, so without a cache every component would be fetched twice. Reads
+ * are idempotent and the snapshot is short-lived, so a memo cannot serve stale
+ * state across a settlement.
+ */
+class IndexerSubstateReader {
+  private readonly memo = new Map<string, unknown>();
+
+  constructor(private readonly base: string) {}
+
+  async read(address: string): Promise<unknown> {
+    const cached = this.memo.get(address);
+    if (cached !== undefined) return cached;
+    const payload = await postJson(`${this.base}/substates/fetch`, { requests: [address], cached_only: false });
+    if (!payload.ok) throw new Error(payload.reason);
+    const substates = (payload.payload as Record<string, unknown> | undefined)?.substates;
+    if (typeof substates !== 'object' || substates === null) return undefined;
+    const wrapper = (substates as Record<string, unknown>)[address];
+    if (typeof wrapper !== 'object' || wrapper === null) return undefined;
+    const inner = (wrapper as Record<string, unknown>).substate ?? wrapper;
+    const component = (inner as Record<string, unknown>).Component;
+    const value = component ?? inner;
+    this.memo.set(address, value);
+    return value;
+  }
+}
+
+interface MarketplaceSnapshot {
+  listings: Listing[];
+  offers: ItemOffer[];
+  bids: CollectionBid[];
+  /** Components read from the chain that no template could decode. Diagnostic only. */
+  undecodable: number;
+}
+
+const EMPTY_SNAPSHOT: MarketplaceSnapshot = { listings: [], offers: [], bids: [], undecodable: 0 };
+
+/**
+ * Marketplace discovery read directly from the Ootle chain.
+ *
+ * SECURITY POSTURE — unchanged from every other discovery layer here:
+ *   - discovery is ADVISORY. Every action rereads the component through the WALLET
+ *     provider (`marketplaceReadbackFrom`) immediately before construction, so a
+ *     wrong or stale discovery record can never become an executed amount;
+ *   - nothing here can make a component appear. Candidates come from a bounded
+ *     receipt scan plus an untrusted local cache, and each is reverified against its
+ *     own on-chain `header.template_address`;
+ *   - a component that cannot be decoded is COUNTED, not silently dropped, so "0
+ *     listings" is never actually "0 listings plus N unreadable states".
+ */
+export class OotleIndexerMarketplaceSource implements MarketplaceSource {
+  readonly name: string;
+  private failureReason: string | undefined;
+  private snapshot: MarketplaceSnapshot | undefined;
+  private inFlight: Promise<MarketplaceSnapshot> | undefined;
+
+  constructor(
+    private readonly config: AppConfig,
+    private readonly storage: RegistryStorage | undefined = safeLocalStorage(),
+  ) {
+    const host = config.indexerUrls[0] === undefined ? undefined : (() => {
+      try {
+        return new URL(config.indexerUrls[0] as string).host;
+      } catch {
+        return undefined;
+      }
+    })();
+    this.name = host === undefined ? 'ootle-indexer:invalid' : `ootle-indexer:${host}`;
+  }
+
+  get unavailableReason(): string | undefined {
+    return this.failureReason;
+  }
+
+  /** Concurrent callers share one discovery pass instead of racing the chain. */
+  private async ensure(): Promise<MarketplaceSnapshot> {
+    if (this.snapshot !== undefined) return this.snapshot;
+    if (this.inFlight !== undefined) return this.inFlight;
+    this.inFlight = this.discover()
+      .then((snapshot) => {
+        this.snapshot = snapshot;
+        return snapshot;
+      })
+      .finally(() => {
+        this.inFlight = undefined;
+      });
+    return this.inFlight;
+  }
+
+  private async discover(): Promise<MarketplaceSnapshot> {
+    const base = this.config.indexerUrls[0];
+    if (base === undefined) {
+      this.failureReason = 'No indexer endpoint is configured for this build. Marketplace discovery is unavailable.';
+      return EMPTY_SNAPSHOT;
+    }
+    try {
+      const identity = await verifyIndexerIdentity(base, {
+        network: this.config.network,
+        networkName: this.config.network,
+      });
+      if (!isVerified(identity)) {
+        this.failureReason = `The indexer's network identity could not be established: ${describeIdentity(identity)}. No marketplace state is read.`;
+        return EMPTY_SNAPSHOT;
+      }
+      // Expiry depends on the current epoch, so the decoder is given the epoch the
+      // indexer just reported. Without it an expired listing would still read as
+      // ACTIVE and a buy would be offered against an order that cannot settle.
+      if (identity.currentEpoch !== undefined) setMarketplaceCurrentEpoch(identity.currentEpoch);
+
+      const client = new TariIndexerDiscovery(base, {
+        transport: REAL_INDEXER_TRANSPORT,
+        verifyIdentity: async () => ({ ok: true }),
+      });
+      const found = await client.componentsOfTemplates(
+        MARKETPLACE_TEMPLATE_ADDRESSES,
+        registryKnownComponents(this.config.network, this.storage),
+      );
+      if (!found.ok) {
+        this.failureReason = `Marketplace components could not be read from the indexer: ${found.reason}`;
+        return EMPTY_SNAPSHOT;
+      }
+
+      const snapshot: MarketplaceSnapshot = { listings: [], offers: [], bids: [], undecodable: 0 };
+      const reader = new IndexerSubstateReader(base);
+      for (const component of found.components) {
+        const name = templateNameFor(component.templateAddress);
+        if (name === undefined) continue;
+        // Prefer the protocol seed's pin when there is one; otherwise fall back to
+        // the template this component's own header just reported, which
+        // `componentsOfTemplates` already matched against the pinned set.
+        const pinned = registrySeededTemplateFor(this.config.network, component.componentAddress) ?? name;
+        try {
+          const facts =
+            pinned === 'FixedPriceListing'
+              ? await decodeListing(reader, component.componentAddress, MARKETPLACE_TEMPLATES.FixedPriceListing)
+              : pinned === 'ItemOffer'
+                ? await decodeItemOffer(reader, component.componentAddress, MARKETPLACE_TEMPLATES.ItemOffer)
+                : await decodeCollectionBid(reader, component.componentAddress, MARKETPLACE_TEMPLATES.CollectionBid);
+          if (facts.listing !== undefined) snapshot.listings.push(facts.listing);
+          if (facts.itemOffer !== undefined) snapshot.offers.push(facts.itemOffer);
+          if (facts.collectionBid !== undefined) snapshot.bids.push(facts.collectionBid);
+        } catch {
+          snapshot.undecodable += 1;
+        }
+      }
+      registryRememberDiscovered(
+        this.config.network,
+        found.components.map((component: DiscoveredComponent) => component.componentAddress),
+        this.storage,
+      );
+      if (snapshot.undecodable > 0 && snapshot.listings.length + snapshot.offers.length + snapshot.bids.length === 0) {
+        this.failureReason = `${snapshot.undecodable} marketplace component(s) were found on chain but none could be decoded by this build. Nothing is fabricated in their place.`;
+      }
+      return snapshot;
+    } catch (error) {
+      this.failureReason = `Marketplace discovery failed: ${(error as Error).message}`;
+      return EMPTY_SNAPSHOT;
+    }
+  }
+
+  async listCollections(): Promise<string[] | undefined> {
+    const snapshot = await this.ensure();
+    const seen = new Set<string>();
+    for (const listing of snapshot.listings) seen.add(listing.collectionResource);
+    for (const offer of snapshot.offers) seen.add(offer.collectionResource);
+    for (const bid of snapshot.bids) seen.add(bid.collectionResource);
+    return seen.size === 0 ? undefined : [...seen].sort();
+  }
+
+  async listItems(collectionResource: string): Promise<NftDescriptor[]> {
+    const snapshot = await this.ensure();
+    const byKey = new Map<string, NftDescriptor>();
+    const touch = (nftId: string): NftDescriptor => {
+      const existing = byKey.get(nftId);
+      if (existing !== undefined) return existing;
+      const created: NftDescriptor = { collectionResource, nftId };
+      byKey.set(nftId, created);
+      return created;
+    };
+    for (const listing of snapshot.listings) {
+      if (listing.collectionResource !== collectionResource) continue;
+      const item = touch(listing.nftId);
+      item.listingAddress = listing.listingAddress;
+      item.priceRaw = listing.price;
+      item.quoteResource = listing.quoteResource;
+    }
+    for (const offer of snapshot.offers) {
+      if (offer.collectionResource !== collectionResource) continue;
+      const item = touch(offer.nftId);
+      item.offerAddress = offer.offerAddress;
+      // An offer is a bid, not an ask: it never becomes the card's headline price.
+      item.priceRaw = item.priceRaw ?? offer.amount;
+      item.quoteResource = item.quoteResource ?? offer.quoteResource;
+    }
+    return [...byKey.values()].sort((a, b) => (a.nftId < b.nftId ? -1 : a.nftId > b.nftId ? 1 : 0));
+  }
+
+  /**
+   * Read one listing by address.
+   *
+   * Discovery first, because it is already decoded and free. If discovery has not
+   * seen it, the component is read DIRECTLY from the chain and decoded — this is
+   * what makes a shared listing link resolve even when the component has aged out
+   * of the receipt window.
+   */
+  async readListing(listingAddress: string): Promise<Listing | undefined> {
+    const snapshot = await this.ensure();
+    const known = snapshot.listings.find((l) => l.listingAddress === listingAddress);
+    if (known !== undefined) return known;
+    const base = this.config.indexerUrls[0];
+    if (base === undefined) return undefined;
+    try {
+      const identity = await verifyIndexerIdentity(base, {
+        network: this.config.network,
+        networkName: this.config.network,
+      });
+      if (isVerified(identity) && identity.currentEpoch !== undefined) setMarketplaceCurrentEpoch(identity.currentEpoch);
+      const facts = await decodeListing(new IndexerSubstateReader(base), listingAddress, MARKETPLACE_TEMPLATES.FixedPriceListing);
+      return facts.listing;
+    } catch {
+      // Wrong template, absent component, or an undecodable body all land here.
+      // A direct read that cannot be proven is reported as absent, never coerced.
+      return undefined;
+    }
+  }
+
+  async findBids(collectionResource: string, quoteResource: string): Promise<CollectionBid[]> {
+    const snapshot = await this.ensure();
+    return snapshot.bids.filter((bid) => bid.collectionResource === collectionResource && bid.quoteResource === quoteResource);
+  }
+
+  async findItemOffers(collectionResource: string, quoteResource: string): Promise<ItemOffer[]> {
+    const snapshot = await this.ensure();
+    return snapshot.offers.filter((offer) => offer.collectionResource === collectionResource && offer.quoteResource === quoteResource);
+  }
+
+  /**
+   * Recent sales are NOT derived.
+   *
+   * A transaction receipt records which substates a transaction touched; it does not
+   * record the price a given listing settled at, nor which of several touched
+   * components was the counterparty. Deriving a "recent sale" from it would mean
+   * inventing the amount — the exact thing this app exists not to do — so the list
+   * is empty until an authoritative source for it exists.
+   */
+  async recentSales(): Promise<RecentSale[]> {
+    return [];
+  }
+}
+
+function templateNameFor(templateAddress: string): MarketplaceTemplateName | undefined {
+  const bare = templateAddress.startsWith('template_') ? templateAddress.slice('template_'.length) : templateAddress;
+  for (const name of Object.keys(MARKETPLACE_TEMPLATES) as MarketplaceTemplateName[]) {
+    if (MARKETPLACE_TEMPLATES[name] === bare) return name;
+  }
+  return undefined;
 }
