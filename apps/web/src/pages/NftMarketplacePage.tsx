@@ -1,10 +1,32 @@
 /**
- * NFT marketplace home.
+ * The one honest statement about an empty marketplace.
  *
- * Collections come from the marketplace discovery source. When no discovery
- * endpoint is configured the page says so: no collection is fabricated and no
- * volume or floor is invented.
+ * A previous version rendered TWO notices for the same condition: a warn box saying
+ * the discovery request failed, and an empty state saying the endpoint "returned no
+ * collections". Those are different claims and only one could be true — a failure
+ * is not an empty chain, and telling a user the chain is empty when the read never
+ * happened is the single most misleading thing this page could do.
+ *
+ * So: if the source carries a reason, that is the whole message. If it does not, the
+ * chain answered and was empty, and "empty" is the honest word.
  */
+function discoveryNotice(source: MarketplaceSource): { tone: 'warn' | 'info'; title: string; body: string } {
+  const reason = typeof (source as { unavailableReason?: unknown }).unavailableReason === 'string'
+    ? ((source as unknown as { unavailableReason: string }).unavailableReason)
+    : undefined;
+  if (reason !== undefined) {
+    return {
+      tone: 'warn',
+      title: 'Discovery unavailable',
+      body: `${reason} No collection, item, listing, or price is shown in place of a read that did not happen.`,
+    };
+  }
+  return {
+    tone: 'info',
+    title: 'No live marketplace components',
+    body: 'The indexer answered, and it reported no listing, item offer, or collection bid instantiated from this protocol\u2019s three published templates. Nothing is fabricated to fill the grid.',
+  };
+}
 
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
@@ -47,15 +69,18 @@ export function NftMarketplacePage() {
         Listings, offers, and collection bids settle on-chain against immutable component addresses. Discovery data here is advisory; every action
         rereads the component authoritatively before anything is signed.
       </Notice>
-      {loaded && (collections === undefined || collections.length === 0) && (
-        <Notice tone="warn" title="No discovery data">
-          {source instanceof Object && 'unavailableReason' in source && typeof (source as { unavailableReason: unknown }).unavailableReason === 'string'
-            ? ((source as unknown as { unavailableReason: string }).unavailableReason)
-            : 'The configured discovery endpoint returned no collections. Nothing is fabricated.'}
-        </Notice>
-      )}
+      {loaded && (collections === undefined || collections.length === 0) && <MarketplaceDiscoveryNotice source={source} />}
       <CollectionBrowser source={source} collections={collections} loading={!loaded} />
     </div>
+  );
+}
+
+function MarketplaceDiscoveryNotice({ source }: { source: MarketplaceSource }) {
+  const notice = discoveryNotice(source);
+  return (
+    <Notice tone={notice.tone} title={notice.title}>
+      {notice.body}
+    </Notice>
   );
 }
 
@@ -125,7 +150,8 @@ function CollectionBrowser({
         </div>
       ) : tab === 'collections' ? (
         collections === undefined || collections.length === 0 ? (
-          <EmptyState title="No collections" detail="The configured discovery endpoint returned no collections. This build does not fabricate any." />
+              <EmptyState title="Nothing to browse" detail="See the notice above for why. No placeholder collection is offered in place of a real one." />
+
         ) : (
           <div style={{ padding: 'var(--s-4)' }} className="grid-3">
             {collections.map((collection) => (

@@ -55,6 +55,57 @@ export const ESMERALDA_INDEXER_URLS: readonly string[] = [
 ];
 
 /**
+ * Public content gateways the app may READ NFT metadata documents from.
+ *
+ * WHY THESE EXIST — this is a functional fix, not a hardening change.
+ *
+ * NFT metadata is fetched with `fetch()`, and `fetch()` is governed by
+ * `connect-src`, NOT by `img-src`. Before these origins were listed,
+ * `connect-src` permitted only `'self'` plus the two indexers, so **every**
+ * collection whose `metadataUri` lived anywhere else — an IPFS gateway, Arweave,
+ * or the collection's own CDN — was blocked by the browser. The fetch threw, the
+ * catch returned a fallback with no image, and every card rendered a flat grey
+ * square reading "No media supplied".
+ *
+ * That is the actual root cause of "the images disappeared": not a deleted asset,
+ * not a broken path, but a Content Security Policy that made the fetch impossible.
+ * `img-src 'self' data: https:` was always permissive enough to render a remote
+ * image — the document simply never arrived.
+ *
+ * THE TRADEOFF, stated honestly.
+ *
+ * Widening `connect-src` for READ-ONLY JSON fetches does widen the app's network
+ * surface. What it does NOT do, and this is the part that matters:
+ *
+ *   - `default-src` stays `'self'`; `script-src` stays `'self'` plus the single
+ *     wallet connector origin; `object-src` and `frame-src` stay `'none'`.
+ *     Nothing here permits a remote origin to execute a line of script.
+ *   - The fetches are `credentials: 'omit'` and `referrerPolicy: 'no-referrer'`,
+ *     so no cookie, token, or session is ever attached to them, and no wallet
+ *     secret can be read by the responding host.
+ *   - Responses are bounded (`MAX_METADATA_BYTES`) and timeout-bounded, and are
+ *     parsed as inert JSON whose text is sanitised before rendering.
+ *
+ * The genuinely important security properties — the signer origin, the review gate,
+ * the authoritative reads — are all untouched by this list.
+ *
+ * KEEP IN SYNC. `connect-src` is derived from this table in `deploymentHeaders.ts`
+ * and asserted against it in `test/deployment.test.cjs`, so an origin added here
+ * cannot silently miss the shipped header, and an origin in the header that is not
+ * here fails the suite.
+ */
+export const NFT_METADATA_GATEWAY_URLS: readonly string[] = [
+  'https://ipfs.io',
+  'https://dweb.link',
+  'https://cloudflare-ipfs.com',
+  'https://gateway.pinata.cloud',
+  'https://arweave.net',
+];
+
+/** Everything `connect-src` is allowed to reach. One table, two consumers. */
+export const CONNECT_ALLOWED_ORIGINS: readonly string[] = [...ESMERALDA_INDEXER_URLS, ...NFT_METADATA_GATEWAY_URLS];
+
+/**
  * `Network.Esmeralda` in the official Tari SDKs, as a decimal byte.
  *
  * Cross-checked against `GET /info` `network_byte` so a substituted endpoint

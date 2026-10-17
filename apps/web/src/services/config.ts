@@ -23,6 +23,16 @@ export interface AppConfig {
   /** Whether the walletd reference provider may be offered. Never true in a production build. */
   devProvidersEnabled: boolean;
   walletdUrl?: string;
+  /**
+   * OPTIONAL operator-run NFT discovery service speaking the `{query, params}`
+   * JSON-RPC-style protocol.
+   *
+   * Unset by default, and that is the correct default: the Ootle indexer serves no
+   * such route, so pointing this at an indexer origin would make every marketplace
+   * query 404. When it is unset, discovery reads the chain directly through
+   * `OotleIndexerMarketplaceSource`. Set it only when a real service is deployed.
+   */
+  nftDiscoveryUrl?: string;
   /** Why a dev provider / fixture source is on, for the visible dev banner. */
   developmentReason?: string;
   /** Blocking problems that make the whole app unusable. */
@@ -95,6 +105,14 @@ export function resolveConfig(env: EnvBag): AppConfig {
     else walletdUrl = walletdRaw;
   }
 
+  const nftDiscoveryRaw = readString(env, 'VITE_NFT_DISCOVERY_URL');
+  let nftDiscoveryUrl: string | undefined;
+  if (nftDiscoveryRaw !== undefined) {
+    const reason = localEndpointReason(nftDiscoveryRaw, development);
+    if (reason !== undefined) blocking.push(reason);
+    else nftDiscoveryUrl = nftDiscoveryRaw;
+  }
+
   const wantsFixtures = readBoolean(env, 'VITE_USE_FIXTURE_DATA');
   if (wantsFixtures && !development) {
     blocking.push('VITE_USE_FIXTURE_DATA was set but this is not a development build. Fixture data is disabled.');
@@ -111,7 +129,7 @@ export function resolveConfig(env: EnvBag): AppConfig {
           .join(' + ')
       : undefined;
 
-  return { network, indexerUrls, fixturesEnabled, devProvidersEnabled, walletdUrl, developmentReason, blocking };
+  return { network, indexerUrls, fixturesEnabled, devProvidersEnabled, walletdUrl, nftDiscoveryUrl, developmentReason, blocking };
 }
 
 /**
