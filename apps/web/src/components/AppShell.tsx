@@ -13,6 +13,7 @@ import { formatAddress, UNAVAILABLE } from '../lib/format.js';
 import { ProtocolMark } from './ProtocolMark.js';
 
 const NAV_ITEMS = [
+  { to: '/swap', label: 'Swap' },
   { to: '/pools', label: 'Pools' },
   { to: '/nfts', label: 'NFTs' },
   { to: '/activity', label: 'Activity' },

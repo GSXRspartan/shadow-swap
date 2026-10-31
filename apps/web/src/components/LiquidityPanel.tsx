@@ -30,6 +30,12 @@ type Mode = 'add' | 'remove';
 
 export function LiquidityPanel({ pool }: { pool: PoolDescriptor }) {
   const { wallet, balanceOf, readback, executionWallets, walletBridge, liveExecutionIdentity } = useApp();
+  // The CONNECTED ACCOUNT funds and receives every liquidity operation. (The pool's address
+  // was previously passed here, which would have withdrawn from and deposited into the pool.)
+  const connectedAccount = (account: string | undefined): string => {
+    if (account === undefined) throw new Error('Connect a wallet account first.');
+    return account;
+  };
   const [mode, setMode] = useState<Mode>('add');
   const [amountA, setAmountA] = useState('');
   const [amountB, setAmountB] = useState('');
@@ -81,7 +87,7 @@ export function LiquidityPanel({ pool }: { pool: PoolDescriptor }) {
         rawAmountB: asRawExecutionAmount(amountB, 'rawAmountB'),
         maxEpoch: MAX_EPOCH,
       },
-      { readback: provider, builder: ammLiquidityIntentBuilder(pool.poolComponent, () => newOperationId('lp-add')) },
+      { readback: provider, builder: ammLiquidityIntentBuilder(connectedAccount(wallet.account), () => newOperationId('lp-add')) },
     );
     if (outcome.status === 'ACTIVE') {
       setPreview({ kind: 'add', lpHint: outcome.resolved.expectedLpMintHint, feeBps: outcome.resolved.pool.feeBps });
@@ -101,7 +107,7 @@ export function LiquidityPanel({ pool }: { pool: PoolDescriptor }) {
         rawLpAmount: asRawExecutionAmount(lpAmount, 'rawLpAmount'),
         maxEpoch: MAX_EPOCH,
       },
-      { readback: provider, builder: ammLiquidityIntentBuilder(pool.poolComponent, () => newOperationId('lp-remove')) },
+      { readback: provider, builder: ammLiquidityIntentBuilder(connectedAccount(wallet.account), () => newOperationId('lp-remove')) },
     );
     if (outcome.status === 'ACTIVE') {
       setPreview({ kind: 'remove', expectedA: outcome.resolved.expectedA, expectedB: outcome.resolved.expectedB });
@@ -140,11 +146,11 @@ export function LiquidityPanel({ pool }: { pool: PoolDescriptor }) {
         mode === 'add'
           ? await resolveAddLiquidity<AmmTransactionIntent>(
               { poolComponent: pool.poolComponent, rawAmountA: asRawExecutionAmount(amountA, 'rawAmountA'), rawAmountB: asRawExecutionAmount(amountB, 'rawAmountB'), maxEpoch: MAX_EPOCH },
-              { readback: provider, builder: ammLiquidityIntentBuilder(pool.poolComponent, () => newOperationId('lp-add')) },
+              { readback: provider, builder: ammLiquidityIntentBuilder(connectedAccount(wallet.account), () => newOperationId('lp-add')) },
             )
           : await resolveRemoveLiquidity<AmmTransactionIntent>(
               { poolComponent: pool.poolComponent, rawLpAmount: asRawExecutionAmount(lpAmount, 'rawLpAmount'), maxEpoch: MAX_EPOCH },
-              { readback: provider, builder: ammLiquidityIntentBuilder(pool.poolComponent, () => newOperationId('lp-remove')) },
+              { readback: provider, builder: ammLiquidityIntentBuilder(connectedAccount(wallet.account), () => newOperationId('lp-remove')) },
             );
       if (resolved.status !== 'ACTIVE') {
         setMessage({ tone: 'warn', title: `Not submitted (${resolved.status.toLowerCase()})`, detail: resolved.reason });
@@ -263,7 +269,7 @@ export function LiquidityPanel({ pool }: { pool: PoolDescriptor }) {
             )}
           </Field>
           <div className="row" style={{ gap: 'var(--s-2)', flexWrap: 'wrap' }}>
-            {[25, 50, 100].map((percent) => (
+            {[25, 50, 75, 100].map((percent) => (
               <button
                 key={percent}
                 type="button"
