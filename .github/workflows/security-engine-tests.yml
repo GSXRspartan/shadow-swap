@@ -1,8 +1,10 @@
 name: Security Engine Tests
 
-# Executes the REAL Ootle engine test suite (audit_engine_tests) on Linux, where the v0.42.0
-# engine's wasmer/Cranelift backend actually compiles (it does not on Windows). This is the
-# authoritative runtime evidence for the SECURITY_AUDIT_OPUS findings and OPUS-08.
+# Executes the REAL Ootle engine test suite (audit_engine_tests) on Linux, where the engine's
+# wasmer/Cranelift backend actually compiles (it does not on Windows). The cohort is tari-ootle
+# v0.48.0 (6a25dbc), pinned in every Cargo.toml. This is the authoritative runtime evidence for
+# the SECURITY_AUDIT_OPUS findings, OPUS-08, the add_liquidity_exact fix and the v0.48 wire
+# fixtures the web suite consumes.
 #
 # This job is the ONLY place the real engine suites run: on a Windows developer machine
 # `wasmer-compiler-cranelift` fails with `compile_error!`, which is a tooling limitation and
@@ -37,19 +39,23 @@ jobs:
     timeout-minutes: 60
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - name: Install Rust toolchain (stable + wasm target)
-        uses: dtolnay/rust-toolchain@stable
+      # PINNED, not `stable`: the reproducible-WASM gate below compares byte-exact hashes, which
+      # change with the compiler. 1.97.1 is the channel tari-ootle v0.48.0 itself pins
+      # (rust-toolchain.toml at 6a25dbc). Bump it together with templates/WASM_SHA256SUMS.
+      - name: Install Rust toolchain (1.97.1 + wasm target)
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
         with:
+          toolchain: 1.97.1
           components: rustfmt, clippy
           targets: wasm32-unknown-unknown
 
       - name: Cache cargo (registry, git, target)
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           # Distinct caches per standalone crate/target we touch.
-          key: security-engine-v1
+          key: security-engine-v048-rust-1.97.1
 
       # ---- Formatting (all Rust crates) ----
       - name: rustfmt (pool_math)
@@ -78,6 +84,12 @@ jobs:
         run: cargo clippy --manifest-path crates/protocol_types/Cargo.toml --all-targets --all-features
       - name: clippy (fungible_pool template, wasm)
         run: cargo clippy --manifest-path templates/fungible_pool/Cargo.toml --release --target wasm32-unknown-unknown
+      - name: clippy (nft_marketplace template, wasm)
+        run: cargo clippy --manifest-path templates/nft_marketplace/Cargo.toml --release --target wasm32-unknown-unknown
+      - name: clippy (nft_item_offer template, wasm)
+        run: cargo clippy --manifest-path templates/nft_item_offer/Cargo.toml --release --target wasm32-unknown-unknown
+      - name: clippy (nft_collection_bid template, wasm)
+        run: cargo clippy --manifest-path templates/nft_collection_bid/Cargo.toml --release --target wasm32-unknown-unknown
 
       # ---- Off-chain unit/property tests ----
       - name: test (pool_math)
@@ -100,11 +112,13 @@ jobs:
       - name: build nft_collection_bid WASM
         run: cargo build --manifest-path templates/nft_collection_bid/Cargo.toml --release --target wasm32-unknown-unknown
 
-      - name: Record WASM size + SHA256
-        run: |
-          WASM=templates/fungible_pool/target/wasm32-unknown-unknown/release/fungible_pool.wasm
-          ls -l "$WASM"
-          sha256sum "$WASM"
+      # Reproducible-build gate: path-remapped, --locked, pinned toolchain, in a clean target
+      # dir. Fails if any template's sha256 differs from templates/WASM_SHA256SUMS, so the hash
+      # an operator records before publishing is the hash anyone can rebuild from this commit.
+      - name: Reproducible template WASM (byte-exact against templates/WASM_SHA256SUMS)
+        env:
+          RUSTFLAGS: ""
+        run: bash tools/build-templates.sh --check
 
       # ---- REAL Ootle engine tests (never skipped; failure fails the job) ----
       # tari_template_test_tooling compiles the real templates (fungible_pool, faucet, hostile)

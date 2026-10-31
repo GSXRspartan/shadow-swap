@@ -35,6 +35,8 @@ export default defineConfig({
       // Firefox on a real runner.
       name: 'firefox-desktop',
       use: { ...devices['Desktop Firefox'], viewport: { width: 1440, height: 900 } },
+      // The ONLY project allowed CI retries: see the note on `retries` below.
+      retries: process.env.CI ? 2 : 0,
     },
     {
       // Hosting project: the production bundle served by a server that actually
@@ -56,7 +58,12 @@ export default defineConfig({
   // It is NOT a licence for a failing assertion: a genuine refusal bypass fails
   // identically on every attempt, and a flaky-but-real finding still surfaces
   // as "flaky" in the report.
-  retries: process.env.CI ? 2 : 0,
+  //
+  // Scoped to Firefox (above) since the v0.48 release-readiness pass. Chromium and
+  // the hosting project run with NO retries anywhere: retries had previously masked
+  // two genuine spec defects (CHECKPOINT.md C4), and an assertion that only passes
+  // on a second attempt is a defect to fix, not to re-roll.
+  retries: 0,
   // Firefox falls back to software rendering on CI and on machines without GPU
   // acceleration, which is several times slower than Chromium at the same
   // assertions. Workers are capped so the suite degrades predictably rather
