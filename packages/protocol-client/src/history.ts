@@ -29,7 +29,12 @@ export type ProtocolOperationKind =
   | 'MARKET_PLACE_COLLECTION_BID'
   | 'MARKET_FILL_COLLECTION_BID'
   | 'MARKET_CANCEL_COLLECTION_BID'
-  | 'MARKET_REFUND';
+  | 'MARKET_REFUND'
+  // Peer-to-peer escrow offers (templates/p2p_offer)
+  | 'P2P_OFFER_CREATE'
+  | 'P2P_OFFER_FILL'
+  | 'P2P_OFFER_CLAIM'
+  | 'P2P_OFFER_CANCEL';
 
 /** Persistence boundary. Implementations: memory (tests), JSON file, SQLite, KeyValueStore. */
 export interface ProtocolHistoryStore {
