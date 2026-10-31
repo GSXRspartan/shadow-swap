@@ -1,3 +1,29 @@
+# END-OF-RUN CHECKPOINT (2026-10-31, later) — trading routes: multi-hop AMM, pool creation, P2P lane
+
+> Supersedes only the facts it contradicts below. Full record: `docs/SHADOW_SWAP_TRADING_ROUTES_IMPLEMENTATION.md`.
+
+## E1. Outcome
+Still LOCAL ONLY (push refused, HTTP 403). New on the branch: atomic 2-3 hop AMM routing and
+one-transaction pool creation (engine-proven, browser-built), a unified pair resolver and `/swap`
+page, a Create-pool panel, and the experimental unpublished `SwapOffer` P2P template covering
+created-Stealth, revealed confidential and NFT barter (engine-proven, not enabled in the browser).
+
+## E2. Defects fixed
+- Browser AMM intents never deposited the pool's returned bucket (engine rejects: m05): no
+  browser swap/add/remove could have settled. Fixed for every output, incl. tuple outputs.
+- SwapCard/LiquidityPanel built intents with the POOL as the account. Fixed.
+- Review showed the FIRST swap's min_output; a route would have shown 1. Now the final hop's.
+
+## E3. Evidence
+Engine 72/72 (`-D warnings`; multihop_routes 8, p2p_offer_routes 11 new) · protocol-client
+266/266 · wallet-adapter 27/27 · web 477/477 · e2e Chromium desktop+hosting 106 passed, 1
+sandbox-caused failure (blocked `universe.tari.mw`), 4 skipped.
+
+## E4. Open
+Push/PR/CI; publish v0.48 Pool (and optionally SwapOffer); SwapOffer browser builders;
+Sapient `withdrawStealthAndExecute` for tTARI input; Windows acceptance per the doc §13.
+
+---
 # END-OF-RUN CHECKPOINT (2026-10-31) — Ootle v0.48.0 cohort, wire-format migration, release-candidate hardening
 
 > Supersedes only the facts it contradicts below; all prior checkpoint sections are retained.
