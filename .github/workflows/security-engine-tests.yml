@@ -72,6 +72,8 @@ jobs:
         run: cargo fmt --manifest-path templates/nft_item_offer/Cargo.toml -- --check
       - name: rustfmt (nft_collection_bid template)
         run: cargo fmt --manifest-path templates/nft_collection_bid/Cargo.toml -- --check
+      - name: rustfmt (p2p_offer template, experimental)
+        run: cargo fmt --manifest-path templates/p2p_offer/Cargo.toml -- --check
       - name: rustfmt (audit_engine_tests)
         run: cargo fmt --manifest-path audit_engine_tests/Cargo.toml -- --check
 
@@ -90,6 +92,8 @@ jobs:
         run: cargo clippy --manifest-path templates/nft_item_offer/Cargo.toml --release --target wasm32-unknown-unknown
       - name: clippy (nft_collection_bid template, wasm)
         run: cargo clippy --manifest-path templates/nft_collection_bid/Cargo.toml --release --target wasm32-unknown-unknown
+      - name: clippy (p2p_offer template, wasm, experimental)
+        run: cargo clippy --manifest-path templates/p2p_offer/Cargo.toml --release --target wasm32-unknown-unknown
 
       # ---- Off-chain unit/property tests ----
       - name: test (pool_math)

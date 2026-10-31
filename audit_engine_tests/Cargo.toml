@@ -34,3 +34,7 @@ tari_crypto = "0.24.1"
 # Used only by tests/wire_fixtures_v048.rs to render `Encoded<T>` exactly as the indexer's JSON does
 # (base64). Already in the lockfile through the engine; declared here so the test can name it.
 serde_json = "1"
+# Test-only: derive RistrettoPublicKeyBytes for a second signer (p2p_offer designated taker).
+ootle_byte_type = { git = "https://github.com/tari-project/tari-ootle.git", rev = "6a25dbc524581bfaa0a3c6ef120f8d59cc827572" }
+# Test-only: compute the SHA-256 hash lock for tests/p2p_offer_routes.rs (already in the lockfile).
+sha2 = "0.10"
