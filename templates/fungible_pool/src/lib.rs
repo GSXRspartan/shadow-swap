@@ -128,6 +128,7 @@ mod fungible_pool {
                 ComponentAccessRules::new()
                     .default(AccessRule::DenyAll)
                     .method("add_liquidity", AccessRule::AllowAll)
+                    .method("add_liquidity_exact", AccessRule::AllowAll)
                     .method("swap", AccessRule::AllowAll)
                     .method("remove_liquidity", AccessRule::AllowAll)
                     .method("get_pool_balances", AccessRule::AllowAll)
@@ -238,6 +239,82 @@ mod fungible_pool {
             self.pools.get_mut(&b_res).unwrap().deposit(b_bucket);
 
             ResourceManager::get(self.lp_resource).mint_fungible(new_lp_amount)
+        }
+
+        /// Add liquidity taking ONLY the balanced amounts, refunding the remainder of both
+        /// buckets, and enforcing `min_lp_out` on-chain. Returns `(lp, refund_a, refund_b)`,
+        /// the refunds in the same resource order as the inputs (either may be empty).
+        ///
+        /// WHY THIS EXISTS (audit finding, v0.48 release-readiness): `add_liquidity` mints on
+        /// the smaller side but deposits BOTH full buckets, so any imbalance between the
+        /// caller's amounts and the reserve ratio at EXECUTION time is donated to existing
+        /// LPs. A ratio move between quote and execution — an honest trade or a deliberate
+        /// front-run by an LP — therefore transfers value from the depositor, and there is no
+        /// minimum-output guard to bound it. Upstream fixed the same class in its builtin pool
+        /// in v0.47.0 (#2928). `add_liquidity` is kept unchanged for compatibility.
+        ///
+        /// Rounding always favours the pool: the shares minted are floored, and the amounts
+        /// taken for them are CEILED, so the pool is never diluted by a remainder.
+        pub fn add_liquidity_exact(
+            &mut self,
+            mut a_bucket: Bucket,
+            mut b_bucket: Bucket,
+            min_lp_out: Amount,
+        ) -> (Bucket, Bucket, Bucket) {
+            let a_res = a_bucket.resource_address();
+            let b_res = b_bucket.resource_address();
+            self.check_pool_resources(a_res, b_res);
+            assert!(!a_bucket.amount().is_zero(), "Input A must be non-zero");
+            assert!(!b_bucket.amount().is_zero(), "Input B must be non-zero");
+            assert!(!min_lp_out.is_negative(), "min_lp_out must not be negative");
+
+            let a_pool = self.get_pool_balance(a_res);
+            let b_pool = self.get_pool_balance(b_res);
+            if a_pool.is_zero() && b_pool.is_zero() {
+                // First deposit: there is no ratio to honour, so everything is deposited
+                // through the audited first-deposit path (minimum liquidity + locked shares).
+                let refund_a = a_bucket.take(Amount::zero());
+                let refund_b = b_bucket.take(Amount::zero());
+                let lp = self.add_liquidity(a_bucket, b_bucket);
+                assert!(
+                    lp.amount() >= min_lp_out,
+                    "LP output {} is below the minimum {}",
+                    lp.amount(),
+                    min_lp_out
+                );
+                return (lp, refund_a, refund_b);
+            }
+            assert!(
+                !a_pool.is_zero() && !b_pool.is_zero(),
+                "Pool reserves are one-sided; liquidity cannot be priced"
+            );
+
+            let total_supply = self.lp_total_supply();
+            let a_shares = Self::mul_div(a_bucket.amount(), total_supply, a_pool);
+            let b_shares = Self::mul_div(b_bucket.amount(), total_supply, b_pool);
+            let lp_amount = a_shares.min(b_shares);
+            assert!(
+                lp_amount.is_positive(),
+                "Contribution too small relative to reserves to mint any LP shares"
+            );
+            assert!(
+                lp_amount >= min_lp_out,
+                "LP output {} is below the minimum {}",
+                lp_amount,
+                min_lp_out
+            );
+
+            // The amounts these shares are worth at the CURRENT reserves, rounded up. Because
+            // lp_amount <= amount * total / reserve on both sides, each is <= what was supplied.
+            let take_a = Self::mul_div_ceil(lp_amount, a_pool, total_supply);
+            let take_b = Self::mul_div_ceil(lp_amount, b_pool, total_supply);
+            let deposit_a = a_bucket.take(take_a);
+            let deposit_b = b_bucket.take(take_b);
+            self.pools.get_mut(&a_res).unwrap().deposit(deposit_a);
+            self.pools.get_mut(&b_res).unwrap().deposit(deposit_b);
+
+            let lp = ResourceManager::get(self.lp_resource).mint_fungible(lp_amount);
+            (lp, a_bucket, b_bucket)
         }
 
         /// Swap input resource for output resource using the constant-product formula.
@@ -475,6 +552,26 @@ mod fungible_pool {
         /// to zero (which would trap funds in redemption or under-mint LP shares), while the wide
         /// intermediate makes the product overflow-safe for realistic reserve sizes. Panics only
         /// on `denom == 0` or a result that genuinely exceeds the `Amount` range.
+        /// `ceil(a * b / denom)`, same precision and failure modes as `mul_div`.
+        fn mul_div_ceil(a: Amount, b: Amount, denom: Amount) -> Amount {
+            let floor = Self::mul_div(a, b, denom);
+            let exact = floor
+                .into_precision_amount()
+                .checked_mul(denom.into_precision_amount())
+                .expect("overflow in mul_div_ceil check");
+            let product = a
+                .into_precision_amount()
+                .checked_mul(b.into_precision_amount())
+                .expect("overflow in mul_div_ceil product");
+            if exact == product {
+                floor
+            } else {
+                floor
+                    .checked_add(Amount::new(1))
+                    .expect("mul_div_ceil result exceeds Amount range")
+            }
+        }
+
         fn mul_div(a: Amount, b: Amount, denom: Amount) -> Amount {
             let product = a
                 .into_precision_amount()

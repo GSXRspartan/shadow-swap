@@ -610,3 +610,164 @@ fn opus16_pool_component_is_ownerless() {
          SetAccessRules/SetOwnerRule on the pool and freeze LP withdrawals."
     );
 }
+
+// ---------------------------------------------------------------------------------------------
+// add_liquidity_exact (v0.48 release-readiness audit finding)
+//
+// `add_liquidity` mints on the smaller side but deposits BOTH full buckets, so any imbalance at
+// execution time is donated to existing LPs, with no minimum-output guard. `add_liquidity_exact`
+// takes only the balanced amounts, refunds the rest, and enforces `min_lp_out` on-chain.
+// ---------------------------------------------------------------------------------------------
+
+/// Calls `add_liquidity_exact` and deposits all three returned buckets.
+fn add_liquidity_exact_tx(
+    pt: &mut PoolTest,
+    a_amt: Amount,
+    b_amt: Amount,
+    min_lp: Amount,
+) -> tari_ootle_transaction::Transaction {
+    let (a, b, account, pool) = (pt.a, pt.b, pt.account, pt.pool);
+    pt.t.transaction()
+        .call_method(account, "withdraw", args![a, a_amt])
+        .put_last_instruction_output_on_workspace("a")
+        .call_method(account, "withdraw", args![b, b_amt])
+        .put_last_instruction_output_on_workspace("b")
+        .call_method(
+            pool,
+            "add_liquidity_exact",
+            args![Workspace("a"), Workspace("b"), min_lp],
+        )
+        .put_last_instruction_output_on_workspace("out")
+        .call_method(account, "deposit", args![Workspace("out.0")])
+        .call_method(account, "deposit", args![Workspace("out.1")])
+        .call_method(account, "deposit", args![Workspace("out.2")])
+        .build_and_seal(pt.t.secret_key())
+}
+
+#[test]
+fn e07_add_liquidity_exact_refunds_the_imbalance_instead_of_donating_it() {
+    let mut pt = setup(30);
+    add_liquidity(
+        &mut pt,
+        Amount::from(100_000_000u64),
+        Amount::from(100_000_000u64),
+    );
+    let (a, b, lp) = (pt.a, pt.b, pt.lp);
+    let total_before: Amount = {
+        let pool = pt.pool;
+        pt.t.call_method(pool, "lp_total_supply", args![], vec![])
+    };
+    let acct_a = account_balance(a, &mut pt);
+    let acct_b = account_balance(b, &mut pt);
+    let acct_lp = account_balance(lp, &mut pt);
+    let pool_a = pool_balance(a, &mut pt);
+    let pool_b = pool_balance(b, &mut pt);
+
+    // 1:3 against a 1:1 pool. Only 10M of B is worth anything; 20M must come back.
+    let tx = add_liquidity_exact_tx(
+        &mut pt,
+        Amount::from(10_000_000u64),
+        Amount::from(30_000_000u64),
+        Amount::from(1u64),
+    );
+    let proof = pt.account_proof.clone();
+    pt.t.execute_expect_success(tx, vec![proof]);
+
+    let expected_lp = Amount::from(10_000_000u64)
+        .checked_mul(total_before)
+        .unwrap()
+        .checked_div(Amount::from(100_000_000u64))
+        .unwrap();
+    assert_eq!(account_balance(lp, &mut pt) - acct_lp, expected_lp);
+    assert_eq!(
+        acct_a - account_balance(a, &mut pt),
+        Amount::from(10_000_000u64)
+    );
+    assert_eq!(
+        acct_b - account_balance(b, &mut pt),
+        Amount::from(10_000_000u64),
+        "the 20M excess of B is refunded, not donated"
+    );
+    assert_eq!(
+        pool_balance(a, &mut pt) - pool_a,
+        Amount::from(10_000_000u64)
+    );
+    assert_eq!(
+        pool_balance(b, &mut pt) - pool_b,
+        Amount::from(10_000_000u64)
+    );
+}
+
+#[test]
+fn e07b_add_liquidity_exact_enforces_min_lp_out_on_chain() {
+    let mut pt = setup(30);
+    add_liquidity(
+        &mut pt,
+        Amount::from(100_000_000u64),
+        Amount::from(100_000_000u64),
+    );
+    // Balanced 10M/10M mints ~10% of supply; demanding the whole supply must abort.
+    let tx = add_liquidity_exact_tx(
+        &mut pt,
+        Amount::from(10_000_000u64),
+        Amount::from(10_000_000u64),
+        Amount::from(1_000_000_000_000u64),
+    );
+    let proof = pt.account_proof.clone();
+    let reason = pt.t.execute_expect_failure(tx, vec![proof]);
+    println!("e07b rejected as expected: {reason:?}");
+}
+
+#[test]
+fn e07c_add_liquidity_exact_rounding_never_dilutes_the_pool() {
+    let mut pt = setup(30);
+    add_liquidity(
+        &mut pt,
+        Amount::from(100_000_007u64),
+        Amount::from(300_000_011u64),
+    );
+    let (a, b) = (pt.a, pt.b);
+    let pool = pt.pool;
+    let total_before: Amount = pt.t.call_method(pool, "lp_total_supply", args![], vec![]);
+    let pool_a = pool_balance(a, &mut pt);
+    let pool_b = pool_balance(b, &mut pt);
+    let tx = add_liquidity_exact_tx(
+        &mut pt,
+        Amount::from(1_000_003u64),
+        Amount::from(3_000_019u64),
+        Amount::from(1u64),
+    );
+    let proof = pt.account_proof.clone();
+    pt.t.execute_expect_success(tx, vec![proof]);
+    let total_after: Amount = pt.t.call_method(pool, "lp_total_supply", args![], vec![]);
+    let pool_a2 = pool_balance(a, &mut pt);
+    let pool_b2 = pool_balance(b, &mut pt);
+    // Value per share must not fall on either side: reserve/supply after >= before
+    // (cross-multiplied to stay in integers).
+    assert!(pool_a2.checked_mul(total_before).unwrap() >= pool_a.checked_mul(total_after).unwrap());
+    assert!(pool_b2.checked_mul(total_before).unwrap() >= pool_b.checked_mul(total_after).unwrap());
+}
+
+#[test]
+fn e07d_legacy_add_liquidity_donates_an_imbalance_characterised() {
+    // Characterises the hazard `add_liquidity_exact` exists to avoid. NOT a desired property:
+    // if this ever starts failing because `add_liquidity` began refunding, update the docs.
+    let mut pt = setup(30);
+    add_liquidity(
+        &mut pt,
+        Amount::from(100_000_000u64),
+        Amount::from(100_000_000u64),
+    );
+    let b = pt.b;
+    let pool_b = pool_balance(b, &mut pt);
+    add_liquidity(
+        &mut pt,
+        Amount::from(10_000_000u64),
+        Amount::from(30_000_000u64),
+    );
+    assert_eq!(
+        pool_balance(b, &mut pt) - pool_b,
+        Amount::from(30_000_000u64),
+        "the legacy method keeps all 30M of B while minting LP for 10M"
+    );
+}
