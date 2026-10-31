@@ -201,6 +201,11 @@ export interface MarketplaceEscrow {
   /** Non-fungible ids held. Empty for a fungible escrow. */
   readonly tokenIds: readonly string[];
   readonly empty: boolean;
+  /**
+   * The vault's resource-container kind, as the chain reports it. This is the asset's
+   * privacy representation; a trade must deliver the same kind it escrowed.
+   */
+  readonly containerKind: 'Fungible' | 'Stealth' | 'Confidential' | 'NonFungible';
 }
 
 const LISTING_STATUSES = ['ACTIVE', 'SOLD', 'CANCELLED', 'EXPIRED'] as const;
@@ -246,7 +251,7 @@ export async function readEscrow(reader: MarketplaceRawSubstateReader, vault: st
       throw new MarketplaceDecodeError(`Escrow vault ${vault} holds ${address}, but the component declares ${expectResource}`);
     }
     const amount = intString(inner.amount ?? inner.revealed_amount ?? '0', `${vault}.amount`);
-    return { vaultAddress: vault, resourceAddress: address, amount, tokenIds: [], empty: amount === '0' };
+    return { vaultAddress: vault, resourceAddress: address, amount, tokenIds: [], empty: amount === '0', containerKind: kind };
   }
   const nft = record(container.NonFungible);
   if (nft === undefined) {
@@ -262,7 +267,7 @@ export async function readEscrow(reader: MarketplaceRawSubstateReader, vault: st
   const rawIds = nft.token_ids;
   if (!Array.isArray(rawIds)) throw new MarketplaceDecodeError(`Escrow vault ${vault} carries no token_ids list`);
   const tokenIds = rawIds.map((id, index) => nonFungibleId(id, `${vault}.token_ids[${index}]`));
-  return { vaultAddress: vault, resourceAddress: address, amount: '0', tokenIds, empty: tokenIds.length === 0 };
+  return { vaultAddress: vault, resourceAddress: address, amount: '0', tokenIds, empty: tokenIds.length === 0, containerKind: 'NonFungible' };
 }
 
 /**

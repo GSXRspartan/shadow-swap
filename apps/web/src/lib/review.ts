@@ -25,7 +25,17 @@ import { asRawExecutionAmount, asResourceAddress } from './tradeBoundary.js';
 import { buildSignableInstructions, type TariInstruction } from './instructions.js';
 import { encodeLiteral } from './instructionArgs.js';
 
-export type ReviewOperation = 'AMM_SWAP' | 'AMM_ADD_LIQUIDITY' | 'AMM_REMOVE_LIQUIDITY' | 'NFT_BUY_NOW' | 'NFT_SELL_NOW' | 'NFT_ACCEPT_ITEM_OFFER';
+export type ReviewOperation =
+  | 'AMM_SWAP'
+  | 'AMM_ADD_LIQUIDITY'
+  | 'AMM_REMOVE_LIQUIDITY'
+  | 'NFT_BUY_NOW'
+  | 'NFT_SELL_NOW'
+  | 'NFT_ACCEPT_ITEM_OFFER'
+  | 'P2P_OFFER_CREATE'
+  | 'P2P_OFFER_FILL'
+  | 'P2P_OFFER_CLAIM'
+  | 'P2P_OFFER_CANCEL';
 
 export interface ReviewAmount {
   /** EXACT resource identity. A symbol is never used here. */
@@ -45,8 +55,13 @@ export interface ReviewAmount {
    * It is deliberately NOT usable to claim value: nothing reads it as an economic
    * term, it is excluded from the carry check because it is not carried, and the
    * "intent moves X but the review does not state X" check is independent of it.
+   *
+   * `RECEIVE` is what a P2P escrow RELEASES to this account (a fill receives the escrow, a
+   * claim receives the proceeds). Like REFUND it is not an argument -- the component returns
+   * what it holds -- so it is not carry-checked; the figure is read authoritatively from
+   * chain state (decodeSwapOffer), never from an invitation.
    */
-  role: 'INPUT' | 'OUTPUT' | 'MINIMUM' | 'ESCROW' | 'FEE' | 'REFUND';
+  role: 'INPUT' | 'OUTPUT' | 'MINIMUM' | 'ESCROW' | 'FEE' | 'REFUND' | 'RECEIVE';
   /** Present for NFT legs, where the quantity is an identifier, not an amount. */
   nftId?: string;
 }
@@ -431,7 +446,7 @@ function checkInstructionsCarryAmounts(review: TransactionReview, amounts: reado
     // REFUND is the remaining escrow a cancel returns, computed on-chain by the
     // template rather than passed in. Neither is claimed to be carried by the
     // transaction, so neither is checked for it. See ReviewAmount['role'].
-    if (amount.role === 'FEE' || amount.role === 'REFUND') continue;
+    if (amount.role === 'FEE' || amount.role === 'REFUND' || amount.role === 'RECEIVE') continue;
     // An NFT the template itself RETURNS (a cancelled listing) is not an argument either:
     // `cancel()` takes none. The marketplace differential still requires the review to name it.
     if (amount.role === 'OUTPUT' && amount.nftId !== undefined && !carries('NonFungibleId', amount.nftId)) continue;
@@ -632,6 +647,7 @@ export function diffReviewAgainstMarketplaceIntent(review: TransactionReview, in
  * comparison against an AMM intent would skip the min_output and pool checks.
  */
 export function diffReviewForIntent(review: TransactionReview, intent: unknown): ReviewDiff {
+  if (isSwapOfferIntentLike(intent)) return diffReviewAgainstSwapOfferIntent(review, intent);
   if (isMarketplaceIntent(intent)) {
     return diffReviewAgainstMarketplaceIntent(review, intent as MarketplaceIntentLike);
   }
@@ -659,3 +675,131 @@ export function reviewFingerprint(review: TransactionReview): string {
 }
 
 
+
+// ===========================================================================
+// P2P escrow offers (templates/p2p_offer)
+// ===========================================================================
+
+type OfferAssetLike = { kind: 'fungible'; resource: string; amount: string } | { kind: 'nft'; resource: string; nftId: string };
+
+export interface SwapOfferIntentLike {
+  kind: 'swap_offer';
+  operation: 'swap_offer_create' | 'swap_offer_fill' | 'swap_offer_claim' | 'swap_offer_cancel';
+  accountAddress: string;
+  target: string;
+  instructions: readonly unknown[];
+  spends?: OfferAssetLike;
+  terms?: { requested: OfferAssetLike };
+}
+
+const SWAP_OFFER_OPERATION: Record<SwapOfferIntentLike['operation'], ReviewOperation> = {
+  swap_offer_create: 'P2P_OFFER_CREATE',
+  swap_offer_fill: 'P2P_OFFER_FILL',
+  swap_offer_claim: 'P2P_OFFER_CLAIM',
+  swap_offer_cancel: 'P2P_OFFER_CANCEL',
+};
+
+const SWAP_OFFER_METHOD: Record<SwapOfferIntentLike['operation'], string> = {
+  swap_offer_create: 'create',
+  swap_offer_fill: 'fill',
+  swap_offer_claim: 'claim',
+  swap_offer_cancel: 'cancel',
+};
+
+export function isSwapOfferIntentLike(intent: unknown): intent is SwapOfferIntentLike {
+  return typeof intent === 'object' && intent !== null && (intent as { kind?: unknown }).kind === 'swap_offer';
+}
+
+function assetAmount(asset: OfferAssetLike, role: ReviewAmount['role']): ReviewAmount {
+  return asset.kind === 'fungible'
+    ? { resourceAddress: asset.resource, amountRaw: asset.amount, role }
+    : { resourceAddress: asset.resource, amountRaw: '0', role, nftId: asset.nftId };
+}
+
+function sameAsset(a: ReviewAmount, b: ReviewAmount): boolean {
+  return a.resourceAddress === b.resourceAddress && a.amountRaw === b.amountRaw && a.role === b.role && a.nftId === b.nftId;
+}
+
+/**
+ * The amounts a SwapOffer review states.
+ *
+ * `chainReceive` is what the escrow will RELEASE, read from chain state by the caller
+ * (decodeSwapOffer): the escrow for a fill or cancel, the proceeds for a claim. A fill, claim
+ * or cancel cannot be reviewed without it, because "what do I get" is the whole question.
+ */
+function swapOfferAmounts(intent: SwapOfferIntentLike, chainReceive?: OfferAssetLike): ReviewAmount[] {
+  const amounts: ReviewAmount[] = [];
+  if (intent.spends !== undefined) amounts.push(assetAmount(intent.spends, 'INPUT'));
+  if (intent.operation === 'swap_offer_create') {
+    if (intent.terms === undefined) throw new ReviewViolationError('a SwapOffer create must state the requested asset');
+    amounts.push(assetAmount(intent.terms.requested, 'OUTPUT'));
+  } else {
+    if (chainReceive === undefined) throw new ReviewViolationError(`a SwapOffer ${SWAP_OFFER_METHOD[intent.operation]} must state what the escrow releases, read from chain`);
+    amounts.push(assetAmount(chainReceive, intent.operation === 'swap_offer_cancel' ? 'REFUND' : 'RECEIVE'));
+  }
+  return amounts;
+}
+
+export function reviewFromSwapOfferIntent(input: {
+  intent: SwapOfferIntentLike;
+  operationId: string;
+  network: string;
+  identity: ExecutionIdentity;
+  /** What the escrow releases, from decodeSwapOffer (required for fill/claim/cancel). */
+  chainReceive?: OfferAssetLike;
+  maxEpochRaw?: string;
+}): TransactionReview {
+  const { intent } = input;
+  return createReview({
+    operationId: input.operationId,
+    network: input.network,
+    account: intent.accountAddress,
+    identity: input.identity,
+    instructions: intent.instructions,
+    maxEpoch: input.maxEpochRaw,
+    legs: [
+      {
+        operation: SWAP_OFFER_OPERATION[intent.operation],
+        componentAddress: intent.target,
+        method: SWAP_OFFER_METHOD[intent.operation],
+        amounts: swapOfferAmounts(intent, input.chainReceive),
+        maxEpochRaw: input.maxEpochRaw,
+      },
+    ],
+  });
+}
+
+/**
+ * The SwapOffer differential: the review must be bound to the intent's account, name the
+ * offer (or template), state exactly what leaves the account and what is requested, and --
+ * the strongest check -- its wallet instructions must be byte-identical to a fresh
+ * serialisation of the intent's own instructions.
+ */
+export function diffReviewAgainstSwapOfferIntent(review: TransactionReview, intent: SwapOfferIntentLike): ReviewDiff {
+  const mismatches: string[] = [];
+  if (review.legs.length !== 1) mismatches.push(`expected exactly one leg for a SwapOffer intent, found ${review.legs.length}`);
+  const leg = review.legs[0];
+  if (leg === undefined) return { ok: false, mismatches };
+  if (review.account !== intent.accountAddress) mismatches.push(`account: review ${review.account} != intent ${intent.accountAddress}`);
+  if (leg.componentAddress !== intent.target) mismatches.push(`component: review ${leg.componentAddress} != intent ${intent.target}`);
+  if (leg.operation !== SWAP_OFFER_OPERATION[intent.operation]) mismatches.push(`operation: review ${leg.operation} != intent ${intent.operation}`);
+  if (intent.spends !== undefined && !leg.amounts.some((a) => sameAsset(a, assetAmount(intent.spends!, 'INPUT')))) {
+    mismatches.push('the review does not state exactly what leaves the account');
+  }
+  if (intent.terms !== undefined && !leg.amounts.some((a) => sameAsset(a, assetAmount(intent.terms!.requested, 'OUTPUT')))) {
+    mismatches.push('the review does not state exactly what the offer requests');
+  }
+  if (intent.operation !== 'swap_offer_create' && !leg.amounts.some((a) => a.role === 'RECEIVE' || a.role === 'REFUND')) {
+    mismatches.push('the review does not state what the escrow releases');
+  }
+  let fresh: string;
+  try {
+    fresh = JSON.stringify(buildSignableInstructions({ instructions: intent.instructions }));
+  } catch (error) {
+    mismatches.push(`the intent does not serialise: ${(error as Error).message}`);
+    return { ok: false, mismatches };
+  }
+  if (JSON.stringify(reviewedInstructions(review)) !== fresh) mismatches.push('the reviewed instructions differ from the intent\'s own instructions');
+  mismatches.push(...checkInstructionsCarryAmounts(review, leg.amounts));
+  return { ok: mismatches.length === 0, mismatches };
+}
