@@ -793,14 +793,18 @@ test('conformance: a malformed transaction-request summary is refused, not guess
   }
 });
 
-test('conformance: a non-instructions transaction-request kind is refused', async () => {
-  // This is a public AMM. A private/stealth kind would be hand-building a
-  // stealth transfer, which the documentation says must never be done from a
-  // dApp and is rejected by the wallet anyway.
+test('conformance: only "instructions" and a well-formed "withdrawStealthAndExecute" can be requested', async () => {
+  // Every other private kind (shield, private sends, HTLC, redeem) would hand the dApp a
+  // reason to ask for a stealth transfer it has no business asking for; they stay refused.
+  // withdrawStealthAndExecute is the documented way a Sapient seed account moves a
+  // Stealth-typed input into a contract call: every field is public and the WALLET builds
+  // the StealthTransfer. A malformed one is refused before the wallet sees it.
   const provider = strictProvider();
-  for (const kind of ['shield', 'unshield', 'sendPrivately', 'htlcFund', 'withdrawStealthAndExecute']) {
-    await assert.rejects(() => tari.createTransactionRequest(provider, { kind, resourceAddress: 'otl_r', amount: '1' }), /public AMM/);
+  for (const kind of ['shield', 'unshield', 'sendPrivately', 'htlcFund', 'htlcClaim', 'htlcRefund', 'redeemStealthOutputAndExecute', 'redeemStealthOutputWithPrivateFee']) {
+    await assert.rejects(() => tari.createTransactionRequest(provider, { kind, resourceAddress: 'otl_r', amount: '1' }), /creates only "instructions" and "withdrawStealthAndExecute"/, kind);
   }
+  await assert.rejects(() => tari.createTransactionRequest(provider, { kind: 'withdrawStealthAndExecute', resourceAddress: 'otl_r', amount: '1' }), /resourceAddress must be resource_/);
+  assert.equal(provider.seen.filter((c) => c.method === 'tari_createTransactionRequest').length, 0, 'nothing refused ever reached the wallet');
 });
 
 // ===========================================================================
@@ -886,32 +890,51 @@ test('conformance: the public execution path never receives a wallet address as 
 // 10. INSTRUCTION SERIALISATION
 // ===========================================================================
 
-test('conformance: AMM instructions serialise to the documented Ootle form', () => {
+const W_ACCT = `component_${'a'.repeat(64)}`;
+const W_POOL = `component_${'b'.repeat(64)}`;
+const W_R1 = `resource_${'1'.repeat(64)}`;
+const W_R2 = `resource_${'2'.repeat(64)}`;
+const { encodeLiteral } = require('../build-test/lib/instructionArgs.js');
+const lit = (type, value) => ({ Literal: encodeLiteral(type, value) });
+
+test('conformance: AMM instructions serialise to upstream v0.48 Instruction JSON (Literal args, no WithMaxEpoch)', () => {
   const out = instructions.buildSignableInstructions({
     instructions: [
-      { kind: 'withdraw_fungible', accountAddress: 'component_account_1', resourceAddress: 'otl_resource_1', amount: '1000000', output: { kind: 'workspace_bucket', name: 'swap_input' } },
-      { kind: 'call_method', componentAddress: 'component_pool_1', method: 'swap', args: [{ kind: 'workspace_bucket', name: 'swap_input' }, 'otl_resource_2', '3900000'], resourcesInvolved: ['otl_resource_1'] },
+      { kind: 'withdraw_fungible', accountAddress: W_ACCT, resourceAddress: W_R1, amount: '1000000', output: { kind: 'workspace_bucket', name: 'swap_input' } },
+      { kind: 'call_method', componentAddress: W_POOL, method: 'swap', args: [{ kind: 'workspace_bucket', name: 'swap_input' }, W_R2, '3900000'], argTypes: ['Bucket', 'ResourceAddress', 'Amount'], resourcesInvolved: [W_R1] },
     ],
     maxEpoch: '950',
   });
-  assert.deepEqual(out[0], { CallMethod: { call: { Address: 'component_account_1' }, method: 'withdraw', args: ['otl_resource_1', '1000000'] } });
-  // Workspace references must be PLAIN INTEGER ids: name resolution only applies
-  // to instructions the wallet itself builds.
+  // Every non-workspace argument is `{ Literal: hex(tari_bor(value)) }` (InstructionArg::Literal);
+  // the byte encodings are pinned to the engine in instruction-wire-v048.test.cjs.
+  assert.deepEqual(out[0], { CallMethod: { call: { Address: W_ACCT }, method: 'withdraw', args: [lit('ResourceAddress', W_R1), { Literal: '1a000f4240' }] } });
+  // Workspace references are PLAIN INTEGER ids: name resolution only applies to instructions
+  // the wallet itself builds.
   assert.deepEqual(out[1], { PutLastInstructionOutputOnWorkspace: { key: 0 } });
-  assert.deepEqual(out[2].CallMethod.args[0], { Workspace: { id: 0, offset: null } });
-  // The on-chain expiry the intent carries must be bound, or a signed swap stays
-  // valid indefinitely after market state moves.
-  assert.deepEqual(out[3], { WithMaxEpoch: { epoch: '950' } });
+  assert.deepEqual(out[2].CallMethod.args, [{ Workspace: { id: 0, offset: null } }, lit('ResourceAddress', W_R2), lit('Amount', '3900000')]);
+  // There is no max-epoch instruction in Ootle; the wallet sets the transaction's max_epoch.
+  assert.equal(out.length, 3);
 });
 
 test('conformance: a deposit is a CallMethod naming the account component', () => {
   const out = instructions.buildSignableInstructions({
     instructions: [
-      { kind: 'withdraw_fungible', accountAddress: 'component_account_1', resourceAddress: 'otl_r', amount: '5', output: { kind: 'workspace_bucket', name: 'b0' } },
-      { kind: 'deposit_all', accountAddress: 'component_account_1', bucket: { kind: 'workspace_bucket', name: 'b0' } },
+      { kind: 'withdraw_fungible', accountAddress: W_ACCT, resourceAddress: W_R1, amount: '5', output: { kind: 'workspace_bucket', name: 'b0' } },
+      { kind: 'deposit_all', accountAddress: W_ACCT, bucket: { kind: 'workspace_bucket', name: 'b0' } },
     ],
   });
-  assert.deepEqual(out[2], { CallMethod: { call: { Address: 'component_account_1' }, method: 'deposit', args: [{ Workspace: { id: 0, offset: null } }] } });
+  assert.deepEqual(out[2], { CallMethod: { call: { Address: W_ACCT }, method: 'deposit', args: [{ Workspace: { id: 0, offset: null } }] } });
+});
+
+test('conformance: an NFT leaves the account through withdraw_non_fungible with a canonical id', () => {
+  const out = instructions.buildSignableInstructions({
+    instructions: [
+      { kind: 'withdraw_non_fungible', accountAddress: W_ACCT, resourceAddress: W_R1, nonFungibleId: 'str_art-1', output: { kind: 'workspace_bucket', name: 'n' } },
+      { kind: 'deposit_all', accountAddress: W_ACCT, bucket: { kind: 'workspace_bucket', name: 'n' } },
+    ],
+  });
+  assert.deepEqual(out[0], { CallMethod: { call: { Address: W_ACCT }, method: 'withdraw_non_fungible', args: [lit('ResourceAddress', W_R1), { Literal: '820181656172742d31' }] } });
+  assert.throws(() => instructions.buildSignableInstructions({ instructions: [{ kind: 'withdraw_non_fungible', accountAddress: W_ACCT, resourceAddress: W_R1, nonFungibleId: 'art-1', output: { kind: 'workspace_bucket', name: 'n' } }] }), /NonFungibleId/);
 });
 
 test('conformance: an unrecognised instruction kind is refused, never skipped', () => {
@@ -921,21 +944,25 @@ test('conformance: an unrecognised instruction kind is refused, never skipped', 
   assert.throws(() => instructions.buildSignableInstructions({ instructions: [] }), /empty instruction list/);
 });
 
-test('conformance: amounts stay raw integer strings through serialisation', () => {
+test('conformance: amounts stay exact raw integers through serialisation (u128 bignum)', () => {
   const huge = (1n << 120n).toString();
   const out = instructions.buildSignableInstructions({
-    instructions: [{ kind: 'withdraw_fungible', accountAddress: 'component_a', resourceAddress: 'otl_r', amount: huge, output: { kind: 'workspace_bucket', name: 'b' } }],
+    instructions: [{ kind: 'withdraw_fungible', accountAddress: W_ACCT, resourceAddress: W_R1, amount: huge, output: { kind: 'workspace_bucket', name: 'b' } }],
   });
-  assert.equal(out[0].CallMethod.args[1], huge, 'a raw integer beyond 2^53 must survive exactly');
+  const hex = out[0].CallMethod.args[1].Literal;
+  // CBOR tag 2 (positive bignum) + byte string; decode it back and require exact equality.
+  assert.equal(hex.slice(0, 2), 'c2', 'an amount above u64::MAX is a tag-2 bignum');
+  const len = Number.parseInt(hex.slice(2, 4), 16) - 0x40;
+  assert.equal(BigInt(`0x${hex.slice(4, 4 + 2 * len)}`).toString(), huge, 'a raw integer beyond 2^53 must survive exactly');
   // A non-canonical amount is refused at the boundary rather than coerced.
-  assert.throws(() => instructions.buildSignableInstructions({ instructions: [{ kind: 'withdraw_fungible', accountAddress: 'component_a', resourceAddress: 'otl_r', amount: '1.5', output: { kind: 'workspace_bucket', name: 'b' } }] }));
-  assert.throws(() => instructions.buildSignableInstructions({ instructions: [{ kind: 'withdraw_fungible', accountAddress: 'component_a', resourceAddress: 'otl_r', amount: '-1', output: { kind: 'workspace_bucket', name: 'b' } }] }));
+  assert.throws(() => instructions.buildSignableInstructions({ instructions: [{ kind: 'withdraw_fungible', accountAddress: W_ACCT, resourceAddress: W_R1, amount: '1.5', output: { kind: 'workspace_bucket', name: 'b' } }] }));
+  assert.throws(() => instructions.buildSignableInstructions({ instructions: [{ kind: 'withdraw_fungible', accountAddress: W_ACCT, resourceAddress: W_R1, amount: '-1', output: { kind: 'workspace_bucket', name: 'b' } }] }));
 });
 
 test('conformance: a market-data display value can never become an instruction amount', () => {
   const { asDisplayOnly } = require('../build-test/lib/tradeBoundary.js');
   assert.throws(
-    () => instructions.buildSignableInstructions({ instructions: [{ kind: 'withdraw_fungible', accountAddress: 'component_a', resourceAddress: 'otl_r', amount: asDisplayOnly('1.00', 'chart'), output: { kind: 'workspace_bucket', name: 'b' } }] }),
+    () => instructions.buildSignableInstructions({ instructions: [{ kind: 'withdraw_fungible', accountAddress: W_ACCT, resourceAddress: W_R1, amount: asDisplayOnly('1.00', 'chart'), output: { kind: 'workspace_bucket', name: 'b' } }] }),
     /market-data display value/,
   );
 });

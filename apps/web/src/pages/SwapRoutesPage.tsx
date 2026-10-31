@@ -10,6 +10,9 @@
  *   duplicate-submit refusal, pending-approval persistence and reconciliation are unchanged.
  * - Mechanisms that cannot be signed in this build are shown with their exact reason and no
  *   action.
+ * - P2P offers (create / import an invitation / my offers) sit below the AMM routes: the way to
+ *   trade a pair with no AMM route, a private-typed asset, or one NFT for another. They are
+ *   available only where a SwapOffer template is recorded for the verified generation.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { resolveMultiHopSwap, type PoolEdge, type RouteQuote } from '@tari-ootle/protocol-client';
@@ -18,12 +21,14 @@ import { useApp } from '../state/AppContext.js';
 import { activeDeployment } from '../services/protocolDeployment.js';
 import { executeSwap, newOperationId, type ExecutionWallets } from '../services/execution.js';
 import { reviewFromAmmIntent } from '../lib/review.js';
+import { stealthInputFor } from '../services/stealthWithdraw.js';
 import { parseDecimalToRaw } from '../lib/amountInput.js';
 import { formatAddress, formatUnits, UNAVAILABLE } from '../lib/format.js';
 import { DEFAULT_SLIPPAGE_BPS } from '../lib/slippage.js';
 import { normalizeError } from '../lib/errorMessage.js';
 import { CANONICAL_TARI, bestAmmQuote, resolvePairRoutes, type AssetKind, type RouteOption } from '../lib/routeResolver.js';
 import { Badge, Card, CardHeader, DataRow, EmptyState, Notice } from '../components/primitives.js';
+import { P2POfferPanel } from '../components/P2POfferPanel.js';
 
 const MAX_EPOCH = '18446744073709551615';
 
@@ -115,6 +120,7 @@ export function SwapRoutesPage() {
       ...(amountRaw === undefined ? {} : { amountIn: amountRaw }),
       pools: edges,
       poolTemplateRecorded: (deployment?.poolTemplates.length ?? 0) > 0,
+      offerTemplateRecorded: (deployment?.offerTemplates.length ?? 0) > 0,
     });
   }, [fromAsset, toAsset, amountRaw, edges, deployment]);
 
@@ -158,7 +164,10 @@ export function SwapRoutesPage() {
         setMessage({ tone: 'warn', title: `Route ${outcome.status.toLowerCase()}`, detail: outcome.reason });
         return;
       }
-      const review = reviewFromAmmIntent({ intent: outcome.builderIntent, operationId: newOperationId('swap'), network: wallet.networkId ?? 'unknown', identity, minOutputRaw: outcome.minOutput, maxEpochRaw: MAX_EPOCH });
+      // A Stealth-typed input (tTARI) from a Sapient seed account goes through the wallet's
+      // native withdrawStealthAndExecute; walletd-relayed accounts keep the plain path.
+      const stealthInput = stealthInputFor(outcome.builderIntent.instructions, wallet);
+      const review = reviewFromAmmIntent({ intent: outcome.builderIntent, operationId: newOperationId('swap'), network: wallet.networkId ?? 'unknown', identity, minOutputRaw: outcome.minOutput, maxEpochRaw: MAX_EPOCH, ...(stealthInput !== undefined ? { stealthInput } : {}) });
       const result = await executeSwap<AmmTransactionIntent>(wallets as ExecutionWallets, {
         resolvedIntent: outcome.builderIntent,
         recordInput: {
@@ -191,7 +200,7 @@ export function SwapRoutesPage() {
       guard.current = false;
       setBusy(false);
     }
-  }, [selected, readback, executionWallets, walletBridge, liveExecutionIdentity, wallet.account, wallet.networkId]);
+  }, [selected, readback, executionWallets, walletBridge, liveExecutionIdentity, wallet]);
 
   return (
     <div className="page-stack">
@@ -274,6 +283,8 @@ export function SwapRoutesPage() {
         <Notice tone="info" title="No executable quote">{options.map((o) => o.reason).filter(Boolean).join(' ') || UNAVAILABLE}</Notice>
       )}
       {message !== undefined && <Notice tone={message.tone} title={message.title}>{message.detail}</Notice>}
+
+      <P2POfferPanel {...(from !== '' ? { offeredResource: from } : {})} {...(to !== '' ? { requestedResource: to } : {})} />
     </div>
   );
 }

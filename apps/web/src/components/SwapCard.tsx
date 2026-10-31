@@ -24,6 +24,7 @@ import { useApp } from '../state/AppContext.js';
 import type { PoolDescriptor } from '../services/pools.js';
 import { executeSwap, newOperationId, IdentityChangedError, ReviewMismatchError, type ExecutionWallets } from '../services/execution.js';
 import { reviewFromAmmIntent } from '../lib/review.js';
+import { stealthInputFor } from '../services/stealthWithdraw.js';
 import { normalizeError, type NormalizedError } from '../lib/errorMessage.js';
 import { buildPoolIdentity, presentSafety, type AssetChip } from '../lib/assetIdentity.js';
 import { formatBps, formatUnits, UNAVAILABLE } from '../lib/format.js';
@@ -60,8 +61,9 @@ function normalizeSubmissionFailure(error: unknown): { tone: 'warn' | 'danger' |
 }
 
 /**
- * Transaction validity bound. A generous but finite `with_max_epoch`: this
- * protocol has no infinite validity anywhere.
+ * Expiry EVIDENCE recorded with the intent. Ootle has no max-epoch instruction: the wallet
+ * sets the transaction's `max_epoch` when it signs (Sapient: current epoch + 10), and the
+ * on-chain `min_output` is what protects a stale quote.
  */
 const MAX_EPOCH = '1000000000';
 
@@ -171,6 +173,7 @@ export function SwapCard({ pool }: { pool: PoolDescriptor }) {
       }
       // Build the frozen review FROM the resolver's intent, so what the user
       // approves and what the wallet is asked to sign are the same object graph.
+      const stealthInput = stealthInputFor(resolved.builderIntent.instructions, wallet);
       const review = reviewFromAmmIntent({
         intent: resolved.builderIntent,
         operationId: newOperationId('swap'),
@@ -178,6 +181,7 @@ export function SwapCard({ pool }: { pool: PoolDescriptor }) {
         identity,
         minOutputRaw: resolved.quote.minOutput,
         maxEpochRaw: MAX_EPOCH,
+        ...(stealthInput !== undefined ? { stealthInput } : {}),
       });
       const result = await executeSwap<AmmTransactionIntent>(wallets as ExecutionWallets, {
         resolvedIntent: resolved.builderIntent,

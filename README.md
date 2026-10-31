@@ -310,10 +310,12 @@ first-class state meaning "not yet known", never "failed" and never "retry".
   (its resource guard), which is distinct from "never supported by Shadow Swap".
 - **Ootle v0.48.0 reset Esmeralda.** No Shadow Swap template is published on the reset
   network yet, so discovery there truthfully reports "not deployed".
-- **Sapient local accounts cannot spend tTARI through a plain `withdraw`.** The wallet
-  requires its `withdrawStealthAndExecute` request for Stealth-typed funds; this app
-  sends a plain instruction list, so a tTARI-*input* swap through a Sapient local account
-  is refused by the wallet (no funds move). Tracked as a release blocker.
+- **Stealth-typed inputs (tTARI, created-Stealth) from Sapient seed accounts** go through the
+  wallet's own `withdrawStealthAndExecute` request (single-input operations only); walletd-
+  relayed accounts use a plain withdraw. Not yet confirmed against a live wallet.
+- **P2P offers (SwapOffer)** are built, reviewed and verified in the browser, with shareable
+  invitations that are always re-checked against chain state, but the template is not
+  published, so they are unavailable until an operator publishes and records it.
 - **Cross-layer routing is not live.**
 - **No mainnet deployment exists.**
 

@@ -1,37 +1,41 @@
 /**
- * Ootle instruction serialisation for the Tari wallet boundary.
+ * Ootle v0.48 instruction serialisation for the Tari wallet boundary.
  *
- * The published contract types `tari_signAndSubmitTransaction.params.instructions`
- * and the `instructions` member of a `tari_createTransactionRequest` operation as
- * `unknown[]`. The
- * integration reference gives the wire form:
+ * What crosses the boundary is the serde JSON of upstream's
+ * `tari_ootle_transaction::Instruction` (crates/transaction/src/v1/instruction.rs at the
+ * pinned cohort). Sapient passes the list straight into its transaction builder
+ * (`OotleAccount.execute` -> `TransactionBuilder.withInstructions`), and walletd
+ * deserialises the same Rust type, so the JSON has to be exactly upstream's:
  *
- *   { CallMethod: { call: { Address: account },
- *                   method: "withdraw",
- *                   args: [resource, amount] } }
- *   { PutLastInstructionOutputOnWorkspace: { key: 0 } }
- *   { CallMethod: { call: { Address: target },
- *                   method: "deposit",
- *                   args: [{ Workspace: { id: 0, offset: null } }] } }
+ *   { "CallMethod": { "call": { "Address": "component_<hex>" }, "method": "withdraw",
+ *                     "args": [ { "Literal": "<cbor hex>" }, { "Literal": "<cbor hex>" } ] } }
+ *   { "PutLastInstructionOutputOnWorkspace": { "key": 0 } }
+ *   { "CallMethod": { "call": { "Address": "component_<hex>" }, "method": "deposit",
+ *                     "args": [ { "Workspace": { "id": 0, "offset": null } } ] } }
+ *   { "CallFunction": { "address": "<64 hex, no prefix>", "function": "create", "args": [...] } }
+ *   { "CallMethod": { "call": { "Workspace": 0 }, ... } }   (a component created earlier in the tx)
  *
- * The reference is explicit that a workspace reference in instructions WE build
- * must be a plain integer id — `{ Workspace: { id: 0, offset: null } }` — because
- * named-workspace resolution only applies to instructions the wallet itself
- * builds. So the adapter's symbolic `{ kind: 'workspace_bucket', name }` values
- * are resolved here to sequential integer ids, in first-use order.
+ * Every shape here is byte-pinned to the engine: audit_engine_tests/tests/
+ * instruction_wire_v048.rs builds each operation with the upstream Rust builder, serialises
+ * it, deserialises the JSON and EXECUTES it; the web suite requires this serializer to emit the
+ * same JSON from the same parameters.
  *
- * The wallet-adapter intents are signer-agnostic and carry a `maxEpoch`
- * (`with_max_epoch` on-chain). That expiry is part of the operation the user
- * reviewed, so it is serialised as a final `WithMaxEpoch` instruction rather
- * than dropped. Dropping it would let a signed swap stay valid indefinitely
- * after market state moves, which the adapter's own documentation forbids.
+ * Three facts that earlier revisions of this file got wrong, now fixed:
+ *  1. Arguments are `{ Literal: hex(tari_bor(value)) }`, never bare strings. A literal's
+ *     encoding depends on its declared ABI type, so every call carries `argTypes`; an
+ *     undeclared type is refused (see lib/instructionArgs.ts).
+ *  2. There is no `WithMaxEpoch` instruction. `max_epoch` is a field of the unsigned
+ *     transaction that the WALLET sets when it builds and signs (Sapient: current epoch + 10).
+ *     The intent's `maxEpoch` is review evidence only and is not serialised.
+ *  3. An NFT leaves an account through `withdraw_non_fungible(resource, NonFungibleId)`;
+ *     the account's `withdraw(resource, Amount)` cannot take an id.
  *
- * AMOUNTS ARE NEVER NUMBERS HERE. Every amount that crosses into an
- * instruction argument is a raw integer string, because raw resource units
- * exceed `Number.MAX_SAFE_INTEGER`. `asRawExecutionAmount` is the gate.
+ * AMOUNTS ARE NEVER NUMBERS HERE. Every amount is a raw integer string; `asRawExecutionAmount`
+ * and the literal encoder both gate it.
  */
 
 import { asRawExecutionAmount, asResourceAddress } from './tradeBoundary.js';
+import { isLiteralType, literalArg, type ArgType, type LiteralValue } from './instructionArgs.js';
 
 /** A symbolic bucket as the wallet-adapter emits it. */
 export interface SymbolicBucket {
@@ -41,7 +45,7 @@ export interface SymbolicBucket {
   offset?: number;
 }
 
-type Arg = string | number | SymbolicBucket;
+type Arg = string | number | boolean | null | SymbolicBucket;
 
 interface IntentInstructionLike {
   kind: string;
@@ -50,6 +54,8 @@ interface IntentInstructionLike {
   templateAddress?: string;
   method?: string;
   args?: Arg[];
+  /** The callee's ABI type for each element of `args`, in order. Required whenever `args` is non-empty. */
+  argTypes?: readonly ArgType[];
   resourceAddress?: string;
   nftResource?: string;
   amount?: string;
@@ -63,10 +69,19 @@ interface IntentInstructionLike {
 
 export interface InstructionBuildInput {
   instructions: readonly unknown[];
-  /** Raw `with_max_epoch` bound, as an integer string. */
+  /**
+   * The intent's expiry evidence. Validated when present but NOT serialised: Ootle has no
+   * max-epoch instruction, and the wallet owns the transaction's `max_epoch` field.
+   */
   maxEpoch?: string;
   network?: string;
   operationId?: string;
+  /**
+   * Workspace ids already allocated before these instructions run. Sapient's
+   * `withdrawStealthAndExecute` puts its own withdrawal on id 0 and the revealed bucket on id 1,
+   * so its follow-up instructions must allocate from 2 (see services/stealthWithdraw.ts).
+   */
+  reservedWorkspace?: ReadonlyMap<string, number>;
 }
 
 /** One Ootle instruction in its externally-tagged JSON form. */
@@ -75,18 +90,33 @@ export type TariInstruction = Record<string, unknown>;
 /** Resolves symbolic bucket names to the integer workspace ids the wallet expects. */
 class WorkspaceIds {
   private readonly ids = new Map<string, number>();
+  private next: number;
 
-  constructor(private readonly startAt: number) {}
+  constructor(reserved?: ReadonlyMap<string, number>) {
+    let max = -1;
+    for (const [name, id] of reserved ?? []) {
+      if (!Number.isSafeInteger(id) || id < 0 || id > 0xffff) throw new Error(`Reserved workspace id ${id} is not a u16.`);
+      this.ids.set(name, id);
+      max = Math.max(max, id);
+    }
+    this.next = max + 1;
+  }
 
   idFor(bucket: SymbolicBucket): number {
     const existing = this.ids.get(bucket.name);
     if (existing !== undefined) return existing;
-    // Sequential in first-use order, so the mapping is a pure function of the
-    // instruction list and is therefore reproducible and reviewable.
-    const next = this.startAt + this.ids.size;
-    this.ids.set(bucket.name, next);
-    return next;
+    // Sequential in first-use order -- the upstream Rust and TS builders allocate the same way
+    // (`WorkspaceIds::insert`), so the mapping is a pure, reviewable function of the list.
+    const id = this.next;
+    if (id > 0xffff) throw new Error('Workspace id overflow (u16).');
+    this.next += 1;
+    this.ids.set(bucket.name, id);
+    return id;
   }
+}
+
+function isBucket(arg: unknown): arg is SymbolicBucket {
+  return arg !== null && typeof arg === 'object' && (arg as SymbolicBucket).kind === 'workspace_bucket';
 }
 
 function callMethod(componentAddress: string, method: string, args: unknown[]): TariInstruction {
@@ -100,35 +130,39 @@ function workspaceRef(id: number, offset?: number): unknown {
   return { Workspace: { id, offset: offset ?? null } };
 }
 
-function translateArg(arg: Arg, ids: WorkspaceIds): unknown {
-  if (arg !== null && typeof arg === 'object' && (arg as SymbolicBucket).kind === 'workspace_bucket') {
-    const ref = arg as SymbolicBucket;
-    return workspaceRef(ids.idFor(ref), ref.offset);
+function translateArgs(instruction: IntentInstructionLike, ids: WorkspaceIds, where: string): unknown[] {
+  const args = instruction.args ?? [];
+  const types = instruction.argTypes ?? [];
+  if (types.length !== args.length) {
+    throw new Error(`${where}: ${args.length} argument(s) but ${types.length} declared type(s); every argument needs its ABI type to be encoded.`);
   }
-  if (typeof arg === 'number') {
-    // A numeric argument reaching the wire would be a float by construction.
-    // Only exact non-negative safe integers are representable, and the protocol
-    // requires raw integer strings for every amount, so this is refused rather
-    // than silently widened.
-    if (!Number.isSafeInteger(arg) || arg < 0) {
-      throw new Error(`Instruction argument ${arg} is not an exact non-negative integer and cannot be serialised without losing precision.`);
+  return args.map((arg, i) => {
+    const type = types[i]!;
+    if (type === 'Bucket') {
+      if (!isBucket(arg)) throw new Error(`${where}: argument ${i} is declared Bucket but is not a workspace bucket.`);
+      return workspaceRef(ids.idFor(arg), arg.offset);
     }
-    return String(arg);
-  }
-  return arg;
+    if (!isLiteralType(type)) throw new Error(`${where}: argument ${i} has unknown type ${JSON.stringify(type)}.`);
+    if (isBucket(arg)) throw new Error(`${where}: argument ${i} is a workspace bucket but is declared ${type}.`);
+    if (typeof arg === 'number') {
+      // A JS number would already have lost precision above 2^53; only exact small integers
+      // are accepted, and they are encoded from their decimal string.
+      if (!Number.isSafeInteger(arg) || arg < 0) throw new Error(`${where}: argument ${i} (${arg}) is not an exact non-negative integer.`);
+      return literalArg(type, String(arg));
+    }
+    return literalArg(type, arg as LiteralValue);
+  });
 }
 
 /**
  * Serialise a signer-agnostic intent into the wallet's instruction list.
  *
- * Refuses, rather than guesses, on anything it does not recognise: an
- * unrecognised instruction kind would otherwise be dropped silently and the
- * transaction that reached the wallet would be a different transaction from the
- * one the user reviewed, which is exactly the defect this repository exists to
- * prevent.
+ * Refuses, rather than guesses, on anything it does not recognise: an unrecognised
+ * instruction kind would otherwise be dropped silently and the transaction that reached the
+ * wallet would be a different transaction from the one the user reviewed.
  */
 export function buildSignableInstructions(input: InstructionBuildInput): TariInstruction[] {
-  const ids = new WorkspaceIds(0);
+  const ids = new WorkspaceIds(input.reservedWorkspace);
   const out: TariInstruction[] = [];
 
   for (const raw of input.instructions) {
@@ -142,9 +176,8 @@ export function buildSignableInstructions(input: InstructionBuildInput): TariIns
         const account = requireComponent(instruction.accountAddress, 'withdraw_fungible.accountAddress');
         const resource = asResourceAddress(instruction.resourceAddress ?? '', 'withdraw_fungible.resourceAddress');
         const amount = asRawExecutionAmount(instruction.amount ?? '', 'withdraw_fungible.amount');
-        // The canonical account `withdraw` / vault `deposit` pair, exactly as the
-        // integration reference writes it.
-        out.push(callMethod(account, 'withdraw', [resource, amount]));
+        // Account::withdraw(resource: ResourceAddress, amount: Amount) -> Bucket
+        out.push(callMethod(account, 'withdraw', [literalArg('ResourceAddress', resource), literalArg('Amount', amount)]));
         if (instruction.output !== undefined) {
           out.push({ PutLastInstructionOutputOnWorkspace: { key: ids.idFor(instruction.output) } });
         }
@@ -154,10 +187,9 @@ export function buildSignableInstructions(input: InstructionBuildInput): TariIns
       case 'withdraw_non_fungible': {
         const account = requireComponent(instruction.accountAddress, 'withdraw_non_fungible.accountAddress');
         const resource = asResourceAddress(instruction.resourceAddress ?? instruction.nftResource ?? '', 'withdraw_non_fungible.resourceAddress');
-        // A non-fungible id is an identifier, not an amount, so it is validated
-        // as a non-empty opaque token rather than as a raw integer.
         const nftId = requireOpaque(instruction.nonFungibleId ?? instruction.nftId, 'withdraw_non_fungible.nonFungibleId');
-        out.push(callMethod(account, 'withdraw', [resource, nftId]));
+        // Account::withdraw_non_fungible(resource: ResourceAddress, nf_id: NonFungibleId) -> Bucket
+        out.push(callMethod(account, 'withdraw_non_fungible', [literalArg('ResourceAddress', resource), literalArg('NonFungibleId', nftId)]));
         if (instruction.output !== undefined) {
           out.push({ PutLastInstructionOutputOnWorkspace: { key: ids.idFor(instruction.output) } });
         }
@@ -166,12 +198,12 @@ export function buildSignableInstructions(input: InstructionBuildInput): TariIns
 
       case 'call_method': {
         const method = requireOpaque(instruction.method, 'call_method.method');
-        const args = (instruction.args ?? []).map((arg) => translateArg(arg, ids));
+        const args = translateArgs(instruction, ids, `call_method ${method}`);
         if (instruction.componentWorkspace !== undefined) {
-          // A component this transaction created (e.g. a new pool), called by workspace id.
+          // A component this transaction created (e.g. a new pool): ComponentReference::Workspace(id).
           out.push({ CallMethod: { call: { Workspace: ids.idFor(instruction.componentWorkspace) }, method, args } });
         } else {
-          const component = requireComponent(instruction.componentAddress ?? instruction.templateAddress, 'call_method.componentAddress');
+          const component = requireComponent(instruction.componentAddress, 'call_method.componentAddress');
           out.push(callMethod(component, method, args));
         }
         // A returned bucket that is not captured and consumed fails the whole transaction
@@ -183,27 +215,13 @@ export function buildSignableInstructions(input: InstructionBuildInput): TariIns
       }
 
       case 'call_function': {
-        // A template FUNCTION call — the constructor form used by create-listing,
-        // create-item-offer, and create-collection-bid. It is a different
-        // instruction from `call_method` (address is a TEMPLATE, not a component,
-        // and the callee is a function rather than a method), so it gets its own
-        // case rather than being folded into the method case with the fields
-        // reshaped. Folding them would silently emit a `CallMethod` aimed at a
-        // template address.
-        //
-        // The wire spelling mirrors `tari_ootle_transaction::Instruction` field for
-        // field: `CallFunction { address, function, args }`.
-        //
-        // NOT LIVE-VERIFIED against a browser wallet. The instruction itself is
-        // documented in the Ootle transaction reference and the field names come
-        // from the Rust enum, but this repository has verified the `CallMethod`
-        // spelling against the published provider contract and has NOT verified
-        // this one the same way. A wallet that does not recognise the shape rejects
-        // the request, which fails closed; it cannot execute something different.
-        // Recorded as an open verification gap rather than presented as proven.
-        const template = requireTemplateAddress(instruction.templateAddress, 'call_function.templateAddress');
+        // A template FUNCTION call (pool, listing, item offer, collection bid, SwapOffer
+        // constructors). `CallFunction.address` is a `TemplateAddress`, whose serde form is the
+        // bare 64-hex hash (engine fixture "probe"); a `template_` prefix is accepted on input
+        // and stripped, anything else is refused.
+        const template = requireTemplateHash(instruction.templateAddress, 'call_function.templateAddress');
         const fn = requireOpaque(instruction.method, 'call_function.method');
-        const args = (instruction.args ?? []).map((arg) => translateArg(arg, ids));
+        const args = translateArgs(instruction, ids, `call_function ${fn}`);
         out.push({ CallFunction: { address: template, function: fn, args } });
         if (instruction.output !== undefined) {
           out.push({ PutLastInstructionOutputOnWorkspace: { key: ids.idFor(instruction.output) } });
@@ -215,30 +233,26 @@ export function buildSignableInstructions(input: InstructionBuildInput): TariIns
         const account = requireComponent(instruction.accountAddress, 'deposit_all.accountAddress');
         const bucketRef = instruction.bucket ?? instruction.output;
         if (bucketRef === undefined) throw new Error('deposit_all requires a bucket to deposit.');
+        // Account::deposit(bucket: Bucket)
         out.push(callMethod(account, 'deposit', [workspaceRef(ids.idFor(bucketRef), bucketRef.offset)]));
         break;
       }
 
       default:
-        // Fail loudly. Silently skipping an instruction would produce a
-        // transaction that differs from the review the user approved.
         throw new Error(`Refusing to serialise unrecognised instruction kind "${instruction.kind}".`);
     }
   }
 
-  // with_max_epoch binds the on-chain expiry the intent already carries.
-  if (input.maxEpoch !== undefined && input.maxEpoch !== '') {
-    asRawExecutionAmount(input.maxEpoch, 'maxEpoch');
-    out.push({ WithMaxEpoch: { epoch: input.maxEpoch } });
-  }
+  // Validated as evidence; deliberately NOT serialised (no such instruction exists).
+  if (input.maxEpoch !== undefined && input.maxEpoch !== '') asRawExecutionAmount(input.maxEpoch, 'maxEpoch');
 
   if (out.length === 0) throw new Error('Refusing to build an empty instruction list: the user would be approving nothing visible.');
   return out;
 }
 
 function requireComponent(value: string | undefined, field: string): string {
-  if (typeof value !== 'string' || value.trim() === '') {
-    throw new Error(`${field} must be a non-empty component address.`);
+  if (typeof value !== 'string' || !/^component_[0-9a-f]{64}$/.test(value)) {
+    throw new Error(`${field} must be a component_<64 hex> address.`);
   }
   return value;
 }
@@ -250,18 +264,10 @@ function requireOpaque(value: string | undefined, field: string): string {
   return value;
 }
 
-/**
- * A template address, in the canonical 64-hex form.
- *
- * `requireComponent` would accept any non-empty string, which is too loose for the
- * one field whose whole job is identity: a mistyped or substituted template address
- * would publish nothing but would mean the user was asked to sign against something
- * other than the template this protocol published.
- */
-function requireTemplateAddress(value: string | undefined, field: string): string {
+/** A template address as the bare 64-hex hash upstream's serde emits. */
+function requireTemplateHash(value: string | undefined, field: string): string {
   const text = requireOpaque(value, field);
-  if (!/^template_[0-9a-f]{64}$/.test(text)) {
-    throw new Error(`${field} must be a canonical template_<64 hex> address; received a different shape.`);
-  }
-  return text;
+  const m = /^(?:template_)?([0-9a-f]{64})$/.exec(text);
+  if (m === null) throw new Error(`${field} must be a 64-hex template address; received a different shape.`);
+  return m[1]!;
 }

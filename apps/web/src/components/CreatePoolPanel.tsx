@@ -15,6 +15,7 @@ import { useApp } from '../state/AppContext.js';
 import { activeDeployment } from '../services/protocolDeployment.js';
 import { executeSwap, newOperationId, type ExecutionWallets } from '../services/execution.js';
 import { reviewFromAmmIntent } from '../lib/review.js';
+import { stealthInputFor } from '../services/stealthWithdraw.js';
 import { parseDecimalToRaw } from '../lib/amountInput.js';
 import { formatAddress, formatUnits } from '../lib/format.js';
 import { normalizeError } from '../lib/errorMessage.js';
@@ -75,7 +76,8 @@ export function CreatePoolPanel() {
     setMessage(undefined);
     try {
       const intent = buildCreatePoolIntent({ poolTemplateAddress: template, accountAddress: account, resourceA: a, resourceB: b, rawAmountA: raw.a, rawAmountB: raw.b, feeBps: PUBLIC_POOL_FEE_BPS, maxEpoch: MAX_EPOCH, operationId: newOperationId('create-pool') });
-      const review = reviewFromAmmIntent({ intent, operationId: newOperationId('create-pool'), network: wallet.networkId ?? 'unknown', identity, maxEpochRaw: MAX_EPOCH });
+      const stealthInput = stealthInputFor(intent.instructions, wallet);
+      const review = reviewFromAmmIntent({ intent, operationId: newOperationId('create-pool'), network: wallet.networkId ?? 'unknown', identity, maxEpochRaw: MAX_EPOCH, ...(stealthInput !== undefined ? { stealthInput } : {}) });
       const result = await executeSwap<AmmTransactionIntent>(wallets as ExecutionWallets, {
         resolvedIntent: intent,
         recordInput: {

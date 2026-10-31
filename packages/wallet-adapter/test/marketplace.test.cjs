@@ -48,6 +48,8 @@ test('create listing withdraws the exact NFT and calls the published template', 
       templateName: 'FixedPriceListing',
       method: 'create',
       args: ['account_seller', { kind: 'workspace_bucket', name: 'listing_nft' }, target.quoteResource, target.amount, target.expiryEpoch],
+      // FixedPriceListing::create's ABI, in order; the wire serializer encodes literals from these.
+      argTypes: ['ComponentAddress', 'Bucket', 'ResourceAddress', 'Amount', 'u64'],
       resourcesInvolved: [target.nftResource, target.quoteResource],
     },
   ]);
@@ -73,6 +75,7 @@ test('buy listing withdraws exact quote payment and requires an authoritative li
     componentAddress: 'component_listing',
     method: 'buy',
     args: [{ kind: 'workspace_bucket', name: 'listing_payment' }, 'account_buyer'],
+    argTypes: ['Bucket', 'ComponentAddress'],
     resourcesInvolved: [target.quoteResource],
   });
 });

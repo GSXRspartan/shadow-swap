@@ -105,27 +105,15 @@ export interface TariSignAndSubmitParams {
 }
 
 /**
- * The `{ kind: 'instructions', … }` transaction-request operation, which is the
- * only kind this app creates.
+ * The `{ kind: 'instructions', … }` transaction-request operation: everything this app
+ * builds itself (AMM, marketplace, P2P offers).
  *
  * The published union also has `shield`, `unshield`, `sendPrivately`,
- * `withdrawStealthAndExecute`, `redeemStealthOutputAndExecute`,
- * `redeemStealthOutputWithPrivateFee`, and the HTLC kinds. They are deliberately
- * NOT transcribed here, for two independent reasons.
- *
- * First, scope: this is a public AMM, an LP protocol, a public NFT marketplace,
- * and a multi-asset market-data reader. It has no private/stealth feature, and
- * adding a wallet method merely because the API exposes it would widen what the
- * app asks a wallet for. `createTransactionRequest` refuses any kind other than
- * `instructions` at runtime, and the type here means a private kind is not
- * expressible in the first place.
- *
- * Second, safety: the documented reason those kinds exist is that a stealth
- * transfer needs a balance proof and per-input one-time authorizations only the
- * wallet's own signer can produce — they "cannot be hand-built". Transcribing
- * the fields would put a constructible-looking shape for secret material into
- * this repository, which is exactly the shape a future edit could start
- * populating. The public documentation remains the reference for that surface.
+ * `redeemStealthOutputAndExecute`, `redeemStealthOutputWithPrivateFee` and the HTLC kinds.
+ * They are deliberately NOT transcribed here: a stealth transfer needs a balance proof and
+ * per-input one-time authorisations only the wallet's own signer can produce, and this app
+ * has no reason to ask for a private send. `createTransactionRequest` refuses every kind
+ * other than the two below at runtime, and the type means no other kind is expressible.
  */
 export interface TariInstructionsTransactionRequestOperation {
   kind: 'instructions';
@@ -133,6 +121,34 @@ export interface TariInstructionsTransactionRequestOperation {
   maxFee?: string;
   inputs?: Array<{ substate_id: string; version: number | null }>;
 }
+
+/**
+ * `{ kind: 'withdrawStealthAndExecute', … }` (Sapient, `capabilities.stealthWithdraw`,
+ * seed-derived local accounts only): the ONLY way such an account can move a Stealth-typed
+ * balance (native tTARI, or a created-Stealth resource) into a contract call. Transcribed
+ * from tari-wallet `src/lib/messages.ts` / `docs/integration/provider-api.md` (v0.6.17).
+ *
+ * Every field is public: the wallet withdraws `amount` of `resourceAddress` from the
+ * account's revealed balance, builds the StealthTransfer itself (with its own keys), leaves
+ * the revealed bucket on the workspace, and appends `followUpInstructions`, all in one
+ * transaction it signs. Nothing secret crosses this boundary in either direction.
+ *
+ * `followUpInstructions` are raw instruction JSON that the wallet appends WITHOUT name
+ * resolution, so they reference the revealed bucket by integer workspace id (see
+ * services/stealthWithdraw.ts). The wallet refuses follow-ups that call the account itself
+ * other than `deposit*`.
+ */
+export interface TariWithdrawStealthAndExecuteOperation {
+  kind: 'withdrawStealthAndExecute';
+  resourceAddress: string;
+  amount: string;
+  workspaceVarName: string;
+  followUpInstructions: unknown[];
+  relatedComponents?: string[];
+  maxFee?: string;
+}
+
+export type TariTransactionRequestOperation = TariInstructionsTransactionRequestOperation | TariWithdrawStealthAndExecuteOperation;
 
 export type TariTransactionRequestStatus = 'pending' | 'approved' | 'submitting' | 'submitted' | 'rejected' | 'failed';
 
@@ -172,7 +188,7 @@ export interface TariProvider {
   request(args: { method: 'tari_getSubstate'; params: { substateId: string; version?: number | null } }): Promise<unknown>;
   request(args: { method: 'tari_getTransactionResult'; params: { transactionId: string } }): Promise<unknown>;
   request(args: { method: 'tari_signAndSubmitTransaction'; params: TariSignAndSubmitParams }): Promise<unknown>;
-  request(args: { method: 'tari_createTransactionRequest'; params: TariInstructionsTransactionRequestOperation }): Promise<{ requestId: string }>;
+  request(args: { method: 'tari_createTransactionRequest'; params: TariTransactionRequestOperation }): Promise<{ requestId: string }>;
   request(args: { method: 'tari_getTransactionRequest'; params: { requestId: string } }): Promise<TariTransactionRequestSummary>;
   request(args: { method: 'tari_submitTransactionRequest'; params: { requestId: string } }): Promise<unknown>;
   request(args: { method: 'tari_disconnect' }): Promise<null>;

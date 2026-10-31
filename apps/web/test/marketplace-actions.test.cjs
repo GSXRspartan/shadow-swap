@@ -80,15 +80,15 @@ const ALL_ACTIONS = [
     kind: 'CREATE_LISTING',
     sellerAccount: ACCOUNT_A,
     nftResource: NFT,
-    nftId: 'item-1',
+    nftId: 'str_item-1',
     quoteResource: TTARI,
     priceRaw: '1000',
     expiryEpoch: 0,
   },
-  { kind: 'CANCEL_LISTING', listingAddress: LISTING, sellerAccount: ACCOUNT_A, nftResource: NFT, nftId: 'item-1', quoteResource: TTARI },
-  { kind: 'MAKE_ITEM_OFFER', buyerAccount: ACCOUNT_B, nftResource: NFT, nftId: 'item-1', quoteResource: TTARI, offerAmountRaw: '500', expiryEpoch: 0 },
-  { kind: 'CANCEL_ITEM_OFFER', offerAddress: OFFER, buyerAccount: ACCOUNT_B, nftResource: NFT, nftId: 'item-1', quoteResource: TTARI, refundAmountRaw: '500' },
-  { kind: 'REFUND_ITEM_OFFER', offerAddress: OFFER, buyerAccount: ACCOUNT_B, nftResource: NFT, nftId: 'item-1', quoteResource: TTARI, refundAmountRaw: '500' },
+  { kind: 'CANCEL_LISTING', listingAddress: LISTING, sellerAccount: ACCOUNT_A, nftResource: NFT, nftId: 'str_item-1', quoteResource: TTARI },
+  { kind: 'MAKE_ITEM_OFFER', buyerAccount: ACCOUNT_B, nftResource: NFT, nftId: 'str_item-1', quoteResource: TTARI, offerAmountRaw: '500', expiryEpoch: 0 },
+  { kind: 'CANCEL_ITEM_OFFER', offerAddress: OFFER, buyerAccount: ACCOUNT_B, nftResource: NFT, nftId: 'str_item-1', quoteResource: TTARI, refundAmountRaw: '500' },
+  { kind: 'REFUND_ITEM_OFFER', offerAddress: OFFER, buyerAccount: ACCOUNT_B, nftResource: NFT, nftId: 'str_item-1', quoteResource: TTARI, refundAmountRaw: '500' },
   {
     kind: 'PLACE_COLLECTION_BID',
     buyerAccount: ACCOUNT_A,
@@ -147,11 +147,12 @@ test('call_function: serialises to the documented instruction shape', () => {
   const wire = buildSignableInstructions({ instructions: intent.instructions });
   const create = wire.find((i) => i.CallFunction !== undefined);
   assert.ok(create, 'the create instruction must be a CallFunction');
-  assert.equal(create.CallFunction.address, actions.MARKETPLACE_TEMPLATES.FixedPriceListing);
+  // TemplateAddress serialises as the bare 64-hex hash (engine fixture "probe").
+  assert.equal(create.CallFunction.address, actions.MARKETPLACE_TEMPLATES.FixedPriceListing.replace(/^template_/, ''));
   assert.equal(typeof create.CallFunction.function, 'string');
   assert.ok(Array.isArray(create.CallFunction.args));
   // It must NOT be emitted as a CallMethod aimed at a template address.
-  assert.equal(wire.some((i) => i.CallMethod?.call?.Address === actions.MARKETPLACE_TEMPLATES.FixedPriceListing), false);
+  assert.equal(wire.some((i) => String(i.CallMethod?.call?.Address ?? '').includes(actions.MARKETPLACE_TEMPLATES.FixedPriceListing.replace(/^template_/, ''))), false);
 });
 
 test('call_function: a malformed template address is refused, not passed through', () => {
@@ -228,7 +229,7 @@ test('review: a cancel still names the item it releases', () => {
   const review = reviewFor(ALL_ACTIONS[1]);
   const nft = review.legs[0].amounts.find((a) => a.nftId !== undefined);
   assert.ok(nft, 'the released NFT must be named');
-  assert.equal(nft.nftId, 'item-1');
+  assert.equal(nft.nftId, 'str_item-1');
   assert.equal(nft.role, 'OUTPUT');
 });
 

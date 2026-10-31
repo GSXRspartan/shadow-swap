@@ -398,3 +398,32 @@ export function interpretIndexerTransactionResult(reply: unknown, codec: ValueCo
   }
   return outcomeOfExecuteResult(execution);
 }
+
+/**
+ * Components a COMMITTED transaction created from `templateHex` (bare 64 hex): every
+ * `component_*` in `up_substates` at version 0 whose own header names that template. Used to
+ * find the SwapOffer a maker just created, from the receipt rather than from anything the
+ * page remembers. Returns `undefined` unless the operation itself was accepted.
+ */
+export function createdComponentsOf(reply: unknown, codec: ValueCodec | undefined, templateHex: string): string[] | undefined {
+  const outcome = interpretIndexerTransactionResult(reply, codec);
+  if (outcome?.status !== 'COMMITTED') return undefined;
+  const finalized = record(record(record(reply)?.result)?.Finalized);
+  let execution: unknown = finalized?.execution_result;
+  if (typeof execution === 'string') {
+    if (codec === undefined) return undefined;
+    execution = codec.decodeExecuteResult(execution);
+  }
+  const accept = record(record(record(execution)?.finalize)?.result)?.Accept;
+  const up = record(accept)?.up_substates;
+  if (!Array.isArray(up)) return undefined;
+  const out: string[] = [];
+  for (const entry of up) {
+    if (!Array.isArray(entry) || typeof entry[0] !== 'string' || !/^component_[0-9a-f]{64}$/.test(entry[0])) continue;
+    const substate = record(entry[1]);
+    if (substate?.version !== 0) continue;
+    const header = record(record(record(substate.substate)?.Component)?.header);
+    if (header?.template_address === templateHex) out.push(entry[0]);
+  }
+  return out;
+}

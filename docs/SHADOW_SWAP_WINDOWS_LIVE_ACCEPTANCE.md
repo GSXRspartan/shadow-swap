@@ -78,22 +78,28 @@ not yet deployed" with the generation stated. That is a correct result, not a fa
 Only if you decide to. Build reproducibly and confirm the hashes first:
 
 ```bash
-tools/build-templates.sh --check     # must print "reproducible: hashes match"
+tools/build-templates.sh --check     # must print "reproducible: hashes match" (now 5 templates, incl. p2p_offer)
 ```
 
-Publish each WASM from that build through walletd (dry-run first, then real), record the four
-template addresses, add them to `apps/web/src/services/protocolDeployment.ts` (`V048_RESET`),
-and before publishing the Pool, switch the add-liquidity builder to `add_liquidity_exact`
-(release blocker 3).
+Publish each WASM from that build through walletd v0.48.0 `transactions.publish_template`
+(dry-run first, then real). Do NOT try to publish the raw file by any other route: the v0.48
+engine rejects custom sections other than `tari_tdef`, and walletd's built-in `wasm-opt`
+(0.116.1) pass is what strips them, so the published bytes are walletd's optimised output.
+Verify the published address and binary as described in
+`docs/SHADOW_SWAP_P2P_SWAPOFFER_BROWSER.md` §8, then record the addresses in
+`apps/web/src/services/protocolDeployment.ts` (`V048_RESET`: `poolTemplates`, marketplace,
+`offerTemplates`). Before publishing the Pool, switch the add-liquidity builder to
+`add_liquidity_exact` (release blocker 3).
 
 ## 5. Minimal disposable swap
 
 Create (or use) a small pool from a **recorded** v0.48 Pool template, then swap a tiny amount:
 
 - public fungible → public fungible works with any account type;
-- **tTARI as the input** through a Sapient **local** account is currently refused by the
-  wallet (it requires `withdrawStealthAndExecute`; release blocker 4). Use a daemon-relayed
-  account, or swap in the other direction, until that path lands.
+- **tTARI as the input** through a Sapient **seed (local)** account now goes through the
+  wallet's native `withdrawStealthAndExecute` request (the approval card shows a Stealth
+  withdrawal, not an instruction list); a daemon-relayed account keeps the plain path. Record
+  both; the follow-up workspace-id convention is real-wallet-unverified until this step passes.
 
 Before approving, compare the app's review (pool, input, min output, fee 30 bps, slippage)
 with the wallet's approval card. They must agree exactly.
@@ -128,3 +134,11 @@ LPs). Any unexplained difference is a stop-ship finding.
 
 Record outcomes against release gates **F**, **G** and **I** in
 `docs/SHADOW_SWAP_V047_RELEASE_READINESS.md` §9.
+
+## 11. P2P offers (Phase 2)
+
+Once a SwapOffer template is recorded, run the ten steps in
+`docs/SHADOW_SWAP_P2P_SWAPOFFER_BROWSER.md` §10 (fungible offer, forged invitation, designated
+taker + hash lock, expiry/cancel, NFT barter, tTARI from seed and relayed accounts, created-Stealth
+offer, reload during approval).
+
