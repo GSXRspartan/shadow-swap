@@ -1,4 +1,51 @@
-﻿# END-OF-RUN CHECKPOINT (2026-10-17) — frontend completion: real marketplace discovery, design system, asset integrity
+# END-OF-RUN CHECKPOINT (2026-10-31) — Ootle v0.48.0 cohort, wire-format migration, release-candidate hardening
+
+> Supersedes only the facts it contradicts below; all prior checkpoint sections are retained.
+> Full record, release gates and route matrix: `docs/SHADOW_SWAP_V047_RELEASE_READINESS.md`.
+
+## D1. Outcome
+Branch `claude/shadow-swap-v047-release-25lmq7`, base `main` @ `49d3d26`. Work is COMMITTED
+LOCALLY; `git push` was refused (HTTP 403: the Claude GitHub App is not authorized for this
+repository in the session), so no PR and no CI run exist yet. The branch head is the SHA to cite.
+
+## D2. Cohort
+The latest official release is **v0.48.0** (`6a25dbc`, 2026-10-29), a TESTNET RESET (fresh V0
+genesis, sr25519, base64-CBOR indexer values, templates must be republished), not v0.47.0
+(`9dabb2a`). All 8 manifests pinned to `6a25dbc` (template_lib 0.36.0, abi 0.22.0, crypto 0.24.1).
+Templates and the full engine suite compiled with NO source change. Live Esmeralda was NOT
+observed: the egress policy denied both indexer host pairs and `universe.tari.mw`.
+
+## D3. Fixed (each with a regression)
+- HIGH: pool templates were trusted by catalogue NAME; now by recorded address per network
+  generation, at discovery and at execution-time rereads (`services/protocolDeployment.ts`).
+- MEDIUM: `add_liquidity` donates any imbalance to LPs (no min-LP); new `add_liquidity_exact`
+  refunds and enforces `min_lp_out` (engine e07–e07d). Frontend switch is a publish prerequisite.
+- MEDIUM: v0.48 receipts (strings) were skipped -> false "deployed but empty".
+- MEDIUM: a fee-only commit (`AcceptFeeRejectRest`) would have read as a confirmed swap.
+- Real Sapient reply shapes (`getSubstate`, `getTransactionResult`) were unreadable.
+- Supply chain: SHA-pinned actions, Rust 1.97.1, `pnpm audit` clean, reproducible WASM gate.
+- Cloudflare workflow: deploy job had no `dist/` and no URL output; both fixed, verify job added.
+
+## D4. Evidence
+- web 435 -> **467/467**; wallet-adapter 21/21; protocol-client 258/258 (unchanged sources).
+- Real engine suite ran LOCALLY on Linux for the first time (previously CI-only):
+  **53/53** under v0.48.0 with `RUSTFLAGS=-D warnings` (46 existing + wire fixture +
+  4 add_liquidity_exact + 2 created-Stealth probe).
+- Wire fixtures are engine-produced v0.48 bytes; the web suite decodes them with the official
+  `@tari-project/ootle-wasm-bor@0.48.0` and recomputes reserves/LP independently.
+- Chromium e2e (desktop, mobile, hosting) `--retries=0`: 195 passed, 2 failed (both: the sandbox
+  blocks `universe.tari.mw/tari-connector.js`), 8 skipped. Real-browser proof that the decoder
+  compiles under the shipped CSP, with a negative control.
+- Reproducible WASM: relocated checkout + fresh CARGO_HOME reproduce all four sha256.
+
+## D5. Open
+Push/CI (operator: GitHub App access); live `/info` on the v0.48 hosts; Sapient local-account
+tTARI input needs `withdrawStealthAndExecute`; publish v0.48 templates (operator decision) and
+record addresses; real-extension acceptance; Cloudflare preview (operator dispatch). Gates
+G, H, I BLOCKED; B FAIL until CI runs.
+
+---
+# END-OF-RUN CHECKPOINT (2026-10-17) — frontend completion: real marketplace discovery, design system, asset integrity
 
 > Supersedes only the facts it contradicts below; all prior checkpoint sections are retained.
 > Full record with evidence tables: `docs/SHADOW_SWAP_FRONTEND_COMPLETION.md`.
