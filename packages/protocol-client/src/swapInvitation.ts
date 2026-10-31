@@ -202,6 +202,8 @@ export interface InvitationVerdict {
   readonly mismatches: readonly string[];
   /** Other reasons the offer cannot be filled now. */
   readonly blockers: readonly string[];
+  /** True facts the taker must know but that do not block (the network still enforces them). */
+  readonly warnings: readonly string[];
   readonly requiresPreimage: boolean;
   /** The terms to show and to sign: ALWAYS the chain's. */
   readonly chain: SwapOfferState;
@@ -214,6 +216,7 @@ function describe(a: InvitationAsset): string {
 export function verifyInvitation(invitation: SwapOfferInvitation, chain: SwapOfferState, ctx: { network: string; generation: string; currentEpoch?: string; takerPublicKey?: string }): InvitationVerdict {
   const mismatches: string[] = [];
   const blockers: string[] = [];
+  const warnings: string[] = [];
   if (invitation.network !== ctx.network) mismatches.push(`the invitation is for network ${invitation.network}, your wallet is on ${ctx.network}`);
   if (invitation.generation !== ctx.generation) mismatches.push(`the invitation is for deployment ${invitation.generation}, this network is ${ctx.generation}`);
   if (invitation.component !== chain.component) mismatches.push('the invitation names a different offer component');
@@ -240,9 +243,14 @@ export function verifyInvitation(invitation: SwapOfferInvitation, chain: SwapOff
   if (ctx.currentEpoch !== undefined && swapOfferExpired(chain, ctx.currentEpoch)) blockers.push(`the offer expired at epoch ${chain.expiresAtEpoch}`);
   if (ctx.currentEpoch === undefined && chain.expiresAtEpoch !== '0') blockers.push('the current epoch is unknown, so expiry cannot be checked');
   if (chain.designatedTaker !== null) {
-    if (ctx.takerPublicKey === undefined) blockers.push('this offer is reserved for one key and your wallet did not report its public key');
-    else if (ctx.takerPublicKey !== chain.designatedTaker) blockers.push('this offer is reserved for a different key; the network will refuse your fill');
+    if (ctx.takerPublicKey === undefined) {
+      // No wallet API reports the account's signing key, so this cannot be checked in advance.
+      // The engine enforces it (the `fill` access rule), so a fill from any other key fails
+      // without moving funds.
+      warnings.push(`only the key ${chain.designatedTaker} can fill this offer; a fill signed by any other key is refused by the network`);
+    } else if (ctx.takerPublicKey !== chain.designatedTaker) blockers.push('this offer is reserved for a different key; the network will refuse your fill');
   }
   if (ctx.takerPublicKey !== undefined && ctx.takerPublicKey === chain.maker) blockers.push('this is your own offer');
-  return { fillable: mismatches.length === 0 && blockers.length === 0, mismatches, blockers, requiresPreimage: chain.hashLock !== null, chain };
+  if (chain.hashLock !== null) warnings.push('this offer is hash-locked: filling it needs the preimage, which the maker shares separately and which becomes public once your fill is submitted');
+  return { fillable: mismatches.length === 0 && blockers.length === 0, mismatches, blockers, warnings, requiresPreimage: chain.hashLock !== null, chain };
 }

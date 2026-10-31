@@ -17,6 +17,7 @@ import { createOotleReadbackProvider, decodePoolState } from '@tari-ootle/protoc
 import type { WalletLegCapabilities } from '@tari-ootle/protocol-client/crosschain';
 import {
   TariProviderError,
+  assertStealthWithdrawOperation,
   classifyProviderTransition,
   currentProviderObject,
   disconnectProvider,
@@ -24,6 +25,7 @@ import {
   fetchAccounts,
   fetchBalances,
   fetchCapabilities,
+  fetchCreatedComponents,
   fetchNetwork,
   fetchTransactionResult,
   fetchWalletAddress,
@@ -42,7 +44,7 @@ import {
   type TariProvider,
   type TariSignResult,
 } from './tariWindow.js';
-import type { TariWalletCapabilities } from './tariDappTypes.js';
+import type { TariWalletCapabilities, TariWithdrawStealthAndExecuteOperation } from './tariDappTypes.js';
 import { checkNetwork } from '../lib/networks.js';
 import { requireAccountComponent } from '../lib/addressDomain.js';
 import type { LiveIdentityInput } from '../lib/executionIdentity.js';
@@ -85,6 +87,8 @@ export interface WalletBridge extends WalletAdapter {
   substateReader(purpose?: 'EXECUTION' | 'DISPLAY'): AuthoritativeSubstateReader;
   /** Ootle readback provider bound to this wallet. Never uses an indexer. */
   readbackProvider(): OotleReadbackProvider;
+  /** Components `templateHex` created in a committed transaction, from the receipt. */
+  createdComponents(transactionId: string, templateHex: string): Promise<string[] | undefined>;
   on(listener: WalletEventListener): () => void;
   /** The provider object, for reference-identity pinning. */
   providerObject(): object;
@@ -417,7 +421,8 @@ class TariBridgeWalletAdapter implements WalletBridge {
       throw new TariProviderError('Refusing to present a signing request with no pool or destination context.', 'REJECTED');
     }
 
-    const result = await this.submitExact(instructions, context);
+    const stealth = reviewedStealthOperation(reviewedRequest);
+    const result = stealth !== undefined ? await this.submitStealth(stealth, context) : await this.submitExact(instructions, context);
     void preview;
     return { transactionId: result.transactionId, epoch: result.epoch === undefined ? 0 : Number(result.epoch), status: 'pending' };
   }
@@ -495,7 +500,59 @@ class TariBridgeWalletAdapter implements WalletBridge {
     return signAndSubmit(this.provider, { instructions });
   }
 
+  /**
+   * A reviewed `withdrawStealthAndExecute` operation, sent ONLY through the durable
+   * transaction-request trio and ONLY when the account advertises both
+   * `transactionRequests` and `stealthWithdraw`. There is no one-shot fallback: the deprecated
+   * single-call method would lose the durable request id, and a plain instruction list cannot
+   * express this operation at all.
+   */
+  private async submitStealth(
+    operation: TariWithdrawStealthAndExecuteOperation,
+    context: { operation: string; network: string; poolOrDestination: string; operationId?: string; reviewFingerprint?: string },
+  ): Promise<TariSignResult> {
+    const capabilities = this.capabilities;
+    const operationId = context.operationId;
+    const account = this.session?.account?.address;
+    if (capabilities?.stealthWithdraw !== true || capabilities.transactionRequests !== true) {
+      throw new TariProviderError('Refusing to sign: this account does not advertise stealthWithdraw with transaction requests, so it cannot move a Stealth-typed input into a contract.', 'REJECTED');
+    }
+    if (operationId === undefined || context.reviewFingerprint === undefined || account === undefined) {
+      throw new TariProviderError('Refusing to sign: a Stealth withdrawal must be bound to a durable operation id and review fingerprint.', 'REJECTED');
+    }
+    assertStealthWithdrawOperation(operation);
+    const remember = (state: 'AWAITING_APPROVAL' | 'SUBMITTED', transactionId?: string) =>
+      rememberPendingRequest(this.pendingStorage, {
+        operationId,
+        requestId: this.requestIds.get(operationId) ?? '',
+        reviewFingerprint: context.reviewFingerprint as string,
+        operation: context.operation,
+        approvedAccount: account,
+        approvedNetwork: context.network,
+        destination: context.poolOrDestination,
+        createdAtUnixMs: Date.now(),
+        state,
+        ...(transactionId !== undefined ? { transactionId } : {}),
+      });
+    const outcome = await submitViaTransactionRequest(this.provider, operation, {
+      onRequestId: (requestId) => {
+        this.requestIds.set(operationId, requestId);
+        remember('AWAITING_APPROVAL');
+      },
+      onSubmitted: (result) => remember('SUBMITTED', result.transactionId),
+    });
+    if ('pendingRequestId' in outcome) {
+      throw awaitingApproval(`Operation ${operationId} is awaiting wallet approval of request ${outcome.pendingRequestId}. It was not submitted.`);
+    }
+    return outcome;
+  }
+
   async preflight(reviewedRequest: Readonly<Record<string, unknown>>): Promise<{ ok: boolean; reason?: string }> {
+    if (reviewedStealthOperation(reviewedRequest) !== undefined) {
+      // The follow-ups alone are not a transaction (their input bucket is created by the
+      // wallet's StealthTransfer), so a dry run of them would be meaningless.
+      return { ok: false, reason: 'A Stealth withdrawal is simulated by the wallet itself, not by a dApp dry run.' };
+    }
     // `dryRun: true` never prompts and spends nothing, per the published
     // contract. This is a NON-AUTHORITATIVE check that the reviewed instructions
     // would be accepted; the AMM quote remains protocol math and is never
@@ -660,6 +717,10 @@ class TariBridgeWalletAdapter implements WalletBridge {
     };
   }
 
+  async createdComponents(transactionId: string, templateHex: string): Promise<string[] | undefined> {
+    return fetchCreatedComponents(this.provider, transactionId, templateHex);
+  }
+
   readbackProvider(): OotleReadbackProvider {
     // `WALLET_PROVIDER` is an authoritative read source in the protocol-client.
     // An indexer is never substituted here.
@@ -761,6 +822,17 @@ class TariBridgeWalletAdapter implements WalletBridge {
  * beside it are this app's review record and are not contract parameters, so
  * sending them would be transmitting undocumented fields.
  */
+/** The frozen reviewed Stealth operation, when the review produced one. */
+function reviewedStealthOperation(reviewedRequest: Readonly<Record<string, unknown>>): TariWithdrawStealthAndExecuteOperation | undefined {
+  const operation = (reviewedRequest as { operation?: unknown }).operation;
+  if (operation === undefined) return undefined;
+  if (typeof operation !== 'object' || operation === null || (operation as { kind?: unknown }).kind !== 'withdrawStealthAndExecute') {
+    throw new TariProviderError('Refusing to sign: the reviewed request carries an operation of an unsupported kind.', 'REJECTED');
+  }
+  if (!Object.isFrozen(operation)) throw new TariProviderError('Refusing to sign: the reviewed Stealth operation is not frozen.', 'REJECTED');
+  return operation as TariWithdrawStealthAndExecuteOperation;
+}
+
 function requireReviewedInstructions(reviewedRequest: Readonly<Record<string, unknown>>): readonly unknown[] {
   if (reviewedRequest === undefined || reviewedRequest === null || typeof reviewedRequest !== 'object') {
     throw new TariProviderError('Refusing to sign: no reviewed transaction request was supplied.', 'REJECTED');

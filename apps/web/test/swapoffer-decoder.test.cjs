@@ -91,3 +91,14 @@ test('decoder: an OPEN offer with an empty escrow, a bad status or a malformed s
     await assert.rejects(pc.decodeSwapOffer(await readerFor(o, mutate), o.component, [fixture.template]), pc.MarketplaceDecodeError, mutate.toString());
   }
 });
+
+test('receipt: the offer a maker just created is found from the engine execute result, and nothing else is', async () => {
+  const d = await loadOotleWasmBor();
+  const { createdComponentsOf } = require('../build-test/services/ootleWire.js');
+  const template = fixture.template.replace(/^template_/, '');
+  const reply = { result: { Finalized: { final_decision: 'Commit', execution_result: fixture.createExecuteResult.executeResult } } };
+  assert.deepEqual(createdComponentsOf(reply, d, template), [fixture.createExecuteResult.component]);
+  assert.deepEqual(createdComponentsOf(reply, d, 'ab'.repeat(32)), [], 'a different template created nothing here');
+  assert.equal(createdComponentsOf({ result: 'Pending' }, d, template), undefined, 'not committed: no answer');
+  assert.equal(createdComponentsOf({ result: { Finalized: { final_decision: { Abort: 'x' } } } }, d, template), undefined);
+});

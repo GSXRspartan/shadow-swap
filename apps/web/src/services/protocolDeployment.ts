@@ -47,6 +47,12 @@ export interface ProtocolDeployment {
   readonly poolTemplates: readonly string[];
   /** Bare 64-hex marketplace template addresses, or `undefined` when not published. */
   readonly marketplaceTemplates: Readonly<Record<MarketplaceTemplateName, string>> | undefined;
+  /**
+   * Bare 64-hex SwapOffer (templates/p2p_offer) addresses trusted for P2P offers. Empty =
+   * not published on this generation, and every P2P route is unavailable. An invitation that
+   * names any other template is refused by `decodeSwapOffer`.
+   */
+  readonly offerTemplates: readonly string[];
   /** One line for the UI and the docs. */
   readonly status: string;
 }
@@ -62,6 +68,8 @@ const ESMERALDA_PRE_V048: ProtocolDeployment = {
     ItemOffer: '083fef7d75857d83ea5424e24d7f47058b4082fa727b91b515aace1c50ec22a6',
     CollectionBid: '999ef37f1da524e4d3e06132145c1c6e7bef735a66549da24b747c22d4706a54',
   },
+  // SwapOffer was never published before the reset, and is not published after it.
+  offerTemplates: [],
   status: 'Pool v2 and the three marketplace templates were published and live-verified on this generation (2026-10-13 to 2026-10-16).',
 };
 
@@ -72,6 +80,7 @@ const ESMERALDA_V048: ProtocolDeployment = {
   registryKey: 'esmeralda@v048',
   poolTemplates: [],
   marketplaceTemplates: undefined,
+  offerTemplates: [],
   status:
     'Shadow Swap templates have not been published on the v0.48 reset network. The v0.48 builds exist and are tested, but publishing them is an operator decision outside this release candidate.',
 };
@@ -82,6 +91,7 @@ const LOCALNET: ProtocolDeployment = {
   registryKey: 'localnet',
   poolTemplates: [],
   marketplaceTemplates: undefined,
+  offerTemplates: [],
   status: 'Localnet has no recorded deployment. Record a locally published template address here to use it.',
 };
 

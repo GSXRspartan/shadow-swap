@@ -185,7 +185,9 @@ test('blockers: filled, cancelled, expired, wrong taker, own offer and unknown e
   const at = (state, ctx) => pc.verifyInvitation(inv, state, { ...CTX, ...ctx });
   assert.match(at(open, { currentEpoch: '1000000', takerPublicKey: so.taker.publicKey }).blockers.join(';'), /expired/);
   assert.match(at(open, { currentEpoch: '5', takerPublicKey: 'ab'.repeat(32) }).blockers.join(';'), /reserved for a different key/);
-  assert.match(at(open, { currentEpoch: '5' }).blockers.join(';'), /did not report its public key/);
+  const unknownKey = at(open, { currentEpoch: '5' });
+  assert.equal(unknownKey.fillable, true, 'an unknown taker key does not block: the network enforces the rule');
+  assert.match(unknownKey.warnings.join(';'), /only the key [0-9a-f]{64} can fill this offer/);
   assert.match(at(open, { currentEpoch: '5', takerPublicKey: so.maker.publicKey }).blockers.join(';'), /reserved for a different key|your own offer/);
   assert.match(at(open, { takerPublicKey: so.taker.publicKey }).blockers.join(';'), /epoch is unknown/);
   const filled = await chain('filled');
