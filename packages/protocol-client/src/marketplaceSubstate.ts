@@ -169,7 +169,9 @@ function nonFungibleId(node: unknown, what: string): string {
   }
 }
 
-/** Exposed for the decoder's own tests only. */
+/** A decoded `NonFungibleId` node (either rendering) as upstream's canonical string. */
+export const decodeNonFungibleId = (node: unknown, what = 'NonFungibleId'): string => nonFungibleId(node, what);
+/** Exposed for the decoder's own tests. */
 export const decodeNonFungibleIdForTest = (node: unknown): string => nonFungibleId(node, 'NonFungibleId');
 
 /** A unit enum decodes to `[variantIndex, []]`. An out-of-range index yields `undefined`. */
