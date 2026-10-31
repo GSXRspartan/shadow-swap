@@ -78,7 +78,11 @@ export interface WalletBridge extends WalletAdapter {
   /** The L1/L2 leg view derived from the published set. Fails closed. */
   legCapabilities(): WalletLegCapabilities | undefined;
   /** Substate reader for the protocol-client's authoritative readback. */
-  substateReader(): AuthoritativeSubstateReader;
+  /**
+   * `EXECUTION` (default) refuses a value the wallet's indexer explicitly reported as
+   * unverified; `DISPLAY` accepts it for a display-only view. See `readRawSubstate`.
+   */
+  substateReader(purpose?: 'EXECUTION' | 'DISPLAY'): AuthoritativeSubstateReader;
   /** Ootle readback provider bound to this wallet. Never uses an indexer. */
   readbackProvider(): OotleReadbackProvider;
   on(listener: WalletEventListener): () => void;
@@ -629,7 +633,7 @@ class TariBridgeWalletAdapter implements WalletBridge {
     return fetchWalletAddress(this.provider);
   }
 
-  substateReader(): AuthoritativeSubstateReader {
+  substateReader(purpose: 'EXECUTION' | 'DISPLAY' = 'EXECUTION'): AuthoritativeSubstateReader {
     const provider = this.provider;
     return {
       async readComponent(address: string) {
@@ -651,7 +655,7 @@ class TariBridgeWalletAdapter implements WalletBridge {
       },
       // RAW read for the authoritative Pool decoder (reserves live in vault substates).
       async readRaw(address: string) {
-        return readRawSubstate(provider, address);
+        return readRawSubstate(provider, address, undefined, { purpose });
       },
     };
   }

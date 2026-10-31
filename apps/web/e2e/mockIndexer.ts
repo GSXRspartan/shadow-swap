@@ -31,7 +31,12 @@ export interface MockIndexerOptions {
   failDiscovery?: boolean;
   /** Add hostile component substate ids alongside the real ones. */
   hostile?: boolean;
-  /** Report our `Pool` template as unpublished (an empty deployment). */
+  /**
+   * The v0.48 RESET network with nothing of ours on it: the endpoint reports Ootle 0.48.0,
+   * for which no Shadow Swap template is recorded (services/protocolDeployment.ts), and its
+   * catalogue lists nothing. Templates are trusted by recorded ADDRESS per generation, so
+   * this — not an empty catalogue on the pre-reset network — is what "unpublished" means.
+   */
   unpublished?: boolean;
   /**
    * Serve ONE FixedPriceListing component alongside the pools, so the
@@ -209,8 +214,21 @@ export const MARKETPLACE_SUBSTATES: Record<string, unknown> = {
  * Intercept the production indexer origin. `options` selects the behaviour under
  * test so a single flow can prove both the honest and the degraded path.
  */
+/**
+ * The origins the production build may read discovery from: the v0.48 default
+ * (`esme-indexer-a.ootle.tari.com`, first in the shipped list) and the pre-reset host an
+ * operator can select with `VITE_INDEXER_URL`. The mock answers on both with the SAME
+ * pre-reset (v0.42) identity, so the app selects the pre-reset generation by the version
+ * it reports — exactly as it would against a real pre-reset indexer.
+ */
+export const MOCKED_INDEXER_ORIGINS = ['https://esme-indexer-a.ootle.tari.com', 'https://ootle-indexer-a.tari.com'] as const;
+
+async function routeIndexers(page: Page, handler: (route: Route) => Promise<void> | void): Promise<void> {
+  for (const origin of MOCKED_INDEXER_ORIGINS) await page.route(`${origin}/**`, handler);
+}
+
 export async function mockIndexer(page: Page, options: MockIndexerOptions = {}): Promise<void> {
-  await page.route('https://ootle-indexer-a.tari.com/**', async (route: Route) => {
+  await routeIndexers(page, async (route: Route) => {
     const identity = options.identity ?? 'esmeralda';
     const url = new URL(route.request().url());
 
@@ -234,7 +252,8 @@ export async function mockIndexer(page: Page, options: MockIndexerOptions = {}):
         });
         return;
       }
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(ESMERALDA_IDENTITY) });
+      const reported = options.unpublished === true ? { ...ESMERALDA_IDENTITY, version: '0.48.0' } : ESMERALDA_IDENTITY;
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(reported) });
       return;
     }
 
@@ -321,5 +340,5 @@ export async function mockIndexer(page: Page, options: MockIndexerOptions = {}):
 
 /** Simulate a total indexer outage: every request fails at the transport. */
 export async function simulateIndexerOutage(page: Page): Promise<void> {
-  await page.route('https://ootle-indexer-a.tari.com/**', (route) => route.abort('failed'));
+  await routeIndexers(page, (route) => route.abort('failed'));
 }

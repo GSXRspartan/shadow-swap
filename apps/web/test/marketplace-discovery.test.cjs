@@ -38,8 +38,11 @@ const BID_TEMPLATE = registry.MARKETPLACE_TEMPLATES.CollectionBid;
 const OTHER_TEMPLATE = 'ab'.repeat(32);
 
 const originalFetch = globalThis.fetch;
+const protocolDeployment = require('../build-test/services/protocolDeployment.js');
 test.afterEach(() => {
   globalThis.fetch = originalFetch;
+  // Each test is its own session: the verified-generation lock must not leak between them.
+  protocolDeployment.resetVerifiedGenerations();
 });
 
 function jsonResponse(payload, headers = {}) {
@@ -103,6 +106,26 @@ function componentSubstate(templateAddress, body) {
 }
 
 /**
+ * The real pre-v0.48 `POST /substates/fetch` entry shape is `{ version, substate: <value> }`
+ * (bindings `Substate` at v0.47.0). The fixtures below are written as bare values for
+ * readability; this wraps them exactly as the indexer does, so the production parser is
+ * tested against the real envelope and is not loosened to accept a shape no indexer sends.
+ */
+async function asRealBatchEnvelope(response) {
+  if (!response.ok) return response;
+  const payload = JSON.parse(await response.text());
+  const substates = payload && payload.substates;
+  if (substates && typeof substates === 'object') {
+    for (const [id, entry] of Object.entries(substates)) {
+      if (entry && typeof entry === 'object' && !('substate' in entry) && !('value' in entry)) {
+        substates[id] = { version: 0, substate: entry };
+      }
+    }
+  }
+  return jsonResponse(payload);
+}
+
+/**
  * A stub that serves the four real routes and lets a test override any of them.
  */
 function ootleIndexerStub(overrides = {}) {
@@ -116,7 +139,7 @@ function ootleIndexerStub(overrides = {}) {
     const href = String(url);
     if (href.includes('/info')) return routes.info();
     if (href.includes('/transaction-receipts')) return routes.receipts();
-    if (href.includes('/substates/fetch')) return routes.substates(href);
+    if (href.includes('/substates/fetch')) return asRealBatchEnvelope(await routes.substates(href));
     return jsonResponse({ error: 'not found' }, { status: 404 });
   };
 }

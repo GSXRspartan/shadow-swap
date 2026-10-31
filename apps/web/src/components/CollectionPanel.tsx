@@ -17,7 +17,8 @@ import { useApp } from '../state/AppContext.js';
 import { formatUnits, formatAddress, UNAVAILABLE } from '../lib/format.js';
 import { NftCard } from './NftCard.js';
 import { MarketplaceActionDialog } from './MarketplaceActionDialog.js';
-import { MARKETPLACE_TEMPLATES, type MarketplaceAction } from '../services/marketplaceActions.js';
+import { type MarketplaceAction } from '../services/marketplaceActions.js';
+import { activeDeployment } from '../services/protocolDeployment.js';
 import { Badge, Card, CardHeader, DataRow, EmptyState, LoadingBlock, Notice, SegmentedControl } from './primitives.js';
 
 type Tab = 'items' | 'listings' | 'offers' | 'bids' | 'activity';
@@ -370,7 +371,7 @@ function CollectionBidForm({ collectionResource, quoteResource, quoteDecimals, q
  * action the chain would reject is not a control to show.
  */
 function BidsPanel({ source, collectionResource, quoteResource, quoteDecimals, quoteSymbol }: { source: MarketplaceSource; collectionResource: string; quoteResource: string | undefined; quoteDecimals: string; quoteSymbol: string }) {
-  const { wallet, readback } = useApp();
+  const { config, wallet, readback } = useApp();
   const [bids, setBids] = useState<CollectionBid[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [pendingAction, setPendingAction] = useState<MarketplaceAction | undefined>(undefined);
@@ -394,7 +395,10 @@ function BidsPanel({ source, collectionResource, quoteResource, quoteDecimals, q
   // when the page loaded.
   useEffect(() => {
     const provider = readback();
-    if (provider === undefined || bids.length === 0) return;
+    // The template of the network generation this session VERIFIED; none means no
+    // bid on this generation can be one of ours, so nothing is reread.
+    const bidTemplate = activeDeployment(config.network)?.marketplaceTemplates?.CollectionBid;
+    if (provider === undefined || bids.length === 0 || bidTemplate === undefined) return;
     let cancelled = false;
     void (async () => {
       const verified = await Promise.all(
@@ -403,7 +407,7 @@ function BidsPanel({ source, collectionResource, quoteResource, quoteDecimals, q
           // readback falls back to a legacy flat-field decode, which is exactly the
           // downgrade this protocol refuses: a bid component that is not the one
           // this deployment published must fail closed rather than parse.
-          const read = await provider.readCollectionBid(bid.bidAddress, { templateAddress: MARKETPLACE_TEMPLATES.CollectionBid });
+          const read = await provider.readCollectionBid(bid.bidAddress, { templateAddress: bidTemplate });
           return read.status === 'FOUND' ? read.value.status : bid.status;
         }),
       );
@@ -412,7 +416,7 @@ function BidsPanel({ source, collectionResource, quoteResource, quoteDecimals, q
     return () => {
       cancelled = true;
     };
-  }, [readback, bids]);
+  }, [readback, bids, config.network]);
 
   if (quoteResource === undefined) {
     return <EmptyState title="No quote book" detail="A collection bid is escrowed in one specific payment resource, so bids are not shown until this collection has a known quote book." />;
