@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Reproducible release build of the four Shadow Swap Ootle templates.
+# Reproducible release build of the Shadow Swap Ootle templates (four published before the
+# v0.48 reset, plus the unpublished SwapOffer escrow, so its bytes are fixed before anyone publishes it).
 #
 # WHY: a plain `cargo build` embeds absolute host paths (e.g. `/root/.cargo/git/checkouts/...`)
 # into the WASM via panic-location strings, so two machines building the same commit produce
@@ -18,7 +19,7 @@
 set -euo pipefail
 
 TOOLCHAIN="1.97.1"
-TEMPLATES=(fungible_pool nft_marketplace nft_item_offer nft_collection_bid)
+TEMPLATES=(fungible_pool nft_marketplace nft_item_offer nft_collection_bid p2p_offer)
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CARGO_HOME_DIR="${CARGO_HOME:-$HOME/.cargo}"

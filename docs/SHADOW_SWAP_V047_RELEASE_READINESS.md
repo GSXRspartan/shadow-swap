@@ -141,7 +141,7 @@ could not be re-fetched (egress denied).
 | `tari_getTransactionResult` reply | Fixed (S-4, S-6) |
 | create → get → submit request trio | Shapes match Sapient (`{kind:"instructions", instructions, maxFee?}`, statuses `pending/approved/submitting/submitted/rejected/failed`, request bound to origin and account) |
 | Account switch | Sapient refuses submit for a different account; the app also invalidates its session |
-| **Stealth-typed input (tTARI) from a Sapient LOCAL account** | **GAP / BLOCKER.** Sapient documents that a plain `CallMethod withdraw` on a Stealth vault "is not a standalone-valid instruction" and requires `withdrawStealthAndExecute`. The app sends `kind:"instructions"` with a `withdraw`, so a tTARI-input swap is refused by the wallet (no funds move). Fix plan: when the input resource is Stealth and `capabilities.stealthWithdraw` is true, submit `{kind:"withdrawStealthAndExecute", resourceAddress, amount, workspaceVarName, followUpInstructions}` with the review fingerprint covering the transformed operation; otherwise refuse with an explanation |
+| **Stealth-typed input (tTARI) from a Sapient LOCAL account** | **IMPLEMENTED in Phase 2** (`docs/SHADOW_SWAP_P2P_SWAPOFFER_BROWSER.md` §6; reference-provider verified, real-wallet pending). Original finding: Sapient documents that a plain `CallMethod withdraw` on a Stealth vault "is not a standalone-valid instruction" and requires `withdrawStealthAndExecute`. The app sends `kind:"instructions"` with a `withdraw`, so a tTARI-input swap is refused by the wallet (no funds move). Fix plan: when the input resource is Stealth and `capabilities.stealthWithdraw` is true, submit `{kind:"withdrawStealthAndExecute", resourceAddress, amount, workspaceVarName, followUpInstructions}` with the review fingerprint covering the transformed operation; otherwise refuse with an explanation |
 | Daemon-relayed accounts | The tTARI-input path executed live through walletd on the pre-reset network (B4) |
 | Real extension + human approval | **BLOCKED** here (no browser extension in the cloud) — operator step |
 
@@ -237,13 +237,20 @@ and no CI result exists. Green CI is **not** claimed.
 
 ## 10. Remaining release blockers
 
-1. Grant the Claude GitHub App access (or push manually) so CI runs and the PR exists.
+1. ~~Grant the Claude GitHub App access~~ — done: PR #9 is green; Phase 2 is stacked on it.
+0. **Phase 2 finding, fixed on the stacked branch:** the browser's instruction JSON was not the
+   v0.48 `Instruction` serde (bare-string args, a non-existent `WithMaxEpoch`, NFT `withdraw`,
+   prefixed `CallFunction.address`). Every write from PR #9 alone would be refused by a wallet;
+   merge the stacked PR before any live test (`docs/SHADOW_SWAP_P2P_SWAPOFFER_BROWSER.md` §1).
 2. Confirm live Esmeralda: `GET /info` on both v0.48 hosts (version `0.48.x`, network byte 38).
 3. Switch the add-liquidity builder to `add_liquidity_exact` (with `min_lp_out` from the
    authoritative quote) — required before the v0.48 Pool is published.
-4. Implement the Sapient `withdrawStealthAndExecute` path for Stealth-typed inputs (§5).
-5. Operator-approved publication of the four v0.48 templates from the reproducible build,
-   then record the addresses in `protocolDeployment.ts` for `V048_RESET`.
+4. ~~Implement the Sapient `withdrawStealthAndExecute` path~~ — implemented in Phase 2;
+   real-wallet confirmation is Windows step §5 / Phase 2 §10 step 7.
+5. Operator-approved publication of the v0.48 templates (four, plus SwapOffer if P2P is wanted)
+   through walletd `transactions.publish_template` (the raw build carries custom sections the
+   engine rejects; walletd's optimiser strips them), then record the addresses in
+   `protocolDeployment.ts` for `V048_RESET` (Phase 2 doc §8).
 6. Real-extension acceptance on Windows (`SHADOW_SWAP_WINDOWS_LIVE_ACCEPTANCE.md`).
 7. Cloudflare preview deploy + verify job green (`SHADOW_SWAP_CLOUDFLARE_STAGING.md`).
 8. External review before any claim beyond "testnet release candidate".

@@ -119,7 +119,7 @@ export interface SwapRequest {
   /** Raw integer input amount (smallest unit). Never a float. */
   rawInputAmount: string;
   slippage: SlippagePolicy;
-  /** Mandatory transaction validity bound (with_max_epoch on-chain). No infinite validity. */
+  /** Expiry bound for the resolver's EXPIRED check; the signing wallet sets the transaction's own max_epoch. */
   maxEpoch: string;
   /** Caller expectations; a mismatch is an explicit STALE/CONFLICTED, never silent. */
   expectedReserves?: { a: string; b: string };

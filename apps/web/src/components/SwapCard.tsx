@@ -61,8 +61,9 @@ function normalizeSubmissionFailure(error: unknown): { tone: 'warn' | 'danger' |
 }
 
 /**
- * Transaction validity bound. A generous but finite `with_max_epoch`: this
- * protocol has no infinite validity anywhere.
+ * Expiry EVIDENCE recorded with the intent. Ootle has no max-epoch instruction: the wallet
+ * sets the transaction's `max_epoch` when it signs (Sapient: current epoch + 10), and the
+ * on-chain `min_output` is what protects a stale quote.
  */
 const MAX_EPOCH = '1000000000';
 
