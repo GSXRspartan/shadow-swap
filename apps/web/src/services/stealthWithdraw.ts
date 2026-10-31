@@ -117,3 +117,23 @@ export function buildStealthWithdrawOperation(instructions: readonly unknown[], 
   };
   return { operation, followUps };
 }
+
+/** Native tTARI: Stealth-typed by protocol, recognised by exact address only. */
+const NATIVE_TARI = 'resource_0101010101010101010101010101010101010101010101010101010101010101';
+
+/**
+ * The review's `stealthInput` for this wallet, or `undefined` for the plain path. Throws the
+ * exact reason when this account cannot sign the operation at all, so nothing is submitted.
+ */
+export function stealthInputFor(
+  instructions: readonly unknown[],
+  wallet: { balances: ReadonlyArray<{ resourceAddress: string; resourceType: string }>; walletCapabilities?: object },
+): { resourceAddress: string } | undefined {
+  const stealthResources = new Set(wallet.balances.filter((b) => b.resourceType === 'stealth').map((b) => b.resourceAddress));
+  stealthResources.add(NATIVE_TARI);
+  const caps = (wallet.walletCapabilities ?? {}) as Record<string, unknown>;
+  const capabilities = { stealthWithdraw: caps.stealthWithdraw === true, transactionRequests: caps.transactionRequests === true };
+  const plan = planInputMode(instructions, { stealthResources, capabilities });
+  if (plan.mode === 'blocked') throw new Error(plan.reason);
+  return plan.mode === 'stealth' ? { resourceAddress: plan.resourceAddress } : undefined;
+}
