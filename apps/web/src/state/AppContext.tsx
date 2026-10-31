@@ -20,6 +20,7 @@ import { browserPendingRequestStorage } from '../lib/pendingRequests.js';
 import { captureIdentity, type ExecutionIdentity, type ProviderCapabilities } from '../lib/executionIdentity.js';
 import { createPoolDiscovery, descriptorFromAuthoritativeRead, type PoolDescriptor, type PoolDiscoveryResult } from '../services/pools.js';
 import { seededTemplateFor } from '../services/poolRegistry.js';
+import { activeDeployment, isTrustedPoolTemplate, withTrustedPoolTemplates } from '../services/protocolDeployment.js';
 import { createOotleReadbackProvider } from '@tari-ootle/protocol-client';
 import { MarketDataService, type MarketDataBundle } from '../services/marketData.js';
 import type { WalletLegCapabilities } from '../lib/capabilities.js';
@@ -413,13 +414,17 @@ export function AppProvider({
         try {
           // `WALLET_PROVIDER` is an authoritative source; an indexer read is
           // never substituted for it.
-          const readback = createOotleReadbackProvider(bridge.substateReader(), 'WALLET_PROVIDER');
-          // The read is PINNED to the template this component is supposed to be. A
-          // protocol-verified seed wins when there is one; otherwise discovery's own
-          // verified header claim is the pin. Either way the wallet's bytes must name
-          // the same template discovery found, so a provider that serves a look-alike
-          // component is refused rather than displayed.
-          const template = seededTemplateFor(config.network, candidate.componentAddress) ?? candidate.templateAddress;
+          // DISPLAY purpose: the pool list may show a value the wallet's indexer served
+          // without a committee proof. Execution rereads use the default EXECUTION
+          // purpose, which refuses such a value (services/tariWindow.ts).
+          const readback = createOotleReadbackProvider(bridge.substateReader('DISPLAY'), 'WALLET_PROVIDER');
+          // The read is PINNED to a template RECORDED for the verified network
+          // generation (services/protocolDeployment.ts). Discovery's own header claim
+          // is never sufficient on its own: the catalogue is open, and a third-party
+          // template named `Pool` must not become a tradable Shadow Swap pool.
+          const deployment = activeDeployment(config.network);
+          if (deployment === undefined || !isTrustedPoolTemplate(deployment, candidate.templateAddress)) continue;
+          const template = seededTemplateFor(deployment.registryKey, candidate.componentAddress) ?? candidate.templateAddress;
           const read = await readback.readPool(candidate.componentAddress, { templateAddress: template });
           if (read.status !== 'FOUND') continue;
           const state = read.value;
@@ -496,9 +501,11 @@ export function AppProvider({
   const readback = useCallback((): OotleReadbackProvider | undefined => {
     const bridge = bridgeRef.current;
     if (bridge === undefined || wallet.status !== 'CONNECTED') return undefined;
-    // `WALLET_PROVIDER`-backed. An indexer read is never substituted here.
-    return bridge.readbackProvider();
-  }, [wallet.status]);
+    // `WALLET_PROVIDER`-backed. An indexer read is never substituted here, and every
+    // execution-time pool reread is pinned to a recorded template for the verified
+    // network generation.
+    return withTrustedPoolTemplates(bridge.readbackProvider(), config.network);
+  }, [wallet.status, config.network]);
 
   const walletBridge = useCallback((): WalletBridge | undefined => {
     const bridge = bridgeRef.current;

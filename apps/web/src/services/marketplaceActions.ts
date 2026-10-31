@@ -192,11 +192,27 @@ export function reviewOperationFor(kind: MarketplaceAction['kind']): ReviewOpera
  * so a float can never enter a signed transaction, and every address crosses
  * `asResourceAddress`.
  */
-export function buildMarketplaceIntent(action: MarketplaceAction): MarketplaceTransactionIntent {
+export function buildMarketplaceIntent(
+  action: MarketplaceAction,
+  /**
+   * The marketplace templates of the network generation this session VERIFIED
+   * (`activeDeployment(network).marketplaceTemplates`). A create action calls a template
+   * function, so it is refused when the generation has none: on the v0.48 reset network
+   * the pre-reset template addresses identify nothing. Cancel/refund actions call a
+   * method on an existing component and need no template address.
+   */
+  templates: Readonly<Record<'FixedPriceListing' | 'ItemOffer' | 'CollectionBid', string>> | undefined = MARKETPLACE_TEMPLATES,
+): MarketplaceTransactionIntent {
+  const template = (name: 'FixedPriceListing' | 'ItemOffer' | 'CollectionBid'): string => {
+    if (templates === undefined) {
+      throw new Error(`The ${name} template is not published on this network generation, so nothing can be created there yet.`);
+    }
+    return templates[name];
+  };
   switch (action.kind) {
     case 'CREATE_LISTING':
       return createListing({
-        templateAddress: MARKETPLACE_TEMPLATES.FixedPriceListing,
+        templateAddress: template('FixedPriceListing'),
         sellerAccount: action.sellerAccount,
         nftResource: asResourceAddress(action.nftResource, 'nftResource'),
         nftId: action.nftId,
@@ -212,7 +228,7 @@ export function buildMarketplaceIntent(action: MarketplaceAction): MarketplaceTr
       });
     case 'MAKE_ITEM_OFFER':
       return createItemOffer({
-        templateAddress: MARKETPLACE_TEMPLATES.ItemOffer,
+        templateAddress: template('ItemOffer'),
         buyerAccount: action.buyerAccount,
         nftResource: asResourceAddress(action.nftResource, 'nftResource'),
         nftId: action.nftId,
@@ -240,7 +256,7 @@ export function buildMarketplaceIntent(action: MarketplaceAction): MarketplaceTr
       });
     case 'PLACE_COLLECTION_BID':
       return createCollectionBid({
-        templateAddress: MARKETPLACE_TEMPLATES.CollectionBid,
+        templateAddress: template('CollectionBid'),
         buyerAccount: action.buyerAccount,
         collectionResource: asResourceAddress(action.collectionResource, 'collectionResource'),
         quoteResource: asResourceAddress(action.quoteResource, 'quoteResource'),

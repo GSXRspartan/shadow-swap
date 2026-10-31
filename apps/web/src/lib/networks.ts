@@ -21,35 +21,37 @@ export interface FrontendNetwork {
 }
 
 /**
- * Verified public Esmeralda indexer origins.
+ * Public Esmeralda indexer origins for the network this build targets.
  *
- * These were replaced on 2026-09-28 after the previously configured hosts
- * (`indexer.esmeralda.tari.com`, `indexer-fallback.tari.com`) were found to be
- * authoritative NXDOMAIN, i.e. stale configuration rather than a dead network.
- * The replacements are the endpoints the official Tari tooling itself defaults
- * to, and both were read live before being adopted:
+ * Ootle v0.48.0 (2026-10-29, `6a25dbc`) is a TESTNET RESET release and moves the
+ * official Esmeralda defaults to the `esme-indexer` hosts (#3027):
  *
- *  - `https://ootle-indexer-a.tari.com` — the default returned by
- *    `defaultIndexerUrl(Network.Esmeralda)` in `tari-project/ootle.ts`
- *    (`packages/ootle/src/helpers/network.ts`), which mirrors
- *    `default_indexer_url()` in the Rust `ootle-rs` crate.
- *  - `https://ootle-indexer-b.tari.com` — same network, kept as a second origin
- *    so one degraded node does not take discovery down.
+ *   - `applications/tari_ootle_app_utilities/config_presets/e_wallet_daemon.toml`:
+ *     `indexer_api_url = ["https://esme-indexer-a.ootle.tari.com/", "https://esme-indexer-b.ootle.tari.com/"]`
+ *   - `crates/wallet/ootle-rs/src/helpers.rs`: `Network::Esmeralda => "https://esme-indexer-a.ootle.tari.com/"`
+ *   - `applications/tari_walletd/src/config.rs`: test `esmeralda_defaults_to_both_tari_indexers`
  *
- * Observed from this environment on 2026-09-28, read-only, both hosts answered
- * `GET /info` with `tari_indexer` 0.41.4, `"network":"esmeralda"`,
- * `"network_byte":38`, and the same `current_epoch`. 38 == 0x26 ==
- * `Network.Esmeralda` in the official enum, which is what
- * `assertIndexerNetworkIdentity` checks.
- *
- * Both origins answer with `access-control-allow-origin: *`, so they are
- * directly browser-reachable and `connect-src` lists them explicitly. They are
- * also served over HTTPS and send `strict-transport-security` and
- * `x-content-type-options: nosniff`.
- *
- * See docs/TESTNET_HOSTING.md for the captured evidence.
+ * These are taken from the pinned upstream SOURCE. They could NOT be read live from the
+ * environment that made this change (its egress policy denies the host), so the first
+ * live `GET /info` against them is an operator acceptance step
+ * (docs/SHADOW_SWAP_V047_RELEASE_READINESS.md). The app does not need them to be right
+ * to be safe: identity, network byte and version are verified on every load, and an
+ * endpoint that fails any of them is refused, never read.
  */
 export const ESMERALDA_INDEXER_URLS: readonly string[] = [
+  'https://esme-indexer-a.ootle.tari.com',
+  'https://esme-indexer-b.ootle.tari.com',
+];
+
+/**
+ * The PRE-v0.48-RESET Esmeralda indexers (`ootle-indexer-{a,b}.tari.com`), the v0.41–v0.47
+ * defaults, read live repeatedly between 2026-09-28 and 2026-10-16 (docs/LIVE_TESTNET_EVIDENCE.md).
+ *
+ * Not a default any more. They stay permitted by `connect-src` so an operator can point a
+ * build at the pre-reset network with `VITE_INDEXER_URL` while it is still served; the
+ * reported version then selects the pre-reset generation, its seeds and its templates.
+ */
+export const LEGACY_ESMERALDA_INDEXER_URLS: readonly string[] = [
   'https://ootle-indexer-a.tari.com',
   'https://ootle-indexer-b.tari.com',
 ];
@@ -103,7 +105,7 @@ export const NFT_METADATA_GATEWAY_URLS: readonly string[] = [
 ];
 
 /** Everything `connect-src` is allowed to reach. One table, two consumers. */
-export const CONNECT_ALLOWED_ORIGINS: readonly string[] = [...ESMERALDA_INDEXER_URLS, ...NFT_METADATA_GATEWAY_URLS];
+export const CONNECT_ALLOWED_ORIGINS: readonly string[] = [...ESMERALDA_INDEXER_URLS, ...LEGACY_ESMERALDA_INDEXER_URLS, ...NFT_METADATA_GATEWAY_URLS];
 
 /**
  * `Network.Esmeralda` in the official Tari SDKs, as a decimal byte.

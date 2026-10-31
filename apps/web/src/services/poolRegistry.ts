@@ -41,13 +41,20 @@ export interface KnownPoolEntry {
  * discovered on chain is shown like any other (its template id identifies it).
  */
 export const POOL_REGISTRY_SEED: Readonly<Record<string, readonly KnownPoolEntry[]>> = {
+  // Keyed by `ProtocolDeployment.registryKey` (services/protocolDeployment.ts). The bare
+  // `esmeralda` key is the PRE-v0.48-RESET network; this entry was live-verified there
+  // (2026-10-16) and is consulted only against an indexer of that generation.
   esmeralda: [
     {
       component: 'component_8c20c6448cd1d9840a1506d27166fb82621a67f5d1604ed03435c0d0a92c59a2',
       templateAddress: 'f47a330eee1bbf91f58d9ff4280b4279c3c4fe91fb59ab5812cd5128442819ab',
-      note: 'Pool v2 (OwnerRule::None) native-tTARI / LPTESTA test market',
+      note: 'Pool v2 (OwnerRule::None) native-tTARI / LPTESTA test market — PRE-v0.48-RESET generation',
     },
   ],
+  // The v0.48 reset network. EMPTY: nothing has been published there by this project, and
+  // the pre-reset component above does not exist on it. Add a line only for a component
+  // actually created from a template recorded in protocolDeployment.ts for V048_RESET.
+  'esmeralda@v048': [],
 };
 
 const STORAGE_PREFIX = 'ootle.poolRegistry.';
