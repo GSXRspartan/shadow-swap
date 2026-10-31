@@ -201,7 +201,12 @@ jobs:
     # and Firefox. Firefox is included deliberately -- it is the only place cross-engine
     # coverage can be claimed, since a developer machine cannot run it reliably here.
     # The budget covers three full projects plus a browser install on a 2-vCPU runner.
-    runs-on: ubuntu-latest
+    #
+    # PINNED to ubuntu-24.04, not ubuntu-latest: `ubuntu-latest` moved to Ubuntu 26.04, where
+    # the pinned Playwright 1.56.1 refuses to install its browsers ("Playwright does not
+    # support chromium on ubuntu26.04-x64"), so the job died before a single test ran. Move
+    # this together with a Playwright upgrade that supports the newer image.
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
       - name: Checkout
