@@ -26,8 +26,11 @@ const identity = require('../build-test/services/indexerIdentity.js');
 const HANG_URL = 'https://indexer.example.invalid/query';
 const originalFetch = globalThis.fetch;
 
+const protocolDeployment = require('../build-test/services/protocolDeployment.js');
 test.afterEach(() => {
   globalThis.fetch = originalFetch;
+  // Each test is its own session: the verified-generation lock must not leak between them.
+  protocolDeployment.resetVerifiedGenerations();
 });
 
 function jsonResponse(payload, headers = {}) {
@@ -137,8 +140,17 @@ function componentSubstates(substateId, templateAddress) {
  * `options.templateName`/`options.templateAddress`/`options.componentId` control
  * whether the deployment is empty or has a pool.
  */
+/**
+ * The Pool template RECORDED for the pre-reset Esmeralda generation
+ * (services/protocolDeployment.ts). Discovery trusts a template by this address,
+ * never by its catalogue name, so the default stub publishes the recorded one.
+ */
+const TRUSTED_POOL_TEMPLATE = 'f47a330eee1bbf91f58d9ff4280b4279c3c4fe91fb59ab5812cd5128442819ab';
+/** A template anyone could publish under the name `Pool`. Never trusted. */
+const FORGED_POOL_TEMPLATE = 'ab'.repeat(32);
+
 function realIndexerFetch(options = {}) {
-  const templateAddress = options.templateAddress ?? 'ab'.repeat(32);
+  const templateAddress = options.templateAddress ?? TRUSTED_POOL_TEMPLATE;
   const componentId = options.componentId ?? 'component_ff'.repeat(1) + '00'.repeat(31);
   // The ids this mocked indexer actually "knows". A batch read echoes back only the
   // requested ids that exist here, so an unknown id (e.g. a durable-registry seed/cache
@@ -302,7 +314,7 @@ test('outage: a healthy discovery response yields the pool component, and no fab
   const result = await new pools.IndexerPoolDiscovery(DISCOVERY_URL).discover();
   assert.equal(result.state, 'PROTOCOL_AVAILABLE');
   assert.equal(result.candidates.length, 1);
-  assert.equal(result.candidates[0].templateAddress, 'ab'.repeat(32));
+  assert.equal(result.candidates[0].templateAddress, TRUSTED_POOL_TEMPLATE);
   // v0.43 returns the substate version as a JSON number; it must be carried on as
   // a decimal string, not collapsed to the '0' fallback.
   assert.equal(result.candidates[0].version, '7');
@@ -458,18 +470,19 @@ test('discovery: a 200 that is not JSON never reads as zero pools', async () => 
 });
 
 test('discovery: templates unpublished is PROTOCOL_NOT_DEPLOYED, NOT an outage', async () => {
-  // This is the exact post-reset Esmeralda reality: the chain answers, reports
-  // no published `Pool` template, and that is an EMPTY deployment. It must not
-  // be rendered as "indexer down" and never as "no liquidity".
-  const stub = realIndexerFetch({ templates: 'none' });
+  // This is the exact v0.48-reset Esmeralda reality: the chain answers, and no Shadow
+  // Swap template is recorded for the reset generation. That is an EMPTY deployment.
+  // It must not be rendered as "indexer down" and never as "no liquidity".
+  const stub = realIndexerFetch({ templates: 'none', identity: { ...IDENTITY_OK, version: '0.48.0' } });
   globalThis.fetch = stub;
   const result = await new pools.IndexerPoolDiscovery(DISCOVERY_URL).discover();
   assert.equal(result.state, 'PROTOCOL_NOT_DEPLOYED');
   assert.equal(result.pools.length, 0);
   assert.equal(result.candidates.length, 0);
   assert.equal(result.unavailableReason, undefined, 'a reachable network with nothing published is not a failure and must not be dressed as one');
-  assert.match(result.detail, /network is reachable/i);
-  assert.equal(stub.seen.includes('/transaction-receipts'), false, 'nothing is published, so no receipt scan may run');
+  assert.match(result.detail, /reachable/i);
+  assert.match(result.detail, /reset network/i, 'the detail names the generation it is talking about');
+  assert.equal(stub.seen.some((path) => path.startsWith('/transaction-receipts')), false, 'nothing is published, so no receipt scan may run');
 });
 
 test('discovery: published but never instantiated is PROTOCOL_DEPLOYED_EMPTY, distinct from unpublished', async () => {
@@ -494,13 +507,35 @@ test('discovery: the removed /templates/cached endpoint is never requested', asy
 
 test('discovery: a substring catalogue match does not admit a different template', async () => {
   // `name_filter` is a SUBSTRING filter. The builtin `TwoResourceLiquidityPool`
-  // contains "Pool", so an exact-name requirement is what stops it being mistaken
-  // for our `Pool` template.
-  const stub = realIndexerFetch({ templateName: 'TwoResourceLiquidityPool' });
+  // contains "Pool"; it is not reported as one of ours, and its components are not read.
+  const stub = realIndexerFetch({ templateName: 'TwoResourceLiquidityPool', templateAddress: FORGED_POOL_TEMPLATE });
+  globalThis.fetch = stub;
+  const result = await new pools.IndexerPoolDiscovery(DISCOVERY_URL).discover();
+  assert.equal(result.publishedTemplates.length, 0);
+  assert.equal(result.candidates.length, 0);
+});
+
+test('SECURITY: a third-party template published under the exact name `Pool` is never a pool', async () => {
+  // Regression for the template-identity defect: discovery used to trust every
+  // catalogue entry named exactly `Pool`, and the authoritative reread of a
+  // non-seeded candidate was pinned to the candidate's OWN template. Anyone can
+  // publish a template named `Pool` whose state decodes like ours and whose `swap`
+  // ignores `min_output`. It must be neither listed nor read.
+  const stub = realIndexerFetch({ templateName: 'Pool', templateAddress: FORGED_POOL_TEMPLATE });
+  globalThis.fetch = stub;
+  const result = await new pools.IndexerPoolDiscovery(DISCOVERY_URL).discover();
+  assert.equal(result.candidates.length, 0, 'a forged Pool template must not yield a candidate');
+  assert.equal(result.publishedTemplates.length, 0, 'it is not reported as our published template');
+  assert.match(String(result.detail), /trusted by its address, never by its name/);
+});
+
+test('SECURITY: a v0.48 reset indexer never reads the pre-reset seed or trusts the pre-reset template', async () => {
+  const stub = realIndexerFetch({ identity: { ...IDENTITY_OK, version: '0.48.0' } });
   globalThis.fetch = stub;
   const result = await new pools.IndexerPoolDiscovery(DISCOVERY_URL).discover();
   assert.equal(result.state, 'PROTOCOL_NOT_DEPLOYED');
-  assert.equal(result.publishedTemplates.length, 0);
+  assert.equal(result.candidates.length, 0);
+  assert.equal(stub.seen.some((path) => path.startsWith('/substates/fetch')), false, 'no pre-reset address is read against the reset network');
 });
 
 test('discovery: only components whose own header names our template are kept', async () => {

@@ -1,0 +1,28 @@
+# Shadow Swap static frontend — ISOLATED Caddy site (example; nothing here is live).
+# Add as a separate site block or an `import`ed file; do not edit any existing site.
+# Validate with `caddy validate --config /etc/caddy/Caddyfile` then `systemctl reload caddy`.
+# Placeholder: SHADOW_SWAP_HOSTNAME (Shadow Swap's OWN hostname). Static files only.
+
+http://127.0.0.1:8088 {
+	bind 127.0.0.1
+	root * /srv/shadow-swap/current
+	encode zstd gzip
+
+	@notget not method GET HEAD
+	respond @notget 405
+
+	# node deploy/vps/render-static-headers.mjs caddy > /etc/caddy/shadow-swap-headers.caddy
+	import /etc/caddy/shadow-swap-headers.caddy
+
+	@assets path /assets/*
+	header @assets Cache-Control "public, max-age=31536000, immutable"
+
+	respond /healthz "ok" 200
+
+	try_files {path} /index.html
+	file_server
+
+	log {
+		output file /var/log/caddy/shadow-swap.access.log
+	}
+}

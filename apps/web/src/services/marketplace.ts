@@ -34,13 +34,13 @@ import { TariIndexerDiscovery, type DiscoveredComponent } from './ootleIndexer.j
 import { describeIdentity, isVerified, verifyIndexerIdentity } from './indexerIdentity.js';
 import { safeLocalStorage, type RegistryStorage } from './poolRegistry.js';
 import {
-  MARKETPLACE_TEMPLATES,
-  MARKETPLACE_TEMPLATE_ADDRESSES,
   knownComponents as registryKnownComponents,
   rememberDiscovered as registryRememberDiscovered,
   seededTemplateFor as registrySeededTemplateFor,
-  type MarketplaceTemplateName,
 } from './marketplaceRegistry.js';
+import { deploymentFor, marketplaceTemplateNameFor, recordVerifiedGeneration, type ProtocolDeployment } from './protocolDeployment.js';
+import { codecFor, normalizeBatchEntry } from './ootleWire.js';
+import { describeGeneration, type IndexerWireFormat } from '../lib/ootleCohort.js';
 
 export interface NftDescriptor {
   collectionResource: string;
@@ -430,7 +430,11 @@ export function createMarketplaceSource(config: AppConfig, storage?: RegistrySto
 class IndexerSubstateReader {
   private readonly memo = new Map<string, unknown>();
 
-  constructor(private readonly base: string) {}
+  /** `format` is the wire format the endpoint declared at `GET /info` (lib/ootleCohort.ts). */
+  constructor(
+    private readonly base: string,
+    private readonly format: IndexerWireFormat,
+  ) {}
 
   async read(address: string): Promise<unknown> {
     const cached = this.memo.get(address);
@@ -438,15 +442,44 @@ class IndexerSubstateReader {
     const payload = await postJson(`${this.base}/substates/fetch`, { requests: [address], cached_only: false });
     if (!payload.ok) throw new Error(payload.reason);
     const substates = (payload.payload as Record<string, unknown> | undefined)?.substates;
-    if (typeof substates !== 'object' || substates === null) return undefined;
-    const wrapper = (substates as Record<string, unknown>)[address];
-    if (typeof wrapper !== 'object' || wrapper === null) return undefined;
-    const inner = (wrapper as Record<string, unknown>).substate ?? wrapper;
-    const component = (inner as Record<string, unknown>).Component;
-    const value = component ?? inner;
-    this.memo.set(address, value);
-    return value;
+    if (typeof substates !== 'object' || substates === null) throw new Error('The batch substate response carried no `substates` map.');
+    const entry = (substates as Record<string, unknown>)[address];
+    // Absent from the map: the indexer holds no live version of it. That is "not
+    // present", which the decoders already treat as a refusal, never as an empty value.
+    if (entry === undefined) return undefined;
+    const codec = await codecFor(this.format);
+    if (!codec.ok) throw new Error(codec.reason);
+    const normalized = normalizeBatchEntry(entry, this.format, codec.value, address);
+    if (!normalized.ok) throw new Error(normalized.reason);
+    const value = normalized.value.value;
+    const unwrapped = (value.Component as unknown) ?? value;
+    this.memo.set(address, unwrapped);
+    return unwrapped;
   }
+}
+
+/**
+ * Establish the endpoint's identity AND the protocol deployment that applies to it.
+ * Every marketplace read starts here, so a template address is never consulted on a
+ * network generation it was not published on.
+ */
+async function verifiedMarketplaceDeployment(
+  base: string,
+  config: AppConfig,
+): Promise<{ ok: true; deployment: ProtocolDeployment; format: IndexerWireFormat; epoch?: string } | { ok: false; reason: string }> {
+  const identity = await verifyIndexerIdentity(base, { network: config.network, networkName: config.network });
+  if (!isVerified(identity)) {
+    return { ok: false, reason: `The indexer's network identity could not be established: ${describeIdentity(identity)}. No marketplace state is read.` };
+  }
+  const lock = recordVerifiedGeneration(config.network, identity.cohort.generation);
+  if (!lock.ok) return { ok: false, reason: lock.reason };
+  const deployment = deploymentFor(config.network, identity.cohort.generation);
+  return {
+    ok: true,
+    deployment,
+    format: identity.cohort.wireFormat,
+    ...(identity.currentEpoch === undefined ? {} : { epoch: identity.currentEpoch }),
+  };
 }
 
 interface MarketplaceSnapshot {
@@ -518,26 +551,30 @@ export class OotleIndexerMarketplaceSource implements MarketplaceSource {
       return EMPTY_SNAPSHOT;
     }
     try {
-      const identity = await verifyIndexerIdentity(base, {
-        network: this.config.network,
-        networkName: this.config.network,
-      });
-      if (!isVerified(identity)) {
-        this.failureReason = `The indexer's network identity could not be established: ${describeIdentity(identity)}. No marketplace state is read.`;
+      const verified = await verifiedMarketplaceDeployment(base, this.config);
+      if (!verified.ok) {
+        this.failureReason = verified.reason;
         return EMPTY_SNAPSHOT;
       }
+      const { deployment, format } = verified;
       // Expiry depends on the current epoch, so the decoder is given the epoch the
       // indexer just reported. Without it an expired listing would still read as
       // ACTIVE and a buy would be offered against an order that cannot settle.
-      if (identity.currentEpoch !== undefined) setMarketplaceCurrentEpoch(identity.currentEpoch);
+      if (verified.epoch !== undefined) setMarketplaceCurrentEpoch(verified.epoch);
+      const templates = deployment.marketplaceTemplates;
+      if (templates === undefined) {
+        this.failureReason = `The indexer serves the ${describeGeneration(deployment.generation)}. ${deployment.status} No marketplace component can exist there yet, so none is shown.`;
+        return EMPTY_SNAPSHOT;
+      }
 
       const client = new TariIndexerDiscovery(base, {
         transport: REAL_INDEXER_TRANSPORT,
         verifyIdentity: async () => ({ ok: true }),
+        wireFormat: format,
       });
       const found = await client.componentsOfTemplates(
-        MARKETPLACE_TEMPLATE_ADDRESSES,
-        registryKnownComponents(this.config.network, this.storage),
+        Object.values(templates),
+        registryKnownComponents(deployment.registryKey, this.storage),
       );
       if (!found.ok) {
         this.failureReason = `Marketplace components could not be read from the indexer: ${found.reason}`;
@@ -545,21 +582,21 @@ export class OotleIndexerMarketplaceSource implements MarketplaceSource {
       }
 
       const snapshot: MarketplaceSnapshot = { listings: [], offers: [], bids: [], undecodable: 0 };
-      const reader = new IndexerSubstateReader(base);
+      const reader = new IndexerSubstateReader(base, format);
       for (const component of found.components) {
-        const name = templateNameFor(component.templateAddress);
+        const name = marketplaceTemplateNameFor(deployment, component.templateAddress);
         if (name === undefined) continue;
         // Prefer the protocol seed's pin when there is one; otherwise fall back to
         // the template this component's own header just reported, which
-        // `componentsOfTemplates` already matched against the pinned set.
-        const pinned = registrySeededTemplateFor(this.config.network, component.componentAddress) ?? name;
+        // `componentsOfTemplates` already matched against the recorded set.
+        const pinned = registrySeededTemplateFor(deployment.registryKey, component.componentAddress) ?? name;
         try {
           const facts =
             pinned === 'FixedPriceListing'
-              ? await decodeListing(reader, component.componentAddress, MARKETPLACE_TEMPLATES.FixedPriceListing)
+              ? await decodeListing(reader, component.componentAddress, templates.FixedPriceListing)
               : pinned === 'ItemOffer'
-                ? await decodeItemOffer(reader, component.componentAddress, MARKETPLACE_TEMPLATES.ItemOffer)
-                : await decodeCollectionBid(reader, component.componentAddress, MARKETPLACE_TEMPLATES.CollectionBid);
+                ? await decodeItemOffer(reader, component.componentAddress, templates.ItemOffer)
+                : await decodeCollectionBid(reader, component.componentAddress, templates.CollectionBid);
           if (facts.listing !== undefined) snapshot.listings.push(facts.listing);
           if (facts.itemOffer !== undefined) snapshot.offers.push(facts.itemOffer);
           if (facts.collectionBid !== undefined) snapshot.bids.push(facts.collectionBid);
@@ -568,7 +605,7 @@ export class OotleIndexerMarketplaceSource implements MarketplaceSource {
         }
       }
       registryRememberDiscovered(
-        this.config.network,
+        deployment.registryKey,
         found.components.map((component: DiscoveredComponent) => component.componentAddress),
         this.storage,
       );
@@ -634,12 +671,12 @@ export class OotleIndexerMarketplaceSource implements MarketplaceSource {
     const base = this.config.indexerUrls[0];
     if (base === undefined) return undefined;
     try {
-      const identity = await verifyIndexerIdentity(base, {
-        network: this.config.network,
-        networkName: this.config.network,
-      });
-      if (isVerified(identity) && identity.currentEpoch !== undefined) setMarketplaceCurrentEpoch(identity.currentEpoch);
-      const facts = await decodeListing(new IndexerSubstateReader(base), listingAddress, MARKETPLACE_TEMPLATES.FixedPriceListing);
+      const verified = await verifiedMarketplaceDeployment(base, this.config);
+      if (!verified.ok) return undefined;
+      if (verified.epoch !== undefined) setMarketplaceCurrentEpoch(verified.epoch);
+      const templates = verified.deployment.marketplaceTemplates;
+      if (templates === undefined) return undefined;
+      const facts = await decodeListing(new IndexerSubstateReader(base, verified.format), listingAddress, templates.FixedPriceListing);
       return facts.listing;
     } catch {
       // Wrong template, absent component, or an undecodable body all land here.
@@ -670,12 +707,4 @@ export class OotleIndexerMarketplaceSource implements MarketplaceSource {
   async recentSales(): Promise<RecentSale[]> {
     return [];
   }
-}
-
-function templateNameFor(templateAddress: string): MarketplaceTemplateName | undefined {
-  const bare = templateAddress.startsWith('template_') ? templateAddress.slice('template_'.length) : templateAddress;
-  for (const name of Object.keys(MARKETPLACE_TEMPLATES) as MarketplaceTemplateName[]) {
-    if (MARKETPLACE_TEMPLATES[name] === bare) return name;
-  }
-  return undefined;
 }

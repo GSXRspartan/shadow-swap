@@ -100,7 +100,10 @@ test.describe('deployed response headers', () => {
       expect(csp).toMatch(/base-uri 'self'/);
       expect(csp).toMatch(/form-action 'none'/);
       // The wallet connector is a cross-origin script in the documented model.
-      expect(csp).toMatch(/script-src 'self' https:\/\/universe\.tari\.mw/);
+      // `'wasm-unsafe-eval'` is the single v0.48 addition (WebAssembly compilation only,
+      // for the official CBOR value decoder); `'unsafe-eval'` must stay absent.
+      expect(csp).toMatch(/script-src 'self' 'wasm-unsafe-eval' https:\/\/universe\.tari\.mw;/);
+      expect(csp).not.toMatch(/'unsafe-eval'/);
       // It must stay pinned: no wildcard subdomain, no bare Tari domain.
       expect(csp).not.toMatch(/script-src[^;]*\*\.tari/);
       expect(csp).not.toMatch(/frame-ancestors[^;]*\*\.tari/);

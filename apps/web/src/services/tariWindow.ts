@@ -40,6 +40,7 @@ import {
   type TariTransactionRequestSummary,
   type TariWalletCapabilities,
 } from './tariDappTypes.js';
+import { getValueCodec, interpretIndexerTransactionResult, normalizeSingleSubstate, type ReadAssurance, type ValueCodec } from './ootleWire.js';
 
 export type { TariProvider, TariWalletCapabilities, TariInstructionsTransactionRequestOperation, TariTransactionRequestSummary, TariTransactionRequestStatus };
 
@@ -623,7 +624,12 @@ export async function readSubstate(provider: TariProvider, substateId: string, v
  * The reply shape is read defensively; `undefined` means "not present", never a
  * fabricated empty substate.
  */
-export async function readRawSubstate(provider: TariProvider, substateId: string, version?: number | null): Promise<unknown> {
+export async function readRawSubstate(
+  provider: TariProvider,
+  substateId: string,
+  version?: number | null,
+  options: RawSubstateReadOptions = {},
+): Promise<unknown> {
   if (typeof substateId !== 'string' || substateId === '') {
     throw new TariProviderError('A substate read requires a non-empty substateId.', 'MALFORMED_REPLY');
   }
@@ -633,11 +639,57 @@ export async function readRawSubstate(provider: TariProvider, substateId: string
   if (reply === null || reply === undefined) return undefined;
   const bag = readRecord(reply, 'substate');
   if (bag.notFound === true || bag.found === false) return undefined;
-  // Unwrap the common envelopes to reach the `{ Component|Vault|Resource: {...} }`
-  // value: `{ substate: { substate: <value> } }`, `{ substate: <value> }`, or the
-  // value itself. The decoder tolerates either the wrapped or inner form.
-  const inner = readRecord(bag.substate ?? bag, 'substate');
-  return inner;
+  // The reply envelope is cohort-dependent. The Sapient extension returns the indexer's
+  // `IndexerGetSubstateResponse` unchanged — `{ version, state: { up: { substate } }, verified }`
+  // from v0.47, with `substate` a base64 CBOR string from v0.48 — while older providers
+  // returned `{ substate: <value> }`. `normalizeSingleSubstate` accepts exactly those
+  // shapes; before it existed, a v0.47+ reply reached the Pool decoder still wrapped and
+  // every authoritative read through a real wallet failed.
+  const codec = await codecIfNeeded(bag);
+  const normalized = normalizeSingleSubstate(bag, codec, substateId);
+  if (!normalized.ok) throw new TariProviderError(`The wallet's substate reply for ${substateId} could not be read: ${normalized.reason}`, 'MALFORMED_REPLY');
+  if (normalized.value.state === 'DOWN') return undefined;
+  options.onAssurance?.(normalized.value.assurance);
+  if (options.purpose !== 'DISPLAY' && normalized.value.assurance === 'UNVERIFIED') {
+    // The wallet's indexer said, in so many words, that it could NOT check this value
+    // against a committee proof. Good enough to look at; not good enough to price a
+    // signed transaction from.
+    throw new TariProviderError(
+      `The wallet's indexer served ${substateId} without a committee proof (verified: false). It can be displayed but not used to build a transaction; retry shortly.`,
+      'MALFORMED_REPLY',
+    );
+  }
+  return normalized.value.value;
+}
+
+export interface RawSubstateReadOptions {
+  /**
+   * `EXECUTION` (default) refuses a value the answering indexer explicitly reported as
+   * unverified. `DISPLAY` accepts it, for a clearly display-only view.
+   */
+  readonly purpose?: 'EXECUTION' | 'DISPLAY';
+  /** Receives the assurance label of every value read. */
+  readonly onAssurance?: (assurance: ReadAssurance) => void;
+}
+
+/** Load the CBOR decoder only when a reply actually carries an encoded value. */
+async function codecIfNeeded(bag: Record<string, unknown>): Promise<ValueCodec | undefined> {
+  const state = bag.state;
+  const up = typeof state === 'object' && state !== null ? (state as Record<string, unknown>).up : undefined;
+  const encoded = typeof up === 'object' && up !== null && typeof (up as Record<string, unknown>).substate === 'string';
+  const executionEncoded = (() => {
+    const result = bag.result;
+    if (typeof result !== 'object' || result === null) return false;
+    const finalized = (result as Record<string, unknown>).Finalized;
+    return typeof finalized === 'object' && finalized !== null && typeof (finalized as Record<string, unknown>).execution_result === 'string';
+  })();
+  if (!encoded && !executionEncoded) return undefined;
+  try {
+    return await getValueCodec();
+  } catch {
+    // No decoder: the normaliser reports "no CBOR decoder is loaded", a refusal.
+    return undefined;
+  }
 }
 
 export interface TariTransactionView {
@@ -659,6 +711,17 @@ export interface TariTransactionView {
 export async function fetchTransactionResult(provider: TariProvider, transactionId: string): Promise<TariTransactionView> {
   const reply = await call<unknown>(provider, TARI_METHODS.getTransactionResult, { transactionId });
   const bag = typeof reply === 'object' && reply !== null ? (reply as Record<string, unknown>) : {};
+  // The Sapient extension returns the indexer's `IndexerGetTransactionResultResponse`
+  // (`{ result: "Pending" | { Finalized } | { Rejected } }`), which has no `status`
+  // field at all; before this branch existed, a committed transaction read as UNKNOWN
+  // forever. A `Commit` decision is reported COMMITTED only when the execution result
+  // itself says `Accept` — a fee-only commit is a failed operation, not a success.
+  const outcome = interpretIndexerTransactionResult(bag, await codecIfNeeded(bag));
+  if (outcome !== undefined) {
+    const view: TariTransactionView = { transactionId, status: outcome.status === 'FEE_ONLY' ? 'REJECTED' : outcome.status };
+    if ('reason' in outcome) view.error = outcome.reason;
+    return view;
+  }
   const id = typeof bag.transactionId === 'string' && bag.transactionId !== '' ? bag.transactionId : transactionId;
   const rawStatus = bag.status ?? bag.state;
   const status = typeof rawStatus === 'string' && rawStatus !== '' ? rawStatus : 'UNKNOWN';

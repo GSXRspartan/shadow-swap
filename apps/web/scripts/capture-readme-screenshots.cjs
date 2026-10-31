@@ -103,7 +103,7 @@ async function main() {
     // Context-level interception: every page in the context sees the same
     // deterministic discovery and media responses.
     for (const ctx of [context, mobileContext]) {
-      await ctx.route('https://ootle-indexer-a.tari.com/**', async (route) => {
+      await ctx.route(/^https:\/\/(esme-indexer-a\.ootle|ootle-indexer-a)\.tari\.com\//, async (route) => {
         const url = route.request().url();
         const metadataId = /\/metadata\/(\d+)\.json/.exec(url)?.[1];
         if (metadataId !== undefined) {

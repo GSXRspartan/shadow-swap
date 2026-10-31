@@ -49,6 +49,9 @@
  * performs. Nothing here is permitted to authorise execution.
  */
 
+import type { IndexerWireFormat } from '../lib/ootleCohort.js';
+import { codecFor, normalizeBatchEntry, normalizeReceipt } from './ootleWire.js';
+
 /**
  * The canonical native TARI resource, as exact resource identity.
  *
@@ -196,12 +199,33 @@ function indexerQuery(params: Readonly<Record<string, string>>): string {
   return pairs.join('&');
 }
 
+/**
+ * Which template addresses discovery may treat as the protocol's own.
+ *
+ * Supplied by production callers from `services/protocolDeployment.ts`. Evaluated after
+ * identity verification, because the answer depends on the network generation.
+ */
+export interface TemplateTrust {
+  templates(): readonly string[];
+  /** Shown when no template is recorded for the verified generation. */
+  readonly notDeployedDetail: string;
+}
+
 export interface TariIndexerDiscoveryOptions {
   /** Max receipt pages to read. Bounded so a long chain cannot hang the page. */
   readonly maxReceiptPages?: number;
   readonly transport: IndexerTransport;
-  /** Identity verification, run BEFORE any content request. */
-  readonly verifyIdentity: (url: string) => Promise<{ ok: boolean; reason?: string; wrongNetwork?: boolean }>;
+  /**
+   * Identity verification, run BEFORE any content request. A verified identity reports
+   * the endpoint's wire format (`lib/ootleCohort.ts`), which then governs how every
+   * reply is decoded.
+   */
+  readonly verifyIdentity: (url: string) => Promise<{ ok: boolean; reason?: string; wrongNetwork?: boolean; wireFormat?: IndexerWireFormat }>;
+  /**
+   * The endpoint's wire format when the caller has ALREADY verified its identity and
+   * calls `componentsOfTemplates` directly. Defaults to the pre-v0.48 JSON format.
+   */
+  readonly wireFormat?: IndexerWireFormat;
 }
 
 const DEFAULT_MAX_RECEIPT_PAGES = 5;
@@ -210,11 +234,18 @@ export class TariIndexerDiscovery {
   private readonly transport: IndexerTransport;
   private readonly verifyIdentity: TariIndexerDiscoveryOptions['verifyIdentity'];
   private readonly maxReceiptPages: number;
+  private wireFormat: IndexerWireFormat;
 
   constructor(private readonly indexerUrl: string, options: TariIndexerDiscoveryOptions) {
     this.transport = options.transport;
     this.verifyIdentity = options.verifyIdentity;
     this.maxReceiptPages = options.maxReceiptPages ?? DEFAULT_MAX_RECEIPT_PAGES;
+    this.wireFormat = options.wireFormat ?? 'JSON_VALUES';
+  }
+
+  /** The wire format replies are decoded with, as established by `verify()`. */
+  get format(): IndexerWireFormat {
+    return this.wireFormat;
   }
 
   private url(path: string): string {
@@ -231,7 +262,10 @@ export class TariIndexerDiscovery {
    */
   async verify(): Promise<{ ok: true } | IndexerDiscoveryFailure> {
     const identity = await this.verifyIdentity(this.indexerUrl);
-    if (identity.ok) return { ok: true };
+    if (identity.ok) {
+      if (identity.wireFormat !== undefined) this.wireFormat = identity.wireFormat;
+      return { ok: true };
+    }
     return {
       ok: false,
       state: identity.wrongNetwork === true ? 'WRONG_NETWORK' : 'INDEXER_UNAVAILABLE',
@@ -303,11 +337,19 @@ export class TariIndexerDiscovery {
    * list a transaction CREATED; `downed` (new in v0.42.0, recording substates a
    * transaction spent) is deliberately ignored, because a spent substate is not
    * a live pool.
+   *
+   * v0.48 serves each receipt as base64 CBOR. Before this module decoded it, every
+   * v0.48 receipt was a string, `record(...)` returned undefined, the entry was
+   * SKIPPED, and a deployed protocol read as "published but empty". An entry that
+   * cannot be decoded is now an error for the whole scan, because an unreadable
+   * receipt may be the very one that created a pool.
    */
   private async scanReceiptComponents(): Promise<{ ok: true; ids: string[]; pages: number } | { ok: false; reason: string; rateLimited?: boolean }> {
     const ids = new Set<string>();
     let cursor: string | undefined;
     let pages = 0;
+    const codec = await codecFor(this.wireFormat);
+    if (!codec.ok) return { ok: false, reason: codec.reason };
     for (let page = 0; page < this.maxReceiptPages; page += 1) {
       const query = indexerQuery(
         cursor === undefined
@@ -324,11 +366,12 @@ export class TariIndexerDiscovery {
       pages += 1;
       let lastAddress: string | undefined;
       for (const entry of receipts) {
-        // Each element is a [receipt_address, receipt] pair.
-        if (!Array.isArray(entry) || entry.length < 2) continue;
-        lastAddress = text(entry[0]) ?? lastAddress;
-        const receipt = record(entry[1]);
-        if (receipt === undefined) continue;
+        // Each element is a [receipt_address, receipt] pair; the receipt is JSON before
+        // v0.48 and base64 CBOR from v0.48. A malformed pair fails the scan (see above).
+        const normalized = normalizeReceipt(entry, this.wireFormat, codec.value);
+        if (!normalized.ok) return { ok: false, reason: `A transaction receipt could not be read: ${normalized.reason}` };
+        lastAddress = normalized.value.address;
+        const receipt = normalized.value.receipt;
         if (text(receipt.outcome) !== 'Commit') continue;
         const summary = record(receipt.diff_summary);
         if (summary === undefined) continue;
@@ -372,6 +415,8 @@ export class TariIndexerDiscovery {
     const extraKnown = knownComponents.filter((id) => typeof id === 'string' && id.startsWith('component_') && !scanned.has(id));
     const allIds = [...scan.ids, ...extraKnown];
     const components: DiscoveredComponent[] = [];
+    const codec = await codecFor(this.wireFormat);
+    if (!codec.ok) return { ok: false, reason: codec.reason };
     for (let start = 0; start < allIds.length; start += SUBSTATE_BATCH_LIMIT) {
       const batch = allIds.slice(start, start + SUBSTATE_BATCH_LIMIT);
       // v0.43 batch-read contract (the live host answers HTTP 422 to the v0.42
@@ -392,11 +437,14 @@ export class TariIndexerDiscovery {
         // `component_*` ids, but re-check the key so a non-component entry in the
         // map can never be read as a pool component.
         if (!substateId.startsWith('component_')) continue;
-        const wrapper = record(rawEntry);
-        if (wrapper === undefined) continue;
-        const inner = record(wrapper.substate) ?? wrapper;
-        const component = record(inner.Component);
-        if (component === undefined) continue;
+        // v0.48 entries are `{ version, value: <base64 CBOR> }`; earlier ones carry the
+        // value as JSON under `substate`. Either way the entry must match the format the
+        // endpoint declared, and an undecodable one fails the read rather than vanishing.
+        const normalized = normalizeBatchEntry(rawEntry, this.wireFormat, codec.value, substateId);
+        if (!normalized.ok) return { ok: false, reason: `A component could not be read: ${normalized.reason}` };
+        const component = record(normalized.value.value.Component);
+        // Not a component value at a component id: a malformed answer, not a pool.
+        if (component === undefined) return { ok: false, reason: `${substateId} did not hold a Component value.` };
         const header = record(component.header);
         if (header === undefined) continue;
         const templateAddress = text(header.template_address);
@@ -404,10 +452,9 @@ export class TariIndexerDiscovery {
         components.push({
           componentAddress: substateId,
           templateAddress,
-          // u64 on the wire. v0.43 returns it as a JSON number at the entry level
-          // (v0.42 as a string); carried on as a decimal string so a version is
-          // never silently truncated downstream.
-          version: rawInteger(wrapper.version) ?? rawInteger(inner.version) ?? '0',
+          // u64 on the wire, carried on as a decimal string so a version is never
+          // silently truncated downstream.
+          version: normalized.value.version ?? '0',
         });
       }
     }
@@ -423,7 +470,11 @@ export class TariIndexerDiscovery {
    *   - template present, 0 comps -> PROTOCOL_DEPLOYED_EMPTY (published, unused)
    *   - components present        -> PROTOCOL_AVAILABLE
    */
-  async discover(templateName: string, knownComponents: readonly string[] = []): Promise<IndexerDiscoveryResult> {
+  async discover(
+    templateName: string,
+    knownComponents: readonly string[] | (() => readonly string[]) = [],
+    trust?: TemplateTrust,
+  ): Promise<IndexerDiscoveryResult> {
     const identity = await this.verify();
     if (!identity.ok) return identity;
 
@@ -435,18 +486,51 @@ export class TariIndexerDiscovery {
         detail: `The template catalogue could not be read. ${catalogue.reason}`,
       };
     }
-    if (catalogue.entries.length === 0) {
-      return {
-        ok: true,
-        state: 'PROTOCOL_NOT_DEPLOYED',
-        publishedTemplates: [],
-        components: [],
-        receiptPagesRead: 0,
-        detail: `The indexer reports no published template named "${templateName}" on this network. The network is reachable; the protocol templates have not been published to it yet.`,
-      };
+    // Resolved only AFTER identity verification: which seeds and which templates apply
+    // depends on the network generation the endpoint just proved it serves.
+    const known = typeof knownComponents === 'function' ? knownComponents() : knownComponents;
+
+    let scanTemplates: string[];
+    let published: TemplateCatalogueEntry[] = catalogue.entries;
+    let ignoredNote = '';
+    if (trust !== undefined) {
+      // TRUSTED-ADDRESS MODE (production). The catalogue is open to anyone, so a name
+      // match proves nothing; only recorded template addresses are scanned. Catalogue
+      // entries with the right NAME but an unrecorded address are reported, not used.
+      const trusted = trust.templates();
+      const bareKey = (a: string) => (a.startsWith('template_') ? a.slice('template_'.length) : a);
+      const trustedSet = new Set(trusted.map(bareKey));
+      published = catalogue.entries.filter((entry) => trustedSet.has(bareKey(entry.templateAddress)));
+      const ignored = catalogue.entries.length - published.length;
+      if (ignored > 0) {
+        ignoredNote = ` ${ignored} other template(s) published under the name "${templateName}" by unrecorded authors were ignored: a template is trusted by its address, never by its name.`;
+      }
+      if (trusted.length === 0) {
+        return {
+          ok: true,
+          state: 'PROTOCOL_NOT_DEPLOYED',
+          publishedTemplates: [],
+          components: [],
+          receiptPagesRead: 0,
+          detail: `${trust.notDeployedDetail}${ignoredNote}`,
+        };
+      }
+      scanTemplates = [...trustedSet];
+    } else {
+      if (catalogue.entries.length === 0) {
+        return {
+          ok: true,
+          state: 'PROTOCOL_NOT_DEPLOYED',
+          publishedTemplates: [],
+          components: [],
+          receiptPagesRead: 0,
+          detail: `The indexer reports no published template named "${templateName}" on this network. The network is reachable; the protocol templates have not been published to it yet.`,
+        };
+      }
+      scanTemplates = catalogue.entries.map((entry) => entry.templateAddress);
     }
 
-    const found = await this.componentsOfTemplates(catalogue.entries.map((entry) => entry.templateAddress), knownComponents);
+    const found = await this.componentsOfTemplates(scanTemplates, known);
     if (!found.ok) {
       return {
         ok: false,
@@ -457,13 +541,13 @@ export class TariIndexerDiscovery {
     return {
       ok: true,
       state: found.components.length > 0 ? 'PROTOCOL_AVAILABLE' : 'PROTOCOL_DEPLOYED_EMPTY',
-      publishedTemplates: catalogue.entries,
+      publishedTemplates: published,
       components: found.components,
       receiptPagesRead: found.pages,
       detail:
         found.components.length > 0
-          ? undefined
-          : `"${templateName}" is published, but no component has been instantiated from it yet. The templates are live on this network and simply not used yet.`,
+          ? ignoredNote.trim() === '' ? undefined : ignoredNote.trim()
+          : `"${templateName}" is published, but no component has been instantiated from it yet. The templates are live on this network and simply not used yet.${ignoredNote}`,
     };
   }
 }

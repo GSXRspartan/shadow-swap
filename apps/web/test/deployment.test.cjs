@@ -99,9 +99,12 @@ test('csp: widening connect-src for metadata did not widen anything else', () =>
   // relax another directive to make an image appear, this fails — the signer
   // origin, the absence of object/frame, and the absence of unsafe-eval are the
   // properties the rest of this repository's security argument rests on.
-  assert.equal(/script-src [^;]*unsafe-eval/.test(built.CONTENT_SECURITY_POLICY), false, 'no unsafe-eval, ever');
+  // `'unsafe-eval'` (eval / new Function) is forbidden. `'wasm-unsafe-eval'` is a
+  // DIFFERENT keyword that permits compiling WebAssembly only; it is required by the
+  // official Ootle v0.48 value decoder and is pinned by the next test.
+  assert.equal(/script-src [^;]*'unsafe-eval'/.test(built.CONTENT_SECURITY_POLICY), false, 'no unsafe-eval, ever');
   assert.equal(/script-src [^;]*unsafe-inline/.test(built.CONTENT_SECURITY_POLICY), false, 'no unsafe-inline in script-src');
-  assert.match(built.CONTENT_SECURITY_POLICY, /script-src 'self' https:\/\/universe\.tari\.mw;/, 'script-src must stay exactly self + the wallet connector');
+  assert.match(built.CONTENT_SECURITY_POLICY, /script-src 'self' 'wasm-unsafe-eval' https:\/\/universe\.tari\.mw;/, 'script-src must stay exactly self + wasm compilation + the wallet connector');
   assert.match(built.CONTENT_SECURITY_POLICY, /object-src 'none'/);
   assert.match(built.CONTENT_SECURITY_POLICY, /frame-src 'none'/);
   assert.match(built.CONTENT_SECURITY_POLICY, /default-src 'self'/);
@@ -314,7 +317,7 @@ test('csp: the script policy names the wallet connector origin and nothing wider
   // The documented dApp model loads https://universe.tari.mw/tari-connector.js
   // into this document. `script-src 'self'` alone would block it and the app
   // could never obtain `window.tari`. The allowance must be that exact origin.
-  assert.match(built.CONTENT_SECURITY_POLICY, /script-src 'self' https:\/\/universe\.tari\.mw/);
+  assert.match(built.CONTENT_SECURITY_POLICY, /script-src 'self' 'wasm-unsafe-eval' https:\/\/universe\.tari\.mw/);
   // No wildcard, and no bare Tari domain that would admit every Tari property.
   assert.equal(/script-src[^;]*\*/.test(built.CONTENT_SECURITY_POLICY), false, 'script-src must contain no wildcard');
   assert.equal(/script-src[^;]*https:\/\/tari\./.test(built.CONTENT_SECURITY_POLICY), false, 'script-src must not admit a bare Tari domain');
@@ -696,3 +699,21 @@ test('manifest: the app ships an icon, so no browser gets a 404 for it', () => {
   assert.ok(fs.existsSync(path.join(distDir, 'icon.svg')), 'the icon must be present in the built artifact');
 });
 
+
+test('csp: script-src is EXACTLY self, WebAssembly compilation, and the wallet connector', () => {
+  // Token-exact, so neither a new origin nor a relaxing keyword can ride in unnoticed.
+  // 'wasm-unsafe-eval' is the one addition made for Ootle v0.48: the chain now serves
+  // values as CBOR and the official decoder (@tari-project/ootle-wasm-bor, pinned 0.48.0)
+  // is WebAssembly served from this origin. It does not permit eval or new Function.
+  const directive = built.CONTENT_SECURITY_POLICY.split(';').map((part) => part.trim()).find((part) => part.startsWith('script-src '));
+  assert.ok(directive, 'script-src is present');
+  assert.deepEqual(directive.split(/\s+/).slice(1), ["'self'", "'wasm-unsafe-eval'", 'https://universe.tari.mw']);
+});
+
+test('csp: connect-src carries the v0.48 Esmeralda indexers and the pre-reset ones, and nothing local', () => {
+  for (const origin of ['https://esme-indexer-a.ootle.tari.com', 'https://esme-indexer-b.ootle.tari.com', 'https://ootle-indexer-a.tari.com', 'https://ootle-indexer-b.tari.com']) {
+    assert.ok(built.CONTENT_SECURITY_POLICY.includes(` ${origin}`), `${origin} is reachable`);
+  }
+  assert.deepEqual([...networks.ESMERALDA_INDEXER_URLS], ['https://esme-indexer-a.ootle.tari.com', 'https://esme-indexer-b.ootle.tari.com'], 'the v0.48 upstream defaults are the build defaults');
+  assert.equal(/127\.0\.0\.1|localhost/.test(built.CONTENT_SECURITY_POLICY), false);
+});

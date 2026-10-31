@@ -1,0 +1,43 @@
+# OPTIONAL: Shadow Swap static frontend as its OWN container (example; nothing here is live).
+#
+# Isolation: its own compose project name, its own network, no shared volumes with any other
+# service, read-only root filesystem, no capabilities, non-root, CPU/memory/pids limits, and a
+# LOOPBACK-ONLY published port for the existing reverse proxy or a Cloudflare Tunnel to reach.
+# It mounts only the built static files. No secret, wallet, walletd or database is involved.
+#
+#   docker compose -p shadow-swap -f deploy/vps/docker-compose.example.yml up -d
+#   docker compose -p shadow-swap -f deploy/vps/docker-compose.example.yml down   # removes only this project
+name: shadow-swap
+services:
+  web:
+    # Pin by digest in production: docker buildx imagetools inspect caddy:2.10.2-alpine
+    image: caddy:2.10.2-alpine
+    restart: unless-stopped
+    read_only: true
+    user: "65534:65534"
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    ports:
+      - "127.0.0.1:8088:8088"
+    volumes:
+      - /srv/shadow-swap/current:/srv:ro
+      - ./Caddyfile.container:/etc/caddy/Caddyfile:ro
+      - ./shadow-swap-headers.caddy:/etc/caddy/shadow-swap-headers.caddy:ro
+    tmpfs:
+      - /data:size=8m
+      - /config:size=8m
+    deploy:
+      resources:
+        limits: { cpus: "0.50", memory: 128M, pids: 64 }
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8088/healthz"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+    networks: [shadow_swap]
+networks:
+  shadow_swap:
+    name: shadow_swap_isolated
