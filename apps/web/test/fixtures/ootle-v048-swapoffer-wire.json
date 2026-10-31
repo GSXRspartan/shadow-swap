@@ -1,0 +1,163 @@
+{
+  "cohort": "tari-ootle v0.48.0 (6a25dbc524581bfaa0a3c6ef120f8d59cc827572)",
+  "generatedBy": "audit_engine_tests/tests/swapoffer_wire_v048.rs (SHADOW_SWAP_WRITE_WIRE_FIXTURES=1)",
+  "maker": {
+    "account": "component_3230781eb41523d792c58a7f6485e18cef92f71003100b14c347c1bd5d28006a",
+    "publicKey": "5c7f0fec164142986ada18df7c0950d93827925ece06b0e6a1247b6a3a304c7c"
+  },
+  "note": "TemplateTest addresses. They identify nothing on Esmeralda and must never seed a registry.",
+  "offers": [
+    {
+      "component": "component_26c5fdef873820781de598fd64e309030eda060d0ad26da9350b638b5b1c9241",
+      "expect": {
+        "designatedTaker": "c2a0394cab5ff3b6b51335386d8fb473cf03db714258bc17a10165783b3cf46c",
+        "expiresAtEpoch": "1000000",
+        "hashLock": "4194cba8cba04c6d95cf80be3dfa5128b2442a91632b72e9db9f1fee76276bc1",
+        "maker": "5c7f0fec164142986ada18df7c0950d93827925ece06b0e6a1247b6a3a304c7c",
+        "offered": {
+          "amount": "1000",
+          "kind": "fungible",
+          "resource": "resource_b27088b955278dbc6093cf52cedcadb0bb4d6f9762064636d2a90e5471bb6dcb"
+        },
+        "proceeds": "0",
+        "requested": {
+          "amount": "2500",
+          "kind": "fungible",
+          "resource": "resource_054409253bae3b2032b1cf55f8791b1bc1ed1ed80ef7b6b2299e9a89f4310037"
+        },
+        "status": "Open"
+      },
+      "name": "open_fungible",
+      "preimage": "736861646f772d73776170206669787475726520707265696d616765",
+      "substates": {
+        "component_26c5fdef873820781de598fd64e309030eda060d0ad26da9350b638b5b1c9241": {
+          "value": "ggCBgoRYIGdSnSGRNJTwj+keTOBe9wdI6lhK1lXm2yvifvBUwVtgggCAgqRmY2FuY2VsggKBggCBggCBggGB2IKC2INYIAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAggCBWCBcfw/sFkFCmGraGN98CVDZOCeSXs4GsOahJHtqOjBMfGVjbGFpbYICgYIAgYIAgYIBgdiCgtiDWCABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIIAgVggXH8P7BZBQphq2hjffAlQ2Tgnkl7OBrDmoSR7ajowTHxkZmlsbIICgYIAgYIAgYIBgdiCgtiDWCABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIIAgVggwqA5TKtf87a1EzU4bY+0c88D23FCWLwXoQFleDs89Gxlb2ZmZXKCAICCAYBBJoGJ2IRYICb5OI9CNVlWD06e7csFoF88t2YK7wZmZ3uaCfrWnbKI2IRYICarO777BSfw7vFvjsIn75qv9Jq/LRfP80EGDLg15AnY2INYILJwiLlVJ428YJPPUs7crbC7TW+XYgZGNtKpDlRxu23L2INYIAVECSU7rjsgMrHPVfh5GxvB7R7YDve2simemon0MQA3GQnE9lggQZTLqMugTG2Vz4C+PfpRKLJEKpFjK3Lp258f7nYna8EaAA9CQIIAgA==",
+          "version": 0
+        },
+        "vault_26ab3bbefb0527f0eef16f8ec227ef9aaff49abf2d17cff341060cb835e409d8": {
+          "value": "ggKBgoIAg9iDWCAFRAklO647IDKxz1X4eRsbwe0e2A73trIpnpqJ9DEANwAAAA==",
+          "version": 0
+        },
+        "vault_26f9388f423559560f4e9eedcb05a05f3cb7660aef0666677b9a09fad69db288": {
+          "value": "ggKBgoIAg9iDWCCycIi5VSeNvGCTz1LO3K2wu01vl2IGRjbSqQ5UcbttyxkD6AAA",
+          "version": 0
+        }
+      }
+    },
+    {
+      "component": "component_cb63ebb92cc96df880c92c18f4cef9bea04207ed04c7aa89b3b2d0c3282813ee",
+      "expect": {
+        "designatedTaker": null,
+        "expiresAtEpoch": "0",
+        "hashLock": null,
+        "maker": "5c7f0fec164142986ada18df7c0950d93827925ece06b0e6a1247b6a3a304c7c",
+        "offered": {
+          "kind": "nft",
+          "nftIds": [
+            "str_art-1"
+          ],
+          "resource": "resource_d193108d87626958f087bd7748f32957e8ed2d3f60125db3eba6d9bd2a64c27c"
+        },
+        "proceeds": "0",
+        "requested": {
+          "kind": "nft",
+          "nftId": "str_art-2",
+          "resource": "resource_944c39dc5b495527d80af6c5ba983316c793a63e188519108b538d472f406839"
+        },
+        "status": "Open"
+      },
+      "name": "open_nft",
+      "substates": {
+        "component_cb63ebb92cc96df880c92c18f4cef9bea04207ed04c7aa89b3b2d0c3282813ee": {
+          "value": "ggCBgoRYIGdSnSGRNJTwj+keTOBe9wdI6lhK1lXm2yvifvBUwVtgggCAgqRmY2FuY2VsggKBggCBggCBggGB2IKC2INYIAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAggCBWCBcfw/sFkFCmGraGN98CVDZOCeSXs4GsOahJHtqOjBMfGVjbGFpbYICgYIAgYIAgYIBgdiCgtiDWCABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIIAgVggXH8P7BZBQphq2hjffAlQ2Tgnkl7OBrDmoSR7ajowTHxkZmlsbIIAgGVvZmZlcoIAgIIBgEHLgYnYhFggy4saJhxY1GXuQRHy9SJwrPZr+KzumLsrOdbcAzumHrzYhFggy3nkgVCZiR1RNK3PhtUhb09h3UZmZRaydjKR5coNks7Yg1gg0ZMQjYdiaVjwh713SPMpV+jtLT9gEl2z66bZvSpkwnzYg1gglEw53FtJVSfYCvbFupgzFseTpj4YhRkQi1ONRy9AaDkAggGBZWFydC0y9gCCAIA=",
+          "version": 0
+        },
+        "vault_cb79e4815099891d5134adcf86d5216f4f61dd46666516b2763291e5ca0d92ce": {
+          "value": "ggKBgoIBg9iDWCCUTDncW0lVJ9gK9sW6mDMWx5OmPhiFGRCLU41HL0BoOYCAAA==",
+          "version": 0
+        },
+        "vault_cb8b1a261c58d465ee4111f2f52270acf66bf8acee98bb2b39d6dc033ba61ebc": {
+          "value": "ggKBgoIBg9iDWCDRkxCNh2JpWPCHvXdI8ylX6O0tP2ASXbPrptm9KmTCfIGCAYFlYXJ0LTGAAA==",
+          "version": 0
+        }
+      }
+    },
+    {
+      "component": "component_26c5fdef873820781de598fd64e309030eda060d0ad26da9350b638b5b1c9241",
+      "expect": {
+        "designatedTaker": "c2a0394cab5ff3b6b51335386d8fb473cf03db714258bc17a10165783b3cf46c",
+        "expiresAtEpoch": "1000000",
+        "hashLock": "4194cba8cba04c6d95cf80be3dfa5128b2442a91632b72e9db9f1fee76276bc1",
+        "maker": "5c7f0fec164142986ada18df7c0950d93827925ece06b0e6a1247b6a3a304c7c",
+        "offered": {
+          "amount": "0",
+          "kind": "fungible",
+          "resource": "resource_b27088b955278dbc6093cf52cedcadb0bb4d6f9762064636d2a90e5471bb6dcb"
+        },
+        "proceeds": "2500",
+        "requested": {
+          "amount": "2500",
+          "kind": "fungible",
+          "resource": "resource_054409253bae3b2032b1cf55f8791b1bc1ed1ed80ef7b6b2299e9a89f4310037"
+        },
+        "status": "Filled"
+      },
+      "name": "filled",
+      "substates": {
+        "component_26c5fdef873820781de598fd64e309030eda060d0ad26da9350b638b5b1c9241": {
+          "value": "ggCBgoRYIGdSnSGRNJTwj+keTOBe9wdI6lhK1lXm2yvifvBUwVtgggCAgqRmY2FuY2VsggKBggCBggCBggGB2IKC2INYIAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAggCBWCBcfw/sFkFCmGraGN98CVDZOCeSXs4GsOahJHtqOjBMfGVjbGFpbYICgYIAgYIAgYIBgdiCgtiDWCABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIIAgVggXH8P7BZBQphq2hjffAlQ2Tgnkl7OBrDmoSR7ajowTHxkZmlsbIICgYIAgYIAgYIBgdiCgtiDWCABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIIAgVggwqA5TKtf87a1EzU4bY+0c88D23FCWLwXoQFleDs89Gxlb2ZmZXKCAICCAYBBJoGJ2IRYICb5OI9CNVlWD06e7csFoF88t2YK7wZmZ3uaCfrWnbKI2IRYICarO777BSfw7vFvjsIn75qv9Jq/LRfP80EGDLg15AnY2INYILJwiLlVJ428YJPPUs7crbC7TW+XYgZGNtKpDlRxu23L2INYIAVECSU7rjsgMrHPVfh5GxvB7R7YDve2simemon0MQA3GQnE9lggQZTLqMugTG2Vz4C+PfpRKLJEKpFjK3Lp258f7nYna8EaAA9CQIIBgA==",
+          "version": 1
+        },
+        "vault_26ab3bbefb0527f0eef16f8ec227ef9aaff49abf2d17cff341060cb835e409d8": {
+          "value": "ggKBgoIAg9iDWCAFRAklO647IDKxz1X4eRsbwe0e2A73trIpnpqJ9DEANxkJxAAA",
+          "version": 1
+        },
+        "vault_26f9388f423559560f4e9eedcb05a05f3cb7660aef0666677b9a09fad69db288": {
+          "value": "ggKBgoIAg9iDWCCycIi5VSeNvGCTz1LO3K2wu01vl2IGRjbSqQ5UcbttywAAAA==",
+          "version": 1
+        }
+      }
+    },
+    {
+      "component": "component_cb63ebb92cc96df880c92c18f4cef9bea04207ed04c7aa89b3b2d0c3282813ee",
+      "expect": {
+        "designatedTaker": null,
+        "expiresAtEpoch": "0",
+        "hashLock": null,
+        "maker": "5c7f0fec164142986ada18df7c0950d93827925ece06b0e6a1247b6a3a304c7c",
+        "offered": {
+          "kind": "nft",
+          "nftIds": [],
+          "resource": "resource_d193108d87626958f087bd7748f32957e8ed2d3f60125db3eba6d9bd2a64c27c"
+        },
+        "proceeds": "0",
+        "requested": {
+          "kind": "nft",
+          "nftId": "str_art-2",
+          "resource": "resource_944c39dc5b495527d80af6c5ba983316c793a63e188519108b538d472f406839"
+        },
+        "status": "Cancelled"
+      },
+      "name": "cancelled",
+      "substates": {
+        "component_cb63ebb92cc96df880c92c18f4cef9bea04207ed04c7aa89b3b2d0c3282813ee": {
+          "value": "ggCBgoRYIGdSnSGRNJTwj+keTOBe9wdI6lhK1lXm2yvifvBUwVtgggCAgqRmY2FuY2VsggKBggCBggCBggGB2IKC2INYIAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAggCBWCBcfw/sFkFCmGraGN98CVDZOCeSXs4GsOahJHtqOjBMfGVjbGFpbYICgYIAgYIAgYIBgdiCgtiDWCABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIIAgVggXH8P7BZBQphq2hjffAlQ2Tgnkl7OBrDmoSR7ajowTHxkZmlsbIIAgGVvZmZlcoIAgIIBgEHLgYnYhFggy4saJhxY1GXuQRHy9SJwrPZr+KzumLsrOdbcAzumHrzYhFggy3nkgVCZiR1RNK3PhtUhb09h3UZmZRaydjKR5coNks7Yg1gg0ZMQjYdiaVjwh713SPMpV+jtLT9gEl2z66bZvSpkwnzYg1gglEw53FtJVSfYCvbFupgzFseTpj4YhRkQi1ONRy9AaDkAggGBZWFydC0y9gCCAoA=",
+          "version": 1
+        },
+        "vault_cb79e4815099891d5134adcf86d5216f4f61dd46666516b2763291e5ca0d92ce": {
+          "value": "ggKBgoIBg9iDWCCUTDncW0lVJ9gK9sW6mDMWx5OmPhiFGRCLU41HL0BoOYCAAA==",
+          "version": 0
+        },
+        "vault_cb8b1a261c58d465ee4111f2f52270acf66bf8acee98bb2b39d6dc033ba61ebc": {
+          "value": "ggKBgoIBg9iDWCDRkxCNh2JpWPCHvXdI8ylX6O0tP2ASXbPrptm9KmTCfICAAA==",
+          "version": 1
+        }
+      }
+    }
+  ],
+  "taker": {
+    "account": "component_3af8d8c2f59a9b50d2060002382ac631652c931aa134df81ceb3c254164b497c",
+    "publicKey": "c2a0394cab5ff3b6b51335386d8fb473cf03db714258bc17a10165783b3cf46c"
+  },
+  "template": "67529d21913494f08fe91e4ce05ef70748ea584ad655e6db2be27ef054c15b60"
+}

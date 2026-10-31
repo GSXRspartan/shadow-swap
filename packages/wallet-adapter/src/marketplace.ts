@@ -28,14 +28,29 @@ export interface WorkspaceBucket {
   name: string;
 }
 
+/** ABI argument types used by the marketplace templates (templates/nft_*). */
+export type MarketplaceArgType = 'Bucket' | 'ComponentAddress' | 'ResourceAddress' | 'Amount' | 'NonFungibleId' | 'u64';
+
 export interface MarketplaceCall {
   componentAddress?: string;
   templateAddress?: string;
   templateName?: MarketplaceTemplate;
   method: string;
   args: Array<string | number | WorkspaceBucket>;
+  /** The callee's ABI type for each arg, in order. The wire serializer encodes from these. */
+  argTypes: readonly MarketplaceArgType[];
   resourcesInvolved: string[];
 }
+
+/** FixedPriceListing::create(seller_account, nft, quote_resource, price, expires_at_epoch) */
+const LISTING_CREATE: readonly MarketplaceArgType[] = ['ComponentAddress', 'Bucket', 'ResourceAddress', 'Amount', 'u64'];
+/** ItemOffer::create(buyer_account, quote, nft_resource, nft_id, expires_at_epoch) */
+const ITEM_OFFER_CREATE: readonly MarketplaceArgType[] = ['ComponentAddress', 'Bucket', 'ResourceAddress', 'NonFungibleId', 'u64'];
+/** CollectionBid::create(buyer_account, quote, collection, price_per_nft, quantity, expires_at_epoch) */
+const COLLECTION_BID_CREATE: readonly MarketplaceArgType[] = ['ComponentAddress', 'Bucket', 'ResourceAddress', 'Amount', 'u64', 'u64'];
+/** buy(payment, buyer_account) / accept(nft, seller_account) / fill(nft, seller_account) */
+const BUCKET_THEN_ACCOUNT: readonly MarketplaceArgType[] = ['Bucket', 'ComponentAddress'];
+const NO_ARGS: readonly MarketplaceArgType[] = [];
 
 export type MarketplaceInstruction =
   | {
@@ -126,12 +141,14 @@ function bucket(name: string): WorkspaceBucket {
   return { kind: 'workspace_bucket', name };
 }
 
-function functionCall(templateAddress: string, templateName: MarketplaceTemplate, method: string, args: MarketplaceCall['args'], resourcesInvolved: string[]): MarketplaceInstruction {
-  return { kind: 'call_function', templateAddress, templateName, method, args, resourcesInvolved };
+function functionCall(templateAddress: string, templateName: MarketplaceTemplate, method: string, args: MarketplaceCall['args'], argTypes: readonly MarketplaceArgType[], resourcesInvolved: string[]): MarketplaceInstruction {
+  if (args.length !== argTypes.length) throw new Error(`${templateName}::${method}: ${args.length} args, ${argTypes.length} types`);
+  return { kind: 'call_function', templateAddress, templateName, method, args, argTypes, resourcesInvolved };
 }
 
-function methodCall(componentAddress: string, method: string, args: MarketplaceCall['args'], resourcesInvolved: string[]): MarketplaceInstruction {
-  return { kind: 'call_method', componentAddress, method, args, resourcesInvolved };
+function methodCall(componentAddress: string, method: string, args: MarketplaceCall['args'], argTypes: readonly MarketplaceArgType[], resourcesInvolved: string[]): MarketplaceInstruction {
+  if (args.length !== argTypes.length) throw new Error(`${method}: ${args.length} args, ${argTypes.length} types`);
+  return { kind: 'call_method', componentAddress, method, args, argTypes, resourcesInvolved };
 }
 
 function callsFrom(instructions: MarketplaceInstruction[]): MarketplaceCall[] {
@@ -201,13 +218,13 @@ export function createListing(input: CreateListingInput): MarketplaceTransaction
     { nftResource: input.nftResource, nftId: input.nftId, quoteResource: input.quoteResource, amount: input.price, expiryEpoch: input.expiryEpoch },
     [
       { kind: 'withdraw_non_fungible', accountAddress: input.sellerAccount, resourceAddress: input.nftResource, nonFungibleId: input.nftId, output: nft },
-      functionCall(input.templateAddress, 'FixedPriceListing', 'create', [input.sellerAccount, nft, input.quoteResource, input.price, input.expiryEpoch], [input.nftResource, input.quoteResource]),
+      functionCall(input.templateAddress, 'FixedPriceListing', 'create', [input.sellerAccount, nft, input.quoteResource, input.price, input.expiryEpoch], LISTING_CREATE, [input.nftResource, input.quoteResource]),
     ],
   );
 }
 
 export function cancelListing(listingAddress: string, target: MarketplaceOrderTarget): MarketplaceTransactionIntent {
-  return intent('cancel_listing', { ...target, componentOrOrderId: listingAddress }, [methodCall(listingAddress, 'cancel', [], [])], ['listing']);
+  return intent('cancel_listing', { ...target, componentOrOrderId: listingAddress }, [methodCall(listingAddress, 'cancel', [], NO_ARGS, [])], ['listing']);
 }
 
 export function buyListing(listingAddress: string, buyerAccount: string, quoteResource: string, amount: string, target: Omit<MarketplaceOrderTarget, 'componentOrOrderId' | 'quoteResource' | 'amount'>): MarketplaceTransactionIntent {
@@ -218,7 +235,7 @@ export function buyListing(listingAddress: string, buyerAccount: string, quoteRe
     { ...target, componentOrOrderId: listingAddress, quoteResource, amount },
     [
       { kind: 'withdraw_fungible', accountAddress: buyerAccount, resourceAddress: quoteResource, amount, output: payment },
-      methodCall(listingAddress, 'buy', [payment, buyerAccount], [quoteResource]),
+      methodCall(listingAddress, 'buy', [payment, buyerAccount], BUCKET_THEN_ACCOUNT, [quoteResource]),
     ],
     ['listing'],
   );
@@ -232,13 +249,13 @@ export function createItemOffer(input: CreateItemOfferInput): MarketplaceTransac
     { nftResource: input.nftResource, nftId: input.nftId, quoteResource: input.quoteResource, amount: input.offerAmount, expiryEpoch: input.expiryEpoch },
     [
       { kind: 'withdraw_fungible', accountAddress: input.buyerAccount, resourceAddress: input.quoteResource, amount: input.offerAmount, output: quote },
-      functionCall(input.templateAddress, 'ItemOffer', 'create', [input.buyerAccount, quote, input.nftResource, input.nftId, input.expiryEpoch], [input.nftResource, input.quoteResource]),
+      functionCall(input.templateAddress, 'ItemOffer', 'create', [input.buyerAccount, quote, input.nftResource, input.nftId, input.expiryEpoch], ITEM_OFFER_CREATE, [input.nftResource, input.quoteResource]),
     ],
   );
 }
 
 export function cancelItemOffer(offerAddress: string, target: MarketplaceOrderTarget): MarketplaceTransactionIntent {
-  return intent('cancel_item_offer', { ...target, componentOrOrderId: offerAddress }, [methodCall(offerAddress, 'cancel', [], [])], ['offer']);
+  return intent('cancel_item_offer', { ...target, componentOrOrderId: offerAddress }, [methodCall(offerAddress, 'cancel', [], NO_ARGS, [])], ['offer']);
 }
 
 export function acceptItemOffer(offerAddress: string, sellerAccount: string, nftResource: string, nftId: string, target: Omit<MarketplaceOrderTarget, 'componentOrOrderId' | 'nftResource' | 'nftId'>): MarketplaceTransactionIntent {
@@ -248,14 +265,14 @@ export function acceptItemOffer(offerAddress: string, sellerAccount: string, nft
     { ...target, componentOrOrderId: offerAddress, nftResource, nftId },
     [
       { kind: 'withdraw_non_fungible', accountAddress: sellerAccount, resourceAddress: nftResource, nonFungibleId: nftId, output: nft },
-      methodCall(offerAddress, 'accept', [nft, sellerAccount], [nftResource]),
+      methodCall(offerAddress, 'accept', [nft, sellerAccount], BUCKET_THEN_ACCOUNT, [nftResource]),
     ],
     ['offer'],
   );
 }
 
 export function refundExpiredItemOffer(offerAddress: string, target: MarketplaceOrderTarget): MarketplaceTransactionIntent {
-  return intent('refund_expired_item_offer', { ...target, componentOrOrderId: offerAddress }, [methodCall(offerAddress, 'refund_expired', [], [])], ['offer']);
+  return intent('refund_expired_item_offer', { ...target, componentOrOrderId: offerAddress }, [methodCall(offerAddress, 'refund_expired', [], NO_ARGS, [])], ['offer']);
 }
 
 export function createCollectionBid(input: CreateCollectionBidInput): MarketplaceTransactionIntent {
@@ -266,7 +283,7 @@ export function createCollectionBid(input: CreateCollectionBidInput): Marketplac
     { nftResource: input.collectionResource, quoteResource: input.quoteResource, amount: escrowAmount, expiryEpoch: input.expiryEpoch },
     [
       { kind: 'withdraw_fungible', accountAddress: input.buyerAccount, resourceAddress: input.quoteResource, amount: escrowAmount, output: quote },
-      functionCall(input.templateAddress, 'CollectionBid', 'create', [input.buyerAccount, quote, input.collectionResource, input.pricePerNft, input.quantity, input.expiryEpoch], [input.collectionResource, input.quoteResource]),
+      functionCall(input.templateAddress, 'CollectionBid', 'create', [input.buyerAccount, quote, input.collectionResource, input.pricePerNft, input.quantity, input.expiryEpoch], COLLECTION_BID_CREATE, [input.collectionResource, input.quoteResource]),
     ],
   );
 }
@@ -278,18 +295,18 @@ export function fillCollectionBid(bidAddress: string, sellerAccount: string, nft
     { ...target, componentOrOrderId: bidAddress, nftResource, nftId },
     [
       { kind: 'withdraw_non_fungible', accountAddress: sellerAccount, resourceAddress: nftResource, nonFungibleId: nftId, output: nft },
-      methodCall(bidAddress, 'fill', [nft, sellerAccount], [nftResource]),
+      methodCall(bidAddress, 'fill', [nft, sellerAccount], BUCKET_THEN_ACCOUNT, [nftResource]),
     ],
     ['bid'],
   );
 }
 
 export function cancelCollectionBid(bidAddress: string, target: MarketplaceOrderTarget): MarketplaceTransactionIntent {
-  return intent('cancel_collection_bid', { ...target, componentOrOrderId: bidAddress }, [methodCall(bidAddress, 'cancel', [], [])], ['bid']);
+  return intent('cancel_collection_bid', { ...target, componentOrOrderId: bidAddress }, [methodCall(bidAddress, 'cancel', [], NO_ARGS, [])], ['bid']);
 }
 
 export function refundExpiredCollectionBid(bidAddress: string, target: MarketplaceOrderTarget): MarketplaceTransactionIntent {
-  return intent('refund_expired_collection_bid', { ...target, componentOrOrderId: bidAddress }, [methodCall(bidAddress, 'refund_expired', [], [])], ['bid']);
+  return intent('refund_expired_collection_bid', { ...target, componentOrOrderId: bidAddress }, [methodCall(bidAddress, 'refund_expired', [], NO_ARGS, [])], ['bid']);
 }
 
 /** Creates the adapter/indexer persistence record after a transaction has actually been submitted. */

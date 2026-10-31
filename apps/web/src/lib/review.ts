@@ -23,6 +23,7 @@
 import type { ExecutionIdentity } from './executionIdentity.js';
 import { asRawExecutionAmount, asResourceAddress } from './tradeBoundary.js';
 import { buildSignableInstructions, type TariInstruction } from './instructions.js';
+import { encodeLiteral } from './instructionArgs.js';
 
 export type ReviewOperation = 'AMM_SWAP' | 'AMM_ADD_LIQUIDITY' | 'AMM_REMOVE_LIQUIDITY' | 'NFT_BUY_NOW' | 'NFT_SELL_NOW' | 'NFT_ACCEPT_ITEM_OFFER';
 
@@ -125,8 +126,9 @@ function validateAmounts(amounts: readonly ReviewAmount[], operation: string): r
  * official contract types it `unknown[]`; `buildSignableInstructions` turns the
  * adapter's signer-agnostic intent into the externally-tagged Ootle form the
  * reference documents, resolving symbolic buckets to the integer workspace ids
- * the contract requires for instructions we build ourselves, and carrying the
- * intent's `with_max_epoch` bound.
+ * the contract requires for instructions we build ourselves. The intent's expiry is
+ * review evidence: Ootle has no max-epoch instruction, and the wallet sets the
+ * transaction's `max_epoch` when it signs.
  *
  * The `transaction`/`display` members remain as the human-readable review
  * record. They are NOT sent to the provider: the contract defines no such
@@ -185,7 +187,7 @@ export function createReview(input: {
   legs: ReviewLeg[];
   /** The signer-agnostic intent, serialised into the official instructions form. */
   instructions: readonly unknown[];
-  /** The raw `with_max_epoch` bound, carried into the signed transaction. */
+  /** Expiry evidence (raw epoch). Validated; the wallet sets the transaction's real max_epoch. */
   maxEpoch?: string;
   createdAtUnixMs?: number;
 }): TransactionReview {
@@ -405,8 +407,10 @@ export function diffReviewAgainstIntent(review: TransactionReview, intent: AmmIn
  * consistent the display record is. The display record is a by-product; the
  * instruction list is the payload.
  *
- * Every match is an exact string comparison on a raw integer, so no display
- * scaling can bridge a difference.
+ * Every match is an exact comparison of the value's v0.48 `Literal` encoding (the tari_bor
+ * CBOR bytes the engine decodes) against the literal arguments actually present, so neither
+ * display scaling nor an incidental substring can satisfy it: the amount must be an Amount
+ * argument, the NFT a NonFungibleId argument, the resource a ResourceAddress argument.
  */
 function checkInstructionsCarryAmounts(review: TransactionReview, amounts: readonly ReviewAmount[]): string[] {
   const mismatches: string[] = [];
@@ -414,21 +418,51 @@ function checkInstructionsCarryAmounts(review: TransactionReview, amounts: reado
   if (!Array.isArray(request.instructions) || request.instructions.length === 0) {
     return ['the reviewed request carries no instruction list for the provider to sign'];
   }
-  const serialised = JSON.stringify(request.instructions);
+  const literals = collectLiterals(request.instructions);
+  const carries = (type: 'Amount' | 'ResourceAddress' | 'NonFungibleId', value: string): boolean => {
+    try {
+      return literals.has(encodeLiteral(type, value));
+    } catch {
+      return false;
+    }
+  };
   for (const amount of amounts) {
     // FEE is the network charge, which is not an instruction argument either.
     // REFUND is the remaining escrow a cancel returns, computed on-chain by the
     // template rather than passed in. Neither is claimed to be carried by the
     // transaction, so neither is checked for it. See ReviewAmount['role'].
     if (amount.role === 'FEE' || amount.role === 'REFUND') continue;
-    if (!serialised.includes(amount.amountRaw)) {
+    // An NFT the template itself RETURNS (a cancelled listing) is not an argument either:
+    // `cancel()` takes none. The marketplace differential still requires the review to name it.
+    if (amount.role === 'OUTPUT' && amount.nftId !== undefined && !carries('NonFungibleId', amount.nftId)) continue;
+    if (amount.nftId !== undefined) {
+      if (!carries('NonFungibleId', amount.nftId)) {
+        mismatches.push(`the instructions the provider will sign do not carry NFT ${amount.nftId} of ${amount.resourceAddress}`);
+      }
+    } else if (!carries('Amount', amount.amountRaw)) {
       mismatches.push(`the instructions the provider will sign do not carry ${amount.amountRaw} of ${amount.resourceAddress}`);
+    }
+    if (amount.resourceAddress.startsWith('resource_') && !carries('ResourceAddress', amount.resourceAddress)) {
+      mismatches.push(`the instructions the provider will sign never name ${amount.resourceAddress}`);
     }
   }
   if (legMentionsComponent(request.instructions, review.legs[0]?.componentAddress) === false) {
     mismatches.push('the instructions the provider will sign do not name the reviewed component');
   }
   return mismatches;
+}
+
+/** Every `{ Literal: hex }` argument anywhere in the serialised list. */
+function collectLiterals(node: unknown, into: Set<string> = new Set()): Set<string> {
+  if (Array.isArray(node)) {
+    for (const x of node) collectLiterals(x, into);
+  } else if (node !== null && typeof node === 'object') {
+    for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
+      if (key === 'Literal' && typeof value === 'string') into.add(value);
+      else collectLiterals(value, into);
+    }
+  }
+  return into;
 }
 
 /** Whether any `CallMethod` in the serialised list targets this component. */
@@ -447,9 +481,10 @@ function legMentionsComponent(instructions: readonly unknown[], componentAddress
     // to look for it in `CallFunction.address`. Without this branch every create
     // action (listing, item offer, collection bid) would fail this gate with a
     // correct review, because the only address such a transaction carries is the
-    // template's.
+    // template's. On the wire a TemplateAddress is the bare 64-hex hash; the review
+    // names it `template_<hash>`.
     const create = bag.CallFunction;
-    if (create !== undefined && create.address === componentAddress) return true;
+    if (create !== undefined && typeof create.address === 'string' && create.address === componentAddress.replace(/^template_/, '')) return true;
   }
   return false;
 }
