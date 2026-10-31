@@ -359,7 +359,7 @@ test('discovery: a listing from the pinned template is decoded and listed', asyn
 
   const items = await source.listItems(`resource_${collection}`);
   assert.equal(items.length, 1);
-  assert.equal(items[0].nftId, 'item-1');
+  assert.equal(items[0].nftId, 'str_item-1', 'a String-variant id is reported in upstream canonical form');
   assert.equal(items[0].listingAddress, `component_${component}`);
   assert.equal(items[0].priceRaw, '2500000');
   assert.equal(items[0].quoteResource, `resource_${quote}`);

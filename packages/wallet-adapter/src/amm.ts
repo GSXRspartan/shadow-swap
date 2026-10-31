@@ -6,9 +6,23 @@ import { TransactionPreview } from './interface.js';
  * buckets, so withdrawals are explicit instructions — an adapter cannot accidentally build
  * a call whose inputs cannot be produced on-chain.
  *
- * Every intent carries a maxEpoch expiry bound (bound to `with_max_epoch` on-chain): a
- * signed swap must never remain valid indefinitely after market state moves.
+ * Every intent carries a maxEpoch as REVIEW EVIDENCE. Ootle has no max-epoch instruction: the
+ * transaction's `max_epoch` field is set by the wallet that builds and signs it (Sapient: the
+ * current epoch + 10). Stale-price protection is the on-chain `min_output`, which every swap
+ * carries and which no wallet can drop.
  */
+/** ABI argument types used by the Pool template's methods (templates/fungible_pool/src/lib.rs). */
+export type AmmArgType = 'Bucket' | 'ResourceAddress' | 'Amount' | 'u16';
+
+/** Pool::swap(input_bucket: Bucket, output_resource: ResourceAddress, min_output: Amount) -> Bucket */
+export const SWAP_ARG_TYPES: readonly AmmArgType[] = ['Bucket', 'ResourceAddress', 'Amount'];
+/** Pool::add_liquidity(a_bucket: Bucket, b_bucket: Bucket) -> Bucket */
+export const ADD_LIQUIDITY_ARG_TYPES: readonly AmmArgType[] = ['Bucket', 'Bucket'];
+/** Pool::remove_liquidity(lp_bucket: Bucket) -> (Bucket, Bucket) */
+export const REMOVE_LIQUIDITY_ARG_TYPES: readonly AmmArgType[] = ['Bucket'];
+/** Pool::new(a_addr: ResourceAddress, b_addr: ResourceAddress, fee_bps: u16) -> Component */
+export const POOL_NEW_ARG_TYPES: readonly AmmArgType[] = ['ResourceAddress', 'ResourceAddress', 'u16'];
+
 export type AmmOperation = 'swap' | 'add_liquidity' | 'remove_liquidity' | 'multi_hop_swap' | 'create_pool';
 
 interface WorkspaceBucket {
@@ -25,6 +39,11 @@ export interface AmmCall {
   templateName?: string;
   method: string;
   args: Array<string | number | WorkspaceBucket>;
+  /**
+   * The callee's ABI type for each arg, in order (`Bucket` = workspace reference). The wire
+   * serializer encodes each literal from its declared type and refuses an undeclared one.
+   */
+  argTypes: readonly AmmArgType[];
   resourcesInvolved: string[];
   /**
    * Where the call's return value is put. REQUIRED for every call that returns a bucket:
@@ -45,7 +64,7 @@ export type AmmInstruction =
       output: WorkspaceBucket;
     }
   | ({ kind: 'call_method' } & AmmCall)
-  | { kind: 'call_function'; templateAddress: string; method: string; args: Array<string | number | WorkspaceBucket>; output?: WorkspaceBucket }
+  | { kind: 'call_function'; templateAddress: string; method: string; args: Array<string | number | WorkspaceBucket>; argTypes: readonly AmmArgType[]; output?: WorkspaceBucket }
   | { kind: 'deposit_all'; accountAddress: string; bucket: WorkspaceBucket };
 
 /** Evidence recorded for the operation history store at construction time. */
@@ -97,9 +116,6 @@ function bucket(name: string): WorkspaceBucket {
   return { kind: 'workspace_bucket', name };
 }
 
-function methodCall(componentAddress: string, method: string, args: AmmCall['args'], resourcesInvolved: string[]): AmmInstruction {
-  return { kind: 'call_method', componentAddress, method, args, resourcesInvolved };
-}
 
 function assertRawAmount(value: string, field: string): void {
   if (!/^\d+$/.test(value)) throw new Error(`${field} must be a raw non-negative integer string, got ${value}`);
@@ -119,7 +135,7 @@ export interface SwapIntentInput {
   rawInputAmount: string;
   /** On-chain enforced slippage bound (from the resolver, never the raw user tolerance). */
   minOutput: string;
-  /** Transaction expiry bound (with_max_epoch). */
+  /** Expiry evidence for the review; the wallet sets the transaction's real max_epoch. */
   maxEpoch: string;
   operationId: string;
   /** Authoritative quote carried for evidence; adapters must not recompute it. */
@@ -157,6 +173,7 @@ export function buildSwapIntent(input: SwapIntentInput): AmmTransactionIntent {
         componentAddress: input.poolComponent,
         method: 'swap',
         args: [inputValue, input.outputResource, input.minOutput],
+        argTypes: SWAP_ARG_TYPES,
         resourcesInvolved: [input.inputResource, input.outputResource],
       },
     ],
@@ -173,6 +190,7 @@ export function buildSwapIntent(input: SwapIntentInput): AmmTransactionIntent {
         componentAddress: input.poolComponent,
         method: 'swap',
         args: [inputValue, input.outputResource, input.minOutput],
+        argTypes: SWAP_ARG_TYPES,
         resourcesInvolved: [input.inputResource, input.outputResource],
         output: outputValue,
       },
@@ -230,6 +248,7 @@ export function buildAddLiquidityIntent(input: AddLiquidityIntentInput): AmmTran
         componentAddress: input.poolComponent,
         method: 'add_liquidity',
         args: [a, b],
+        argTypes: ADD_LIQUIDITY_ARG_TYPES,
         resourcesInvolved: [input.resourceA, input.resourceB],
       },
     ],
@@ -241,6 +260,7 @@ export function buildAddLiquidityIntent(input: AddLiquidityIntentInput): AmmTran
         componentAddress: input.poolComponent,
         method: 'add_liquidity',
         args: [a, b],
+        argTypes: ADD_LIQUIDITY_ARG_TYPES,
         resourcesInvolved: [input.resourceA, input.resourceB],
         output: lp,
       },
@@ -291,6 +311,7 @@ export function buildRemoveLiquidityIntent(input: RemoveLiquidityIntentInput): A
         componentAddress: input.poolComponent,
         method: 'remove_liquidity',
         args: [lp],
+        argTypes: REMOVE_LIQUIDITY_ARG_TYPES,
         resourcesInvolved: [input.lpResource],
       },
     ],
@@ -307,6 +328,7 @@ export function buildRemoveLiquidityIntent(input: RemoveLiquidityIntentInput): A
         componentAddress: input.poolComponent,
         method: 'remove_liquidity',
         args: [lp],
+        argTypes: REMOVE_LIQUIDITY_ARG_TYPES,
         resourcesInvolved: [input.lpResource],
         output: bucket('remove_liquidity_out'),
       },
@@ -414,6 +436,7 @@ export function buildMultiHopSwapIntent(input: MultiHopSwapIntentInput): AmmTran
       componentAddress: hop.poolComponent,
       method: 'swap',
       args: [buckets[i]!, hop.outputResource, min],
+      argTypes: SWAP_ARG_TYPES,
       resourcesInvolved: [hop.inputResource, hop.outputResource],
       output: out,
     };
@@ -518,13 +541,13 @@ export function buildCreatePoolIntent(input: CreatePoolIntentInput): AmmTransact
   const a = bucket('create_pool_a');
   const b = bucket('create_pool_b');
   const lp = bucket('create_pool_lp');
-  const addCall: AmmCall = { componentWorkspace: pool, method: 'add_liquidity', args: [a, b], resourcesInvolved: [input.resourceA, input.resourceB], output: lp };
+  const addCall: AmmCall = { componentWorkspace: pool, method: 'add_liquidity', args: [a, b], argTypes: ADD_LIQUIDITY_ARG_TYPES, resourcesInvolved: [input.resourceA, input.resourceB], output: lp };
   return {
     operation: 'create_pool',
     poolComponent: `template_${template}`,
     calls: [addCall],
     instructions: [
-      { kind: 'call_function', templateAddress: `template_${template}`, method: 'new', args: [input.resourceA, input.resourceB, String(input.feeBps)], output: pool },
+      { kind: 'call_function', templateAddress: `template_${template}`, method: 'new', args: [input.resourceA, input.resourceB, String(input.feeBps)], argTypes: POOL_NEW_ARG_TYPES, output: pool },
       { kind: 'withdraw_fungible', accountAddress: input.accountAddress, resourceAddress: input.resourceA, amount: input.rawAmountA, output: a },
       { kind: 'withdraw_fungible', accountAddress: input.accountAddress, resourceAddress: input.resourceB, amount: input.rawAmountB, output: b },
       { kind: 'call_method', ...addCall },
@@ -551,9 +574,8 @@ export function toAmmPreview(intentValue: AmmTransactionIntent): TransactionPrev
     resourcesInvolved: [...new Set(intentValue.calls.flatMap((call) => call.resourcesInvolved))],
     estimatedOutputs: intentValue.evidence.quote ? [{ resource: intentValue.evidence.quote.outputResource, amount: intentValue.evidence.quote.minOutput }] : [],
     fee: 0,
-    // Display shim only: TransactionPreview.maxEpoch is a JS number. The AUTHORITATIVE
-    // expiry bound is intentValue.evidence.maxEpoch (decimal string) and must be bound via
-    // with_max_epoch by the adapter that builds the real manifest.
+    // Display shim only: TransactionPreview.maxEpoch is a JS number. The transaction's real
+    // max_epoch is chosen by the signing wallet; evidence.maxEpoch is review evidence.
     maxEpoch: safeEpochShim(intentValue.evidence.maxEpoch),
     privacyDisclosure: 'PUBLIC AMM BOUNDARY: pool reserves, swap direction, and amounts are revealed.',
     networkName: '',
