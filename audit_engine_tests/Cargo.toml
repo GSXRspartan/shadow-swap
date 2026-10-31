@@ -14,21 +14,23 @@ publish = false
 [dependencies]
 
 [dev-dependencies]
-# One cohort, one revision: the v0.46.0 release commit (cc8a83b). The engine and test tooling that
-# execute the templates in tests must be the same build the Esmeralda validators run, or a test
-# pass proves nothing about the network. Esmeralda activated Protocol V2 at epoch 12220, so the
-# network cohort is v0.46.0 — a v0.45 harness would prove the superseded protocol.
+# One cohort, one revision: the v0.48.0 release commit (6a25dbc, 2026-10-29). The engine and test
+# tooling that execute the templates in tests must be the same build the Esmeralda validators run,
+# or a test pass proves nothing about the network. v0.48.0 is the testnet-reset release (single V0
+# genesis, sr25519 transaction signatures, CBOR-encoded indexer values); the suite compiled and
+# passed against it with no source changes (47/47 locally, 2026-10-31).
 #
-# v0.46.0 retired `FinalizeResult.execution_results` (#2859): template return values are no longer
-# recorded in the transaction result. `TemplateTest::expect_return(index)` replaces the old
-# `res.finalize.execution_results[0].get_value(...)` reads.
-tari_template_test_tooling = { git = "https://github.com/tari-project/tari-ootle.git", rev = "cc8a83bcab88e03e0fcf760d2652ab6f1e067d8a" }
-tari_template_lib = { git = "https://github.com/tari-project/tari-ootle.git", rev = "cc8a83bcab88e03e0fcf760d2652ab6f1e067d8a" }
-tari_template_abi = { git = "https://github.com/tari-project/tari-ootle.git", rev = "cc8a83bcab88e03e0fcf760d2652ab6f1e067d8a" }
-tari_ootle_transaction = { git = "https://github.com/tari-project/tari-ootle.git", rev = "cc8a83bcab88e03e0fcf760d2652ab6f1e067d8a" }
-tari_ootle_common_types = { git = "https://github.com/tari-project/tari-ootle.git", rev = "cc8a83bcab88e03e0fcf760d2652ab6f1e067d8a" }
-tari_engine_types = { git = "https://github.com/tari-project/tari-ootle.git", rev = "cc8a83bcab88e03e0fcf760d2652ab6f1e067d8a" }
-# NOT a floating "0.24": the v0.46.0 workspace still pins tari_crypto 0.24.0 (unchanged from
-# v0.45.0). tari_engine_types 0.46.0 requires tari_crypto ^0.24, so this must match or the cohort
-# is unresolvable.
-tari_crypto = "0.24.0"
+# History: v0.46.0 retired `FinalizeResult.execution_results` (#2859); `TemplateTest::return_values()`
+# replaces the old `res.finalize.execution_results[0].get_value(...)` reads.
+tari_template_test_tooling = { git = "https://github.com/tari-project/tari-ootle.git", rev = "6a25dbc524581bfaa0a3c6ef120f8d59cc827572" }
+tari_template_lib = { git = "https://github.com/tari-project/tari-ootle.git", rev = "6a25dbc524581bfaa0a3c6ef120f8d59cc827572" }
+tari_template_abi = { git = "https://github.com/tari-project/tari-ootle.git", rev = "6a25dbc524581bfaa0a3c6ef120f8d59cc827572" }
+tari_ootle_transaction = { git = "https://github.com/tari-project/tari-ootle.git", rev = "6a25dbc524581bfaa0a3c6ef120f8d59cc827572" }
+tari_ootle_common_types = { git = "https://github.com/tari-project/tari-ootle.git", rev = "6a25dbc524581bfaa0a3c6ef120f8d59cc827572" }
+tari_engine_types = { git = "https://github.com/tari-project/tari-ootle.git", rev = "6a25dbc524581bfaa0a3c6ef120f8d59cc827572" }
+# NOT a floating "0.24": the v0.48.0 workspace pins tari_crypto 0.24.1. tari_engine_types 0.48.0
+# requires tari_crypto ^0.24, so this must match the workspace or the cohort is unresolvable.
+tari_crypto = "0.24.1"
+# Used only by tests/wire_fixtures_v048.rs to render `Encoded<T>` exactly as the indexer's JSON does
+# (base64). Already in the lockfile through the engine; declared here so the test can name it.
+serde_json = "1"
