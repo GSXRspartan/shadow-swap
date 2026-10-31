@@ -20,6 +20,9 @@
 //       exact integers can never hold unaccounted value.
 //   r10 a dangling output fails the transaction, exactly as for Pool v2 (m05), so every
 //       browser intent must deposit refunds and outputs.
+//   r11 a MIXED multi-hop crosses a revealed pool and a Pool v2 in ONE atomic transaction, so
+//       a created-Stealth asset can reach a purely public one and only the transaction's
+//       INPUT needs a Stealth-capable withdrawal.
 use tari_ootle_common_types::substate_type::SubstateType;
 use tari_ootle_transaction::args;
 use tari_template_lib::types::{Amount, ComponentAddress, NonFungibleAddress, ResourceAddress};
@@ -787,4 +790,154 @@ fn r10_an_undeposited_output_fails_the_whole_transaction() {
             .build_and_seal(&w.key.clone());
     let proof = w.proof.clone();
     w.t.execute_expect_failure(tx, vec![proof]);
+}
+
+#[test]
+fn r11_a_mixed_multi_hop_crosses_a_revealed_pool_and_a_public_pool_atomically() {
+    // Both templates expose the SAME swap signature — `swap(Bucket, ResourceAddress, Amount)
+    // -> Bucket` — so one route can cross both in a single transaction, with each hop's bucket
+    // passing through the workspace. That is what lets a created-Stealth asset reach a purely
+    // public asset: Stealth -> (revealed pool) -> PUB -> (Pool v2) -> PUB2, atomically, with
+    // the intermediate never touching the account.
+    //
+    // It also means only the transaction's INPUT needs a Stealth-capable withdrawal; the
+    // intermediate hops need no wallet capability at all.
+    let mut w = world();
+    let pub1 = fungible(&mut w, "PB1", 3);
+    let pub2 = fungible(&mut w, "PB2", 3);
+    let stealth = stealth_into_account(&mut w, 1_000_000_000, 500_000_000);
+
+    let revealed = create_and_fund(&mut w, stealth, pub1, 100_000_000, 100_000_000);
+    // A Pool v2 for the two PUBLIC resources, created and funded the way m06 does.
+    let pool_v2_template = w.t.get_template_address("Pool");
+    let account = w.account;
+    let tx =
+        w.t.transaction()
+            .call_function(pool_v2_template, "new", args![pub1, pub2, FEE_BPS])
+            .put_last_instruction_output_on_workspace("pool")
+            .call_method(
+                account,
+                "withdraw",
+                args![pub1, Amount::from(100_000_000u64)],
+            )
+            .put_last_instruction_output_on_workspace("a")
+            .call_method(
+                account,
+                "withdraw",
+                args![pub2, Amount::from(200_000_000u64)],
+            )
+            .put_last_instruction_output_on_workspace("b")
+            .call_method(
+                "pool",
+                "add_liquidity",
+                args![Workspace("a"), Workspace("b")],
+            )
+            .put_last_instruction_output_on_workspace("lp")
+            .call_method(account, "deposit", args![Workspace("lp")])
+            .build_and_seal(&w.key.clone());
+    let proof = w.proof.clone();
+    let result = w.t.execute_expect_success(tx, vec![proof]);
+    let public_pool = result
+        .expect_success()
+        .up_iter()
+        .find(|(id, s)| {
+            id.is_component()
+                && *s.substate_value().component().unwrap().template_address() == pool_v2_template
+        })
+        .map(|(id, _)| id.as_component_address().unwrap())
+        .expect("the Pool v2 was created");
+
+    // The composed integer quote, hop by hop, with each pool's own 30 bps.
+    let hop1 = quote(
+        reserve(&mut w, revealed, stealth),
+        reserve(&mut w, revealed, pub1),
+        1_000_000,
+        FEE_BPS as u128,
+    );
+    let hop2 = quote(
+        reserve(&mut w, public_pool, pub1),
+        reserve(&mut w, public_pool, pub2),
+        hop1,
+        FEE_BPS as u128,
+    );
+    assert!(hop2 > 0);
+
+    let before_mid = balance(&mut w, pub1);
+    let before_out = balance(&mut w, pub2);
+    let tx =
+        w.t.transaction()
+            .call_method(
+                account,
+                "withdraw",
+                args![stealth, Amount::from(1_000_000u64)],
+            )
+            .put_last_instruction_output_on_workspace("route_0")
+            // Hop 1 through the REVEALED pool, intermediate min 1.
+            .call_method(
+                revealed,
+                "swap",
+                args![Workspace("route_0"), pub1, Amount::from(1u64)],
+            )
+            .put_last_instruction_output_on_workspace("route_1")
+            // Hop 2 through POOL V2, carrying the whole-route minimum.
+            .call_method(
+                public_pool,
+                "swap",
+                args![Workspace("route_1"), pub2, Amount::from(hop2 as u64)],
+            )
+            .put_last_instruction_output_on_workspace("route_2")
+            .call_method(account, "deposit", args![Workspace("route_2")])
+            .build_and_seal(&w.key.clone());
+    let proof = w.proof.clone();
+    w.t.execute_expect_success(tx, vec![proof]);
+    assert_eq!(
+        balance(&mut w, pub2) - before_out,
+        hop2,
+        "the engine pays exactly the composed integer quote"
+    );
+    assert_eq!(
+        balance(&mut w, pub1),
+        before_mid,
+        "the intermediate never touched the account"
+    );
+
+    // ATOMIC: an unreachable whole-route minimum reverts BOTH hops, so the revealed pool's
+    // reserves are untouched and nothing partially settled.
+    let r_stealth = reserve(&mut w, revealed, stealth);
+    let before_stealth = balance(&mut w, stealth);
+    let tx =
+        w.t.transaction()
+            .call_method(
+                account,
+                "withdraw",
+                args![stealth, Amount::from(1_000_000u64)],
+            )
+            .put_last_instruction_output_on_workspace("route_0")
+            .call_method(
+                revealed,
+                "swap",
+                args![Workspace("route_0"), pub1, Amount::from(1u64)],
+            )
+            .put_last_instruction_output_on_workspace("route_1")
+            .call_method(
+                public_pool,
+                "swap",
+                args![Workspace("route_1"), pub2, Amount::from(999_999_999u64)],
+            )
+            .put_last_instruction_output_on_workspace("route_2")
+            .call_method(account, "deposit", args![Workspace("route_2")])
+            .build_and_seal(&w.key.clone());
+    let proof = w.proof.clone();
+    let reason = format!("{:?}", w.t.execute_expect_failure(tx, vec![proof]));
+    assert!(reason.contains("Slippage"), "{reason}");
+    assert_eq!(
+        reserve(&mut w, revealed, stealth),
+        r_stealth,
+        "hop 1 reverted too"
+    );
+    assert_eq!(
+        balance(&mut w, stealth),
+        before_stealth,
+        "the input was not spent"
+    );
 }

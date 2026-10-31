@@ -16,6 +16,7 @@ const fixture = require('./fixtures/ootle-v048-instructions.json');
 const w = require('@tari-ootle/wallet-adapter');
 const { buildSignableInstructions } = require('../build-test/lib/instructions.js');
 const { encodeLiteral, LiteralEncodingError } = require('../build-test/lib/instructionArgs.js');
+const review = require('../build-test/lib/review.js');
 
 const scenario = (name) => {
   const s = fixture.scenarios.find((x) => x.name === name);
@@ -28,7 +29,7 @@ const evidence = { quotedOutput: '1', feeBps: '30', slippageBps: '50', effective
 test('fixture: produced by the pinned v0.48.0 engine', () => {
   assert.match(fixture.cohort, /v0\.48\.0 \(6a25dbc5/);
   assert.ok(fixture.literals.length >= 30);
-  assert.ok(fixture.scenarios.length >= 12);
+  assert.ok(fixture.scenarios.length >= 16);
 });
 
 test('literals: every engine-produced CBOR encoding is reproduced byte for byte', () => {
@@ -118,4 +119,58 @@ test('wire: a call whose argument types are not declared is refused, not guessed
   assert.throws(() => wire(stripped), /declared type/);
   const mistyped = intent.instructions.map((i) => (i.kind === 'call_method' ? { ...i, argTypes: ['Bucket', 'Amount', 'Amount'] } : i));
   assert.throws(() => wire(mistyped), LiteralEncodingError);
+});
+
+// ---------------------------------------------------------------------------
+// RevealedAssetPool: AMM liquidity for revealed-value private-typed assets. The engine
+// scenarios below executed with a created-Stealth resource on one side, which Pool v2 refuses.
+// ---------------------------------------------------------------------------
+
+test('wire == engine: create_revealed_pool (new -> workspace -> add_liquidity -> deposit all three)', () => {
+  const { params, instructions } = scenario('create_revealed_pool');
+  const intent = w.buildCreateRevealedPoolIntent({ ...params, maxEpoch: '10', operationId: 'op' });
+  assert.deepEqual(wire(intent), instructions);
+  // The LP and BOTH refunds are deposited: leaving any on the workspace fails the transaction.
+  assert.equal(instructions.filter((i) => i.CallMethod?.method === 'deposit').length, 3);
+});
+
+test('wire == engine: revealed_swap', () => {
+  const { params, instructions } = scenario('revealed_swap');
+  assert.deepEqual(wire(w.buildRevealedSwapIntent({ ...params, maxEpoch: '10', operationId: 'op', quoteEvidence: evidence })), instructions);
+});
+
+test('wire == engine: revealed_add_liquidity (three outputs deposited)', () => {
+  const { params, instructions } = scenario('revealed_add_liquidity');
+  assert.deepEqual(wire(w.buildRevealedAddLiquidityIntent({ ...params, maxEpoch: '10', operationId: 'op' })), instructions);
+});
+
+test('wire == engine: revealed_remove_liquidity (on-chain exit minimums)', () => {
+  const { params, instructions } = scenario('revealed_remove_liquidity');
+  const intent = w.buildRevealedRemoveLiquidityIntent({ ...params, maxEpoch: '10', operationId: 'op' });
+  assert.deepEqual(wire(intent), instructions);
+  // min_a and min_b are real call arguments, not UI-side checks.
+  const call = instructions.find((i) => i.CallMethod?.method === 'remove_liquidity');
+  assert.equal(call.CallMethod.args.length, 3);
+});
+
+test('revealed pool: the first-deposit share policy is previewed before anything is signed', () => {
+  const { params } = scenario('create_revealed_pool');
+  const preview = w.revealedInitialLiquidityPreview(params.rawAmountA, params.rawAmountB);
+  assert.equal(BigInt(preview.lockedShares), w.REVEALED_POOL_LOCKED_LIQUIDITY);
+  assert.equal(BigInt(preview.totalShares) - BigInt(preview.lockedShares), BigInt(preview.creatorShares));
+  assert.ok(BigInt(preview.totalShares) >= w.REVEALED_POOL_MIN_FIRST_SHARES);
+  // A dust first deposit is refused with the template's own policy, in the browser, before a
+  // wallet is asked to sign a transaction the engine would reject (engine: r08).
+  assert.throws(() => w.revealedInitialLiquidityPreview('1000', '1000'), /at least 100000/);
+  assert.throws(() => w.buildCreateRevealedPoolIntent({ ...params, rawAmountA: '1000', rawAmountB: '1000', maxEpoch: '10', operationId: 'op' }), /at least 100000/);
+});
+
+test('revealed pool: a review names the revealed-pool operation, never the public AMM one', () => {
+  const { params } = scenario('revealed_swap');
+  const intent = w.buildRevealedSwapIntent({ ...params, maxEpoch: '10', operationId: 'op', quoteEvidence: evidence });
+  const identity = require('../build-test/lib/executionIdentity.js').captureIdentity({ provider: {}, expectedNetwork: 'esmeralda', providerNetwork: 'esmeralda', account: params.accountAddress, capabilities: { transactionRequests: true }, nonce: 'n1' });
+  const r = review.reviewFromAmmIntent({ intent, operationId: 'op', network: 'esmeralda', identity, maxEpochRaw: '10' });
+  assert.equal(r.legs[0].operation, 'REVEALED_POOL_SWAP');
+  const diff = review.diffReviewForIntent(r, intent);
+  assert.equal(diff.ok, true, diff.mismatches.join('; '));
 });

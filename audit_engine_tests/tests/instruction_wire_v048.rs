@@ -233,8 +233,10 @@ fn world() -> World {
             "../templates/fungible_pool",
             "../templates/p2p_offer",
             "../templates/nft_marketplace",
+            "../templates/revealed_asset_pool",
             "templates/faucet",
             "templates/nft_faucet",
+            "templates/stealth_probe",
         ],
     );
     t.enable_auto_add_proofs_from_signers();
@@ -663,6 +665,146 @@ fn scenarios() -> Vec<Value> {
     let (json, _) = run(&mut w, Who::Alice, ins);
     assert_eq!(balance(&mut w, alice, z) - za, 777);
     out.push(json!({ "name": "swap_offer_cancel", "params": { "offerComponent": s(to_cancel), "accountAddress": s(alice) }, "instructions": json }));
+
+    // 10b. RevealedAssetPool: a SEPARATE pool for revealed-value private-typed assets. The
+    //      stealth probe's resource is created-Stealth, which Pool v2 refuses.
+    let rev_template = w.t.get_template_address("RevealedAssetPool");
+    let probe: ComponentAddress = w.t.call_function(
+        "StealthProbe",
+        "new",
+        args![Amount::from(1_000_000_000u64)],
+        vec![],
+    );
+    let pstl =
+        w.t.get_previous_output_address(SubstateType::Resource)
+            .as_resource_address()
+            .unwrap();
+    for to in [alice, bob] {
+        let tx =
+            w.t.transaction()
+                .call_method(probe, "take", args![Amount::from(200_000_000u64)])
+                .put_last_instruction_output_on_workspace("s")
+                .call_method(to, "deposit", args![Workspace("s")]);
+        w.t.build_and_execute(tx, vec![]).expect_success();
+    }
+
+    // create_revealed_pool: new -> workspace -> withdraw both -> add_liquidity -> deposit x3.
+    let ins =
+        w.t.transaction()
+            .call_function(rev_template, "new", args![pstl, x, 30u16])
+            .put_last_instruction_output_on_workspace("new_revealed_pool")
+            .call_method(alice, "withdraw", args![pstl, Amount::from(100_000_000u64)])
+            .put_last_instruction_output_on_workspace("revealed_create_a")
+            .call_method(alice, "withdraw", args![x, Amount::from(50_000_000u64)])
+            .put_last_instruction_output_on_workspace("revealed_create_b")
+            .call_method(
+                "new_revealed_pool",
+                "add_liquidity",
+                args![
+                    Workspace("revealed_create_a"),
+                    Workspace("revealed_create_b"),
+                    Amount::zero()
+                ],
+            )
+            .put_last_instruction_output_on_workspace("revealed_create_out")
+            .call_method(alice, "deposit", args![Workspace("revealed_create_out.0")])
+            .call_method(alice, "deposit", args![Workspace("revealed_create_out.1")])
+            .call_method(alice, "deposit", args![Workspace("revealed_create_out.2")])
+            .into_instructions();
+    let (json, result) = run(&mut w, Who::Alice, ins);
+    let rev_pool = created_component(&result, rev_template);
+    out.push(json!({
+        "name": "create_revealed_pool",
+        "params": { "poolTemplateAddress": hex(rev_template.as_ref()), "accountAddress": s(alice), "resourceA": s(pstl), "resourceB": s(x), "rawAmountA": "100000000", "rawAmountB": "50000000", "feeBps": 30 },
+        "instructions": json,
+    }));
+
+    // revealed_swap: the created-Stealth asset is the INPUT, so this is the shape a Sapient
+    // seed account wraps in withdrawStealthAndExecute.
+    let ins =
+        w.t.transaction()
+            .call_method(bob, "withdraw", args![pstl, Amount::from(1_000_000u64)])
+            .put_last_instruction_output_on_workspace("revealed_swap_input")
+            .call_method(
+                rev_pool,
+                "swap",
+                args![Workspace("revealed_swap_input"), x, Amount::from(1u64)],
+            )
+            .put_last_instruction_output_on_workspace("revealed_swap_output")
+            .call_method(bob, "deposit", args![Workspace("revealed_swap_output")])
+            .into_instructions();
+    let x0 = balance(&mut w, bob, x);
+    let (json, _) = run(&mut w, Who::Bob, ins);
+    assert!(
+        balance(&mut w, bob, x) > x0,
+        "the revealed-pool swap paid out"
+    );
+    out.push(json!({
+        "name": "revealed_swap",
+        "params": { "poolComponent": s(rev_pool), "accountAddress": s(bob), "inputResource": s(pstl), "outputResource": s(x), "rawInputAmount": "1000000", "minOutput": "1" },
+        "instructions": json,
+    }));
+
+    // revealed_add_liquidity: three outputs, all deposited (refunds may be empty).
+    let ins =
+        w.t.transaction()
+            .call_method(bob, "withdraw", args![pstl, Amount::from(10_000_000u64)])
+            .put_last_instruction_output_on_workspace("revealed_add_a")
+            .call_method(bob, "withdraw", args![x, Amount::from(10_000_000u64)])
+            .put_last_instruction_output_on_workspace("revealed_add_b")
+            .call_method(
+                rev_pool,
+                "add_liquidity",
+                args![
+                    Workspace("revealed_add_a"),
+                    Workspace("revealed_add_b"),
+                    Amount::from(1u64)
+                ],
+            )
+            .put_last_instruction_output_on_workspace("revealed_add_out")
+            .call_method(bob, "deposit", args![Workspace("revealed_add_out.0")])
+            .call_method(bob, "deposit", args![Workspace("revealed_add_out.1")])
+            .call_method(bob, "deposit", args![Workspace("revealed_add_out.2")])
+            .into_instructions();
+    let (json, _) = run(&mut w, Who::Bob, ins);
+    let rev_lp: ResourceAddress = w.t.call_method(rev_pool, "lp_resource", args![], vec![]);
+    let bob_rev_lp = balance(&mut w, bob, rev_lp);
+    assert!(bob_rev_lp > 0, "LP minted to the depositor");
+    out.push(json!({
+        "name": "revealed_add_liquidity",
+        "params": { "poolComponent": s(rev_pool), "accountAddress": s(bob), "resourceA": s(pstl), "resourceB": s(x), "rawAmountA": "10000000", "rawAmountB": "10000000", "minLpOut": "1" },
+        "instructions": json,
+    }));
+
+    // revealed_remove_liquidity: on-chain exit minimums, both sides deposited.
+    let ins =
+        w.t.transaction()
+            .call_method(bob, "withdraw", args![rev_lp, Amount::from(bob_rev_lp)])
+            .put_last_instruction_output_on_workspace("revealed_remove_lp")
+            .call_method(
+                rev_pool,
+                "remove_liquidity",
+                args![
+                    Workspace("revealed_remove_lp"),
+                    Amount::from(1u64),
+                    Amount::from(1u64)
+                ],
+            )
+            .put_last_instruction_output_on_workspace("revealed_remove_out")
+            .call_method(bob, "deposit", args![Workspace("revealed_remove_out.0")])
+            .call_method(bob, "deposit", args![Workspace("revealed_remove_out.1")])
+            .into_instructions();
+    let (json, _) = run(&mut w, Who::Bob, ins);
+    assert_eq!(
+        balance(&mut w, bob, rev_lp),
+        0,
+        "the whole LP position was burned"
+    );
+    out.push(json!({
+        "name": "revealed_remove_liquidity",
+        "params": { "poolComponent": s(rev_pool), "accountAddress": s(bob), "lpResource": s(rev_lp), "rawLpAmount": bob_rev_lp.to_string(), "minA": "1", "minB": "1" },
+        "instructions": json,
+    }));
 
     // 11. Marketplace listing via withdraw_non_fungible (the browser's NFT withdrawal).
     let nc = nft_into(&mut w, "art-3", "ARTC", alice);

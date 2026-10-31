@@ -18,6 +18,8 @@ export type AssetKind = 'fungible' | 'stealth' | 'confidential' | 'non_fungible'
 export type Mechanism =
   | 'AMM'
   | 'MULTI_HOP_AMM'
+  | 'REVEALED_POOL'
+  | 'MIXED_MULTI_HOP'
   | 'NFT_MARKETPLACE'
   | 'P2P_OFFER'
   | 'NFT_BARTER'
@@ -47,6 +49,21 @@ export interface PairInput {
   readonly poolTemplateRecorded: boolean;
   /** Whether the verified network generation records a SwapOffer template (P2P offers). */
   readonly offerTemplateRecorded?: boolean;
+  /**
+   * Verified REVEALED-VALUE pools with authoritative reserves. A separate graph from `pools`:
+   * these hold the privacy-typed assets Pool v2 refuses, and their reserves are public.
+   */
+  readonly revealedPools?: readonly PoolEdge[];
+  /** Whether the verified generation records a RevealedAssetPool template. */
+  readonly revealedPoolTemplateRecorded?: boolean;
+}
+
+/**
+ * Resources a revealed-value pool may hold: anything whose value is an exact revealed
+ * integer. NFTs are excluded (no divisible amount to price).
+ */
+function revealedEligible(kind: AssetKind): boolean {
+  return kind === 'fungible' || kind === 'stealth' || kind === 'confidential';
 }
 
 /** Native tTARI is a Stealth-typed resource the Pool accepts by exact address. */
@@ -96,6 +113,62 @@ export function resolvePairRoutes(pair: PairInput): RouteOption[] {
   if (input.kind === 'non_fungible' && output.kind !== 'non_fungible') {
     options.push({ mechanism: 'NFT_MARKETPLACE', label: 'NFT marketplace', availability: 'EXECUTABLE', privacy: 'Public listing, offer or collection bid.', requiredCapabilities: ['transactionRequests'] });
   }
+  // --- Revealed-value pools (templates/revealed_asset_pool) ----------------------------
+  //
+  // A SEPARATE graph from the public AMM. It admits exactly the assets Pool v2 refuses
+  // (created-Stealth, Confidential) alongside public fungibles, and its reserves are public
+  // integers, so every option here carries the transparency disclosure.
+  const bothRevealed = revealedEligible(input.kind) && revealedEligible(output.kind);
+  if (bothRevealed) {
+    const amount = pair.amountIn !== undefined && /^\d+$/.test(pair.amountIn) && pair.amountIn !== '0' ? pair.amountIn : undefined;
+    const revealed = pair.revealedPools ?? [];
+    const recorded = pair.revealedPoolTemplateRecorded === true;
+    const ranked = amount === undefined ? undefined : rankRoutes(revealed, input.resource, output.resource, amount);
+    const direct = ranked?.routes.filter((r) => r.kind === 'DIRECT_AMM') ?? [];
+    const noTemplate = 'No Shadow Swap RevealedAssetPool template is recorded for this network generation, so there is no revealed-value pool to trade against.';
+    const privateSide = input.kind === 'stealth' || input.kind === 'confidential' || output.kind === 'stealth' || output.kind === 'confidential';
+    const caps = input.kind === 'stealth' || input.kind === 'confidential'
+      ? ['transactionRequests', 'Stealth-typed input: Sapient seed accounts use withdrawStealthAndExecute; walletd-relayed accounts use a plain withdraw']
+      : ['transactionRequests'];
+    options.push({
+      mechanism: 'REVEALED_POOL',
+      label: privateSide ? 'Transparent pool (revealed-value)' : 'Transparent pool',
+      availability: !recorded ? 'BLOCKED' : amount === undefined ? 'NO_LIQUIDITY' : direct.length > 0 ? 'EXECUTABLE' : 'NO_LIQUIDITY',
+      ...(!recorded ? { reason: noTemplate } : amount === undefined ? { reason: 'Enter an amount to quote.' } : direct.length === 0 ? { reason: 'No verified revealed-value pool holds this exact pair.' } : {}),
+      privacy: privateSide
+        ? 'The traded amount is REVEALED: this pool holds public reserves, so the amount, its timing and your account are visible for this trade. The asset keeps its type; nothing is converted.'
+        : 'Public: amounts and reserves are revealed at the pool.',
+      requiredCapabilities: caps,
+      quotes: direct,
+    });
+
+    // A route may cross BOTH pool kinds in one transaction: both templates expose the same
+    // `swap(Bucket, ResourceAddress, Amount)` signature, so the instruction shape is
+    // identical and every intermediate stays on the workspace (engine: revealed_asset_pool
+    // r11). That is what lets a privacy-typed asset reach a purely public one atomically, and
+    // only the transaction's INPUT needs a Stealth-capable withdrawal.
+    if (amount !== undefined && recorded && pair.poolTemplateRecorded) {
+      const merged = [...pair.pools, ...revealed];
+      const mixedRanked = rankRoutes(merged, input.resource, output.resource, amount);
+      const mixed = mixedRanked.routes.filter((r) => {
+        if (r.hops.length < 2) return false;
+        const kinds = new Set(r.hops.map((h) => (revealed.some((p) => p.poolComponent === h.poolComponent) ? 'REVEALED' : 'PUBLIC')));
+        return kinds.size > 1;
+      });
+      if (mixed.length > 0) {
+        options.push({
+          mechanism: 'MIXED_MULTI_HOP',
+          label: 'Multi-hop across a transparent and a public pool',
+          availability: 'EXECUTABLE',
+          privacy:
+            'The traded amount is REVEALED at every hop, including the transparent pool. One atomic transaction; the intermediate asset never reaches your account.',
+          requiredCapabilities: caps,
+          quotes: mixed,
+        });
+      }
+    }
+  }
+
   const p2p = (mechanism: 'P2P_OFFER' | 'NFT_BARTER', label: string, privacy: string, extraReason = '', caps: readonly string[] = ['transactionRequests']): RouteOption => ({
     mechanism,
     label,
