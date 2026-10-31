@@ -9,6 +9,7 @@ export * from './execution.js';
 export * from './ootle.js';
 export * from './poolSubstate.js';
 export * from './amm.js';
+export * from './ammRouter.js';
 export * from './history.js';
 export * from './execution_flow.js';
 export * from './chains/minotari.js';

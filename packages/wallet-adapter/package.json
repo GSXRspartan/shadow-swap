@@ -22,7 +22,7 @@
     "build": "tsc && tsc -p tsconfig.esm.json && node ./scripts/write-esm-marker.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "echo 'No lint configured'",
-    "test": "npm run build && node --test test/marketplace.test.cjs test/amm.test.cjs test/adapter_honesty.test.cjs",
+    "test": "npm run build && node --test test/marketplace.test.cjs test/amm.test.cjs test/adapter_honesty.test.cjs test/routes.test.cjs",
     "test:packaging": "npm run build && node --test test/packaging.test.cjs"
   },
   "dependencies": {

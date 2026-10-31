@@ -227,7 +227,7 @@ export function createReview(input: {
 // ---------------------------------------------------------------------------
 
 interface AmmIntentLike {
-  operation: 'swap' | 'add_liquidity' | 'remove_liquidity';
+  operation: 'swap' | 'add_liquidity' | 'remove_liquidity' | 'multi_hop_swap' | 'create_pool';
   poolComponent: string;
   instructions: Array<{
     kind: string;
@@ -248,7 +248,22 @@ const AMM_OPERATION: Record<AmmIntentLike['operation'], ReviewOperation> = {
   swap: 'AMM_SWAP',
   add_liquidity: 'AMM_ADD_LIQUIDITY',
   remove_liquidity: 'AMM_REMOVE_LIQUIDITY',
+  // A multi-hop route is a sequence of AMM swaps in ONE transaction; its reviewed bound is
+  // the whole-route minimum carried by the final hop (see `finalSwapCall`).
+  multi_hop_swap: 'AMM_SWAP',
+  // Creating a pool funds its first liquidity in the same transaction.
+  create_pool: 'AMM_ADD_LIQUIDITY',
 };
+
+/**
+ * The swap call whose `min_output` is the user's bound. For one hop it is the only swap;
+ * for a route it is the LAST hop (intermediate hops carry min_output = 1, which must never
+ * be shown to a signer as their protection).
+ */
+function finalSwapCall(intent: AmmIntentLike): AmmIntentLike['calls'][number] | undefined {
+  const swaps = intent.calls.filter((call) => call.method === 'swap');
+  return swaps[swaps.length - 1];
+}
 
 /**
  * Build a review from a wallet-adapter AMM intent.
@@ -280,7 +295,7 @@ export function reviewFromAmmIntent(input: {
 
   // The call arguments are the authoritative economic terms; assert the review
   // agrees with them rather than trusting the instruction list alone.
-  const swapCall = intent.calls.find((call) => call.method === 'swap');
+  const swapCall = finalSwapCall(intent);
   if (swapCall !== undefined) {
     const minOutputArg = swapCall.args[2];
     if (typeof minOutputArg === 'string') {
@@ -352,8 +367,8 @@ export function diffReviewAgainstIntent(review: TransactionReview, intent: AmmIn
     }
   }
 
-  // The min_output shown must be the one in the call arguments.
-  const swapCall = intent.calls.find((call) => call.method === 'swap');
+  // The min_output shown must be the one in the (final) swap call's arguments.
+  const swapCall = finalSwapCall(intent);
   if (swapCall !== undefined && typeof swapCall.args[2] === 'string') {
     if (leg.minOutputRaw !== swapCall.args[2]) {
       mismatches.push(`minOutput: review ${String(leg.minOutputRaw)} != call argument ${swapCall.args[2]}`);
