@@ -2,28 +2,30 @@ name: Deploy testnet frontend to Cloudflare Pages
 
 # THE SUPPORTED INTERACTIVE HOST.
 #
-# Cloudflare Pages is the only host in this repository's design that actually
-# consumes `dist/_headers`, and therefore the only one that can deliver the CSP,
-# `frame-ancestors`, COOP/CORP, nosniff, Referrer-Policy, and Permissions-Policy
-# that the signing UI depends on. `pages.yml` deploys the same bundle to GitHub
-# Pages and is explicitly NOT a supported target.
+# Cloudflare Pages consumes `dist/_headers` and `dist/_redirects`, so it is the host that
+# delivers the CSP (`frame-ancestors`, `'wasm-unsafe-eval'` for the v0.48 value decoder),
+# COOP/CORP, nosniff, Referrer-Policy and Permissions-Policy the signing UI depends on.
+# `pages.yml` (GitHub Pages) cannot serve headers and is NOT a supported target.
 #
-# This workflow exists so that R-1 can be closed with evidence rather than by
-# assertion. It is MANUAL DISPATCH ONLY and is gated three ways:
+# MANUAL DISPATCH ONLY, gated four ways:
 #
-#   1. It never runs on a push. A deployment is a decision, not a side effect.
-#   2. It requires `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID`. With no
-#      token the job fails loudly at the gate rather than half-deploying.
-#   3. The project name is PINNED below and passed explicitly to wrangler, so a
-#      token with access to several Pages projects cannot redirect this build to
-#      an unrelated one. It must match `name` in `wrangler.jsonc`.
+#   1. Never runs on push or pull_request. A deployment is a decision, not a side effect,
+#      and no pull-request code ever runs with the Cloudflare token.
+#   2. Requires `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` repository secrets, read
+#      only by the deploy job, which runs no repository code (it deploys a built artifact
+#      with a pinned wrangler). No token: the job fails loudly at the gate.
+#   3. The Pages project name is PINNED below and passed explicitly to wrangler, so a token
+#      with access to several Pages projects in the account cannot redirect this build. It
+#      must equal `name` in wrangler.jsonc. This workflow never creates, renames or deletes
+#      a project, and never touches DNS or custom domains.
+#   4. `target` defaults to `preview`. A preview deploys to a non-production branch alias
+#      (`<branch>.<project>.pages.dev`); `production` additionally requires the dispatch to
+#      run from `main`.
 #
-# The token should carry only `Account / Cloudflare Pages / Edit` for this
-# project. No credential is ever committed.
-#
-# AFTER DEPLOYING, run the verification step's command against the printed URL.
-# It checks `/`, a deep SPA route, and a hashed asset, and exits non-zero on any
-# mismatch. R-1 may only be closed once that command passes on a real HTTPS URL.
+# The token should carry only `Account / Cloudflare Pages / Edit`. No credential is committed.
+# Rollback: Cloudflare dashboard -> Pages -> project -> Deployments -> "Rollback to this
+# deployment" (or re-dispatch this workflow at the previous commit). See
+# docs/SHADOW_SWAP_CLOUDFLARE_STAGING.md.
 
 on:
   workflow_dispatch:
@@ -32,6 +34,15 @@ on:
         description: "I confirm the target Pages project is ootle-liquidity-testnet (NOT any other project in the account)"
         type: boolean
         default: false
+      target:
+        description: "preview (branch alias, default) or production (requires running from main)"
+        type: choice
+        options: [preview, production]
+        default: preview
+      preview_branch:
+        description: "Preview branch alias (lowercase letters, digits, hyphens). Ignored for production."
+        type: string
+        default: staging
       reason:
         description: 'Why this testnet deployment is being made (recorded in the run summary)'
         type: string
@@ -48,29 +59,109 @@ env:
   # PINNED. Must equal `name` in wrangler.jsonc. Never interpolated from input.
   PAGES_PROJECT: ootle-liquidity-testnet
   BUILD_OUTPUT_DIR: apps/web/dist
+  # PINNED wrangler (published 2026-10-14), never `wrangler@4`.
+  WRANGLER_VERSION: 4.151.0
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    outputs:
+      branch: ${{ steps.gate.outputs.branch }}
     steps:
-      - name: Confirm the operator named the intended project
+      - name: Confirm the operator named the intended project and target
+        id: gate
         env:
           CONFIRMED: ${{ inputs.confirm_project }}
+          TARGET: ${{ inputs.target }}
+          PREVIEW_BRANCH: ${{ inputs.preview_branch }}
           REASON: ${{ inputs.reason }}
+          REF: ${{ github.ref }}
         run: |
           if [ "$CONFIRMED" != "true" ]; then
             echo "::error::Refusing to deploy without explicit confirmation of the target Pages project."
             exit 1
           fi
+          if [ "$TARGET" = "production" ]; then
+            if [ "$REF" != "refs/heads/main" ]; then
+              echo "::error::A production deployment must be dispatched from main (got $REF)."
+              exit 1
+            fi
+            BRANCH=main
+          else
+            if ! printf '%s' "$PREVIEW_BRANCH" | grep -Eq '^[a-z0-9][a-z0-9-]{0,27}$' || [ "$PREVIEW_BRANCH" = "main" ]; then
+              echo "::error::preview_branch must be a lowercase alias (a-z, 0-9, -), at most 28 characters, and not 'main'."
+              exit 1
+            fi
+            BRANCH="$PREVIEW_BRANCH"
+          fi
+          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
           {
             echo "### Cloudflare Pages testnet deployment"
             echo ""
             echo "- Project: \`$PAGES_PROJECT\`"
+            echo "- Target: \`$TARGET\` (branch alias \`$BRANCH\`)"
             echo "- Reason: $REASON"
           } >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      # pnpm MUST be installed before setup-node, and the major is pinned to 9 to match the
+      # committed lockfile (lockfileVersion 9.0).
+      - name: Install pnpm
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+        with:
+          version: 9.15.9
+
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build workspace packages and the static web app
+        run: |
+          pnpm --filter @tari-ootle/protocol-client run build
+          pnpm --filter @tari-ootle/wallet-adapter run build
+          pnpm --filter @tari-ootle/web build
+
+      - name: Explicit environment validation of the built artifact
+        # A build-time check is necessary but NOT sufficient; the verify job closes R-1.
+        run: |
+          D="$BUILD_OUTPUT_DIR"
+          test -f "$D/_headers" || { echo "::error::$D/_headers is missing; CSP and clickjacking headers would not be served"; exit 1; }
+          test -f "$D/_redirects" || { echo "::error::$D/_redirects is missing; deep SPA routes would not resolve"; exit 1; }
+          grep -q 'frame-ancestors' "$D/_headers" || { echo "::error::frame-ancestors missing from the response policy"; exit 1; }
+          grep -q 'universe.tari.mw' "$D/_headers" || { echo "::error::the wallet dApp origin is missing from frame-ancestors"; exit 1; }
+          grep -q 'esme-indexer-a.ootle.tari.com' "$D/_headers" || { echo "::error::the v0.48 Esmeralda indexer is missing from connect-src"; exit 1; }
+          grep -q "'wasm-unsafe-eval'" "$D/_headers" || { echo "::error::CSP lacks wasm-unsafe-eval; v0.48 chain values could not be decoded"; exit 1; }
+          if grep -q "'unsafe-eval'" "$D/_headers"; then echo "::error::CSP must never carry 'unsafe-eval'"; exit 1; fi
+          ls "$D"/assets/ootle_wasm_bor_bg-*.wasm > /dev/null || { echo "::error::the v0.48 value decoder asset is missing"; exit 1; }
+          node tools/release-hygiene.mjs --dist
+
+      - name: Hand the built artifact to the deploy job
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: web-dist
+          path: apps/web/dist
+          retention-days: 3
+          if-no-files-found: error
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build
+    environment:
+      name: cloudflare-pages-testnet
+      url: ${{ steps.deploy.outputs.url }}
+    outputs:
+      url: ${{ steps.deploy.outputs.url }}
+    steps:
       - name: Refuse to deploy without credentials
-        # Fail-closed at the smallest possible step, before a build is spent.
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -84,78 +175,74 @@ jobs:
             exit 1
           fi
 
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      # pnpm MUST be installed before setup-node so any pnpm-aware step can find
-      # it, and the major is pinned to 9 to match the committed lockfile
-      # (lockfileVersion 9.0). A pnpm 10/11 install cannot consume it, so a
-      # silent major bump would re-resolve the tree rather than fail.
-      - name: Install pnpm
-        uses: pnpm/action-setup@v4
+      - name: Receive the built artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          version: 9.15.9
+          name: web-dist
+          path: dist
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: 'pnpm'
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Build static web app
-        run: pnpm --filter @tari-ootle/web build
-
-      - name: Verify the deployment artifacts exist before deploying
-        # A build-time existence check is necessary but NOT sufficient — it proves
-        # the file was written, not that the host will serve it. The post-deploy
-        # step is what actually closes R-1. Both are kept deliberately.
-        run: |
-          test -f "$BUILD_OUTPUT_DIR/_headers" || { echo "::error::$BUILD_OUTPUT_DIR/_headers is missing; the clickjacking and CSP headers would not be served"; exit 1; }
-          test -f "$BUILD_OUTPUT_DIR/_redirects" || { echo "::error::$BUILD_OUTPUT_DIR/_redirects is missing; deep SPA routes would not resolve"; exit 1; }
-          grep -q 'frame-ancestors' "$BUILD_OUTPUT_DIR/_headers" || { echo "::error::frame-ancestors missing from the response policy"; exit 1; }
-          grep -q 'universe.tari.mw' "$BUILD_OUTPUT_DIR/_headers" || { echo "::error::the wallet dApp origin is missing from frame-ancestors; the app could not be framed by the wallet"; exit 1; }
-          grep -q 'ootle-indexer-a.tari.com' "$BUILD_OUTPUT_DIR/_headers" || { echo "::error::the live indexer origin is missing from connect-src; discovery would be blocked by CSP"; exit 1; }
-
-  deploy:
-    runs-on: ubuntu-latest
-    needs: build
-    environment:
-      name: cloudflare-pages-testnet
-      url: ${{ steps.deploy.outputs.deployment-url }}
-    steps:
       - name: Deploy to Cloudflare Pages
         id: deploy
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          BRANCH: ${{ needs.build.outputs.branch }}
         run: |
-          npx --yes wrangler@4 pages deploy "$BUILD_OUTPUT_DIR" \
+          set -o pipefail
+          npx --yes "wrangler@$WRANGLER_VERSION" pages deploy dist \
             --project-name="$PAGES_PROJECT" \
-            --branch=main \
+            --branch="$BRANCH" \
             --commit-hash="$GITHUB_SHA" \
-            --commit-dirty=true
+            --commit-dirty=false 2>&1 | tee wrangler.log
+          URL=$(grep -Eo 'https://[a-z0-9.-]+\.pages\.dev' wrangler.log | tail -1)
+          if [ -z "$URL" ]; then echo "::error::wrangler reported no deployment URL"; exit 1; fi
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
 
-      - name: Record what still has to be verified
-        # This job deliberately does NOT mark R-1 closed. A deploy succeeding
-        # says nothing about whether the headers were delivered; only the
-        # verification run against the live URL does. The command is printed so
-        # the operator runs it rather than assuming.
+  verify:
+    # Runs the read-only header verifier and the smoke test against the URL just deployed.
+    # It holds NO secret. A failure here means the deployment must not be announced; roll
+    # back per docs/SHADOW_SWAP_CLOUDFLARE_STAGING.md.
+    runs-on: ubuntu-latest
+    needs: deploy
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - name: Install pnpm
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+        with:
+          version: 9.15.9
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 20
+          cache: 'pnpm'
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build the header policy the verifier compares against
+        run: |
+          pnpm --filter @tari-ootle/protocol-client run build
+          pnpm --filter @tari-ootle/wallet-adapter run build
+          pnpm --filter @tari-ootle/web run build:test
+      - name: Verify delivered security headers (R-1)
+        env:
+          URL: ${{ needs.deploy.outputs.url }}
+        run: pnpm --filter @tari-ootle/web run verify:live-headers "$URL"
+      - name: Smoke test routes, assets, decoder and indexer reachability
+        env:
+          URL: ${{ needs.deploy.outputs.url }}
+        run: node apps/web/scripts/smoke-deployment.mjs "$URL"
+      - name: Record what remains manual
+        env:
+          URL: ${{ needs.deploy.outputs.url }}
         run: |
           {
-            echo "### Deployed"
+            echo "### Deployed and verified: $URL"
             echo ""
-            echo "- URL: ${{ steps.deploy.outputs.deployment-url }}"
             echo "- SHA: \`$GITHUB_SHA\`"
-            echo ""
-            echo "### R-1 is still OPEN until this passes against the live URL:"
-            echo ""
-            echo '```bash'
-            echo "pnpm --filter @tari-ootle/web run verify:live-headers ${{ steps.deploy.outputs.deployment-url }}"
-            echo '```'
-            echo ""
-            echo "Then record the URL, the timestamp, and the observed header values in"
-            echo "\`security/FRONTEND_RESIDUAL_RISKS.md\` and \`security/FRONTEND_HOSTILE_AUDIT_REPORT.md\`."
+            echo "- Headers and smoke checks passed against the live URL."
+            echo "- STILL MANUAL: real wallet-extension connection and approval over this HTTPS origin"
+            echo "  (docs/SHADOW_SWAP_WINDOWS_LIVE_ACCEPTANCE.md). A preview URL is publicly reachable"
+            echo "  unless Cloudflare Access protects it."
           } >> "$GITHUB_STEP_SUMMARY"

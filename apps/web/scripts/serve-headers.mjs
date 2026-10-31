@@ -95,6 +95,10 @@ const MIME = {
   '.js': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
   '.svg': 'image/svg+xml',
+  // Cloudflare Pages serves .wasm as application/wasm; so must the local stand-in, or a
+  // streaming/compiled WebAssembly load would behave differently here than in production.
+  '.wasm': 'application/wasm',
+  '.png': 'image/png',
   '.json': 'application/json; charset=utf-8',
   '.ico': 'image/x-icon',
   '.map': 'application/json; charset=utf-8',

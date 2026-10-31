@@ -33,20 +33,76 @@ permissions:
   contents: read
 
 jobs:
+  # Release hygiene: no secret in any tracked file, no development provider / loopback walletd /
+  # fixture marker / other-project reference in the PRODUCTION bundle, no production
+  # dependency advisory. Runs on every PR; it holds no secret and needs none.
+  release-hygiene:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+        with:
+          version: 9.15.9
+
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - name: Secret scan of tracked files (before any dependency is installed)
+        run: node tools/release-hygiene.mjs
+
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Dependency advisories (production dependencies, any severity)
+        run: pnpm audit --prod
+
+      - name: Dependency advisories (all dependencies, high and above)
+        run: pnpm audit --audit-level high
+
+      - name: Build the production bundle exactly as Cloudflare Pages would
+        run: |
+          pnpm --filter @tari-ootle/protocol-client run build
+          pnpm --filter @tari-ootle/wallet-adapter run build
+          pnpm --filter @tari-ootle/web run build
+
+      - name: Production bundle hygiene
+        run: node tools/release-hygiene.mjs --dist
+
+      - name: Cloudflare Pages artifact contract
+        run: |
+          D=apps/web/dist
+          test -f "$D/index.html" || { echo "::error::index.html missing"; exit 1; }
+          test -f "$D/_headers" || { echo "::error::_headers missing"; exit 1; }
+          test -f "$D/_redirects" || { echo "::error::_redirects missing (SPA deep routes would 404)"; exit 1; }
+          ls "$D"/assets/ootle_wasm_bor_bg-*.wasm >/dev/null || { echo "::error::the v0.48 value decoder asset is missing"; exit 1; }
+          grep -q "'wasm-unsafe-eval'" "$D/_headers" || { echo "::error::CSP lacks wasm-unsafe-eval; v0.48 values could not be decoded"; exit 1; }
+          if grep -q "'unsafe-eval'" "$D/_headers"; then echo "::error::CSP must never carry 'unsafe-eval'"; exit 1; fi
+          grep -q 'esme-indexer-a.ootle.tari.com' "$D/_headers" || { echo "::error::v0.48 indexer missing from connect-src"; exit 1; }
+          if find "$D" -name '*.map' | grep -q .; then echo "Source maps present (policy is asserted by the web suite)."; fi
+
   protocol-client:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
         with:
           version: 9.15.9
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 20
           cache: 'pnpm'
@@ -64,15 +120,15 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
         with:
           version: 9.15.9
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 20
           cache: 'pnpm'
@@ -95,15 +151,15 @@ jobs:
     timeout-minutes: 40
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
         with:
           version: 9.15.9
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 20
           cache: 'pnpm'
@@ -149,15 +205,15 @@ jobs:
     timeout-minutes: 60
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
         with:
           version: 9.15.9
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 20
           cache: 'pnpm'
@@ -177,12 +233,16 @@ jobs:
       # `test:e2e:all` includes Firefox, which the local script omits: the
       # Playwright Firefox build is not present on every developer machine.
       # This runner has it, so cross-engine coverage is gated here.
+      #
+      # Retries: NONE for Chromium and hosting (playwright.config.ts). Firefox keeps
+      # two, solely for the recorded Playwright/Firefox driver fault; a Firefox
+      # test that needed one is still reported as "flaky" in the run log.
       - name: Browser security flows
         run: pnpm --filter @tari-ootle/web run test:e2e:all
 
       - name: Upload failure artifacts
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: playwright-artifacts
           path: apps/web/test-results/
