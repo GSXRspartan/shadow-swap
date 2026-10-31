@@ -104,7 +104,8 @@ export function SwapCard({ pool }: { pool: PoolDescriptor }) {
   useEffect(() => {
     if (debounceRef.current !== undefined) clearTimeout(debounceRef.current);
     const provider: OotleReadbackProvider | undefined = readback();
-    if (!canReadAuthoritatively || provider === undefined || amountRaw === '' || !slippage.ok) {
+    const account = wallet.account;
+    if (!canReadAuthoritatively || provider === undefined || account === undefined || amountRaw === '' || !slippage.ok) {
       setQuote({ kind: 'IDLE' });
       return;
     }
@@ -123,7 +124,9 @@ export function SwapCard({ pool }: { pool: PoolDescriptor }) {
         try {
           const outcome = await resolveSwap<AmmTransactionIntent>(request, {
             readback: provider,
-            builder: ammSwapIntentBuilder(pool.poolComponent, () => newOperationId('intent')),
+            // The CONNECTED ACCOUNT withdraws and receives. (This previously passed the pool's
+            // address, so the signed list would have withdrawn from, and deposited into, the pool.)
+            builder: ammSwapIntentBuilder(account, () => newOperationId('intent')),
           });
           if (outcome.status === 'ACTIVE') {
             setPoolState(outcome.resolved.pool);
@@ -139,7 +142,7 @@ export function SwapCard({ pool }: { pool: PoolDescriptor }) {
     return () => {
       if (debounceRef.current !== undefined) clearTimeout(debounceRef.current);
     };
-  }, [amountRaw, slippage.bps, inputResource, pool, canReadAuthoritatively, readback, from.resourceAddress, to.resourceAddress]);
+  }, [amountRaw, slippage.bps, inputResource, pool, canReadAuthoritatively, readback, from.resourceAddress, to.resourceAddress, wallet.account]);
 
   const resolved = quote.kind === 'RESOLVED' ? quote.resolved.resolved : undefined;
   const quoteData = resolved?.quote;

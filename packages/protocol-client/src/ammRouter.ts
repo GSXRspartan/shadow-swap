@@ -19,6 +19,7 @@
  */
 
 import { deriveMinOutput, quoteSwapOutput, type SlippagePolicy } from './amm.js';
+import type { Freshness } from './execution.js';
 import type { PoolReadbackProvider } from './ootle.js';
 
 export const MAX_HOPS = 3;
@@ -188,7 +189,14 @@ export interface MultiHopIntentBuilder<TIntent> {
 }
 
 export type MultiHopOutcome<TIntent> =
-  | { status: 'ACTIVE'; quote: RouteQuote; minOutput: string; builderIntent: TIntent }
+  | {
+      status: 'ACTIVE';
+      quote: RouteQuote;
+      minOutput: string;
+      builderIntent: TIntent;
+      /** Freshness of each hop's authoritative read, in route order. */
+      freshness: readonly Freshness[];
+    }
   | { status: 'STALE' | 'UNAVAILABLE' | 'EXPIRED' | 'CONFLICTED'; reason: string };
 
 export async function resolveMultiHopSwap<TIntent>(
@@ -201,11 +209,13 @@ export async function resolveMultiHopSwap<TIntent>(
     return { status: 'EXPIRED', reason: `Current epoch ${deps.currentEpoch} is at/after the route's max epoch ${request.maxEpoch}` };
   }
   const edges: PoolEdge[] = [];
+  const freshness: Freshness[] = [];
   for (const pool of request.pools) {
     // EVERY hop is re-read authoritatively; a discovery snapshot never prices a signed route.
     const read = await deps.readback.readPool(pool);
     if (read.status !== 'FOUND') return { status: 'UNAVAILABLE', reason: `Pool ${pool}: ${read.reason}` };
     const v = read.value;
+    freshness.push(read.freshness);
     edges.push({ poolComponent: pool, resourceA: v.resourceA, resourceB: v.resourceB, reserveA: v.reserveA, reserveB: v.reserveB, feeBps: v.feeBps });
   }
   let quote: RouteQuote;
@@ -229,5 +239,5 @@ export async function resolveMultiHopSwap<TIntent>(
       return { status: 'STALE', reason: `Reserves moved since the quote: the route now pays ${quote.amountOut}, below the ${floor} the shown quote allowed. Re-quote before signing.` };
     }
   }
-  return { status: 'ACTIVE', quote, minOutput, builderIntent: deps.builder.multiHopSwap({ quote, minOutput, maxEpoch: request.maxEpoch, slippageBps: request.slippage.slippageBps }) };
+  return { status: 'ACTIVE', quote, minOutput, freshness, builderIntent: deps.builder.multiHopSwap({ quote, minOutput, maxEpoch: request.maxEpoch, slippageBps: request.slippage.slippageBps }) };
 }
