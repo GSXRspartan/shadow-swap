@@ -238,7 +238,7 @@ test('live cancelled listing decodes to the recorded settlement facts and an emp
     listingAddress: LISTING_CANCELLED,
     sellerAccount: `component_${ACCOUNT_A}`,
     collectionResource: `resource_${NFT_A_RESTART_B}`,
-    nftId: 'v042-restart-swap-b-f2a02',
+    nftId: 'str_v042-restart-swap-b-f2a02',
     quoteResource: `resource_${TTARI}`,
     price: '100',
     expiresAtEpoch: '0',
@@ -262,7 +262,7 @@ test('an Active listing reports the exact escrowed NFT id, so a filled listing i
   const facts = await decodeListing(reader(map), LISTING_CANCELLED, TPL_LISTING);
   assert.equal(facts.listing.status, 'ACTIVE');
   assert.equal(facts.escrow.empty, false);
-  assert.deepEqual(facts.escrow.tokenIds, ['v042-restart-swap-b-f2a02']);
+  assert.deepEqual(facts.escrow.tokenIds, ['str_v042-restart-swap-b-f2a02']);
 });
 
 test('an escrow vault may render token ids as named variants OR as the CBOR enum tuple', async () => {
@@ -272,13 +272,13 @@ test('an escrow vault may render token ids as named variants OR as the CBOR enum
   // Named-variant rendering: what a vault substate actually carries on the wire.
   const named = { Vault: { freeze_flags: 0, resource_container: { NonFungible: { address: `resource_${NFT_A_RESTART_B}`, locked_token_ids: [], token_ids: [vaultNftIdString('v042-restart-swap-b-f2a02')] } } } };
   const viaNamed = await decodeListing(reader(substates({ [LISTING_CANCELLED]: LISTING_ACTIVE_SUBSTATE, [V]: named })), LISTING_CANCELLED, TPL_LISTING);
-  assert.deepEqual(viaNamed.escrow.tokenIds, ['v042-restart-swap-b-f2a02']);
+  assert.deepEqual(viaNamed.escrow.tokenIds, ['str_v042-restart-swap-b-f2a02']);
 
   // Positional-tuple rendering: the same value as it appears inside a component's own
   // CBOR state. Accepting both is deliberate; they are one type in two encodings.
   const tuple = { Vault: { freeze_flags: 0, resource_container: { NonFungible: { address: `resource_${NFT_A_RESTART_B}`, locked_token_ids: [], token_ids: [nftIdString('v042-restart-swap-b-f2a02')] } } } };
   const viaTuple = await decodeListing(reader(substates({ [LISTING_CANCELLED]: LISTING_ACTIVE_SUBSTATE, [V]: tuple })), LISTING_CANCELLED, TPL_LISTING);
-  assert.deepEqual(viaTuple.escrow.tokenIds, ['v042-restart-swap-b-f2a02']);
+  assert.deepEqual(viaTuple.escrow.tokenIds, ['str_v042-restart-swap-b-f2a02']);
 });
 
 test('a numeric escrow token id is named rather than silently dropped', async () => {
@@ -286,16 +286,16 @@ test('a numeric escrow token id is named rather than silently dropped', async ()
   const V = 'vault_0844561f831f45f4acd554e8b11af432db0ca210309d7b2cb575883a452d7d60';
   const numeric = { Vault: { freeze_flags: 0, resource_container: { NonFungible: { address: `resource_${NFT_A_RESTART_B}`, locked_token_ids: [], token_ids: [vaultNftIdU64(7), vaultNftIdString('named')] } } } };
   const facts = await decodeListing(reader(substates({ [LISTING_CANCELLED]: LISTING_ACTIVE_SUBSTATE, [V]: numeric })), LISTING_CANCELLED, TPL_LISTING);
-  assert.deepEqual(facts.escrow.tokenIds, ['u64:7', 'named']);
+  assert.deepEqual(facts.escrow.tokenIds, ['u64_7', 'str_named']);
 });
 
-test('an escrow token id that is neither a string nor a u64 is refused, not passed through', async () => {
+test('an escrow token id that is no v0.48 NonFungibleId variant is refused, not passed through', async () => {
   setMarketplaceCurrentEpoch(11993);
   const V = 'vault_0844561f831f45f4acd554e8b11af432db0ca210309d7b2cb575883a452d7d60';
   const bogus = { Vault: { freeze_flags: 0, resource_container: { NonFungible: { address: `resource_${NFT_A_RESTART_B}`, locked_token_ids: [], token_ids: [{ Weird: 'x' }] } } } };
   await assert.rejects(
     decodeListing(reader(substates({ [LISTING_CANCELLED]: LISTING_ACTIVE_SUBSTATE, [V]: bogus })), LISTING_CANCELLED, TPL_LISTING),
-    (e) => e instanceof MarketplaceDecodeError && /not a string or u64 NonFungibleId variant/.test(e.message),
+    (e) => e instanceof MarketplaceDecodeError && /is not a NonFungibleId variant/.test(e.message),
   );
 });
 
@@ -372,7 +372,7 @@ test('live cancelled offer decodes Cancelled with a refunded (empty) escrow', as
     offerAddress: OFFER_CANCELLED,
     buyerAccount: `component_${ACCOUNT_A}`,
     collectionResource: `resource_${NFT_A_RESTART_B}`,
-    nftId: 'v042-restart-swap-b-f2a02',
+    nftId: 'str_v042-restart-swap-b-f2a02',
     quoteResource: `resource_${TTARI}`,
     amount: '100',
     createdAtEpoch: '11993',
@@ -453,7 +453,7 @@ test('an offer decode refuses an NFT id it cannot name', async () => {
   ]);
   await assert.rejects(
     () => decodeItemOffer(reader(substates({ [OFFER_CANCELLED]: futureVariant })), OFFER_CANCELLED, TPL_OFFER),
-    (e) => e instanceof MarketplaceDecodeError && /not a string or u64 NonFungibleId variant/.test(e.message),
+    (e) => e instanceof MarketplaceDecodeError && /unknown NonFungibleId variant 7/.test(e.message),
   );
 });
 
@@ -597,7 +597,7 @@ test('readEscrow reports a fungible amount and a non-fungible id list distinctly
   assert.equal(money.empty, false);
   const item = await readEscrow(reader(map), 'vault_0844561f831f45f4acd554e8b11af432db0ca210309d7b2cb575883a452d7d60', `resource_${NFT_A_RESTART_B}`);
   assert.equal(item.amount, '0');
-  assert.deepEqual(item.tokenIds, ['v042-restart-swap-b-f2a02']);
+  assert.deepEqual(item.tokenIds, ['str_v042-restart-swap-b-f2a02']);
 });
 
 test('readEscrow refuses a vault that carries no resource address', async () => {
@@ -695,4 +695,23 @@ test('the ootle readback provider refuses a component that is not the pinned tem
   const read = await provider.readListing(LISTING_SOLD, { templateAddress: TPL_BID, epoch: 11993 });
   assert.equal(read.status, 'UNAVAILABLE');
   assert.match(read.reason, /is template/);
+});
+test('NonFungibleId: all four v0.48 variants decode to upstream canonical strings, in both renderings', async () => {
+  const { decodeNonFungibleIdForTest } = require('../dist/marketplaceSubstate.js');
+  const hex = 'ab'.repeat(32);
+  const cases = [
+    [[0, [{ '@cbor': 'bytes', hex }]], `uuid_${hex}`],
+    [[1, ['art-1']], 'str_art-1'],
+    [[2, [7]], 'u32_7'],
+    [[3, ['18446744073709551615']], 'u64_18446744073709551615'],
+    [{ U256: hex }, `uuid_${hex}`],
+    [{ String: 'art-1' }, 'str_art-1'],
+    [{ Uint32: 7 }, 'u32_7'],
+    [{ Uint64: 7 }, 'u64_7'],
+    [{ U64: 7 }, 'u64_7'],
+  ];
+  for (const [node, want] of cases) assert.equal(decodeNonFungibleIdForTest(node), want, JSON.stringify(node));
+  for (const bad of [[4, [1]], [2, [4294967296]], [1, ['']], [1, ['x'.repeat(65)]], { Nope: 1 }, { String: 'a', U64: 1 }, [0, ['00']]]) {
+    assert.throws(() => decodeNonFungibleIdForTest(bad), JSON.stringify(bad));
+  }
 });

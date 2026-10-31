@@ -1,0 +1,1210 @@
+{
+  "cohort": "tari-ootle v0.48.0 (6a25dbc524581bfaa0a3c6ef120f8d59cc827572)",
+  "generatedBy": "audit_engine_tests/tests/instruction_wire_v048.rs",
+  "literals": [
+    {
+      "hex": "d88358207e0d2b7f4c1a9e8d6b5a4c3d2e1f00112233445566778899aabbccddeeff0011",
+      "type": "ResourceAddress",
+      "value": "resource_7e0d2b7f4c1a9e8d6b5a4c3d2e1f00112233445566778899aabbccddeeff0011"
+    },
+    {
+      "hex": "d8805820a1b2c3d4e5f60718293a4b5c6d7e8f90112233445566778899aabbccddeeff00",
+      "type": "ComponentAddress",
+      "value": "component_a1b2c3d4e5f60718293a4b5c6d7e8f90112233445566778899aabbccddeeff00"
+    },
+    {
+      "hex": "00",
+      "type": "Amount",
+      "value": "0"
+    },
+    {
+      "hex": "01",
+      "type": "Amount",
+      "value": "1"
+    },
+    {
+      "hex": "17",
+      "type": "Amount",
+      "value": "23"
+    },
+    {
+      "hex": "1818",
+      "type": "Amount",
+      "value": "24"
+    },
+    {
+      "hex": "181e",
+      "type": "Amount",
+      "value": "30"
+    },
+    {
+      "hex": "18ff",
+      "type": "Amount",
+      "value": "255"
+    },
+    {
+      "hex": "190100",
+      "type": "Amount",
+      "value": "256"
+    },
+    {
+      "hex": "19ffff",
+      "type": "Amount",
+      "value": "65535"
+    },
+    {
+      "hex": "1a00010000",
+      "type": "Amount",
+      "value": "65536"
+    },
+    {
+      "hex": "1a000f4240",
+      "type": "Amount",
+      "value": "1000000"
+    },
+    {
+      "hex": "1bffffffffffffffff",
+      "type": "Amount",
+      "value": "18446744073709551615"
+    },
+    {
+      "hex": "c249010000000000000000",
+      "type": "Amount",
+      "value": "18446744073709551616"
+    },
+    {
+      "hex": "c2507fffffffffffffffffffffffffffffff",
+      "type": "Amount",
+      "value": "170141183460469231731687303715884105727"
+    },
+    {
+      "hex": "181e",
+      "type": "u16",
+      "value": "30"
+    },
+    {
+      "hex": "00",
+      "type": "u64",
+      "value": "0"
+    },
+    {
+      "hex": "1b0000000100000000",
+      "type": "u64",
+      "value": "4294967296"
+    },
+    {
+      "hex": "1bffffffffffffffff",
+      "type": "u64",
+      "value": "18446744073709551615"
+    },
+    {
+      "hex": "f5",
+      "type": "bool",
+      "value": true
+    },
+    {
+      "hex": "f4",
+      "type": "bool",
+      "value": false
+    },
+    {
+      "hex": "625430",
+      "type": "String",
+      "value": "T0"
+    },
+    {
+      "hex": "58209f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+      "type": "Hash32",
+      "value": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+    },
+    {
+      "hex": "5820e2f2ae0a6abc4e71a884a961c500515f58e30b6aa582dd8db6a65945e08d2d76",
+      "type": "PublicKey",
+      "value": "e2f2ae0a6abc4e71a884a961c500515f58e30b6aa582dd8db6a65945e08d2d76"
+    },
+    {
+      "hex": "941873186818611864186f1877182d187318771861187018201870187218651869186d186118671865",
+      "type": "Bytes",
+      "value": "736861646f772d7377617020707265696d616765"
+    },
+    {
+      "hex": "820181656172742d31",
+      "type": "NonFungibleId",
+      "value": "str_art-1"
+    },
+    {
+      "hex": "8200815820abababababababababababababababababababababababababababababababab",
+      "type": "NonFungibleId",
+      "value": "uuid_abababababababababababababababababababababababababababababababab"
+    },
+    {
+      "hex": "82028107",
+      "type": "NonFungibleId",
+      "value": "u32_7"
+    },
+    {
+      "hex": "8203811bffffffffffffffff",
+      "type": "NonFungibleId",
+      "value": "u64_18446744073709551615"
+    },
+    {
+      "hex": "f6",
+      "type": "Option<NonFungibleId>",
+      "value": null
+    },
+    {
+      "hex": "820181656172742d32",
+      "type": "Option<NonFungibleId>",
+      "value": "str_art-2"
+    },
+    {
+      "hex": "f6",
+      "type": "Option<PublicKey>",
+      "value": null
+    },
+    {
+      "hex": "5820e2f2ae0a6abc4e71a884a961c500515f58e30b6aa582dd8db6a65945e08d2d76",
+      "type": "Option<PublicKey>",
+      "value": "e2f2ae0a6abc4e71a884a961c500515f58e30b6aa582dd8db6a65945e08d2d76"
+    },
+    {
+      "hex": "f6",
+      "type": "Option<Hash32>",
+      "value": null
+    },
+    {
+      "hex": "58209f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+      "type": "Option<Hash32>",
+      "value": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+    },
+    {
+      "hex": "f6",
+      "type": "Option<Bytes>",
+      "value": null
+    },
+    {
+      "hex": "941873186818611864186f1877182d187318771861187018201870187218651869186d186118671865",
+      "type": "Option<Bytes>",
+      "value": "736861646f772d7377617020707265696d616765"
+    }
+  ],
+  "note": "Scenario addresses are TemplateTest addresses (random keys); they identify nothing on Esmeralda.",
+  "probe": [
+    {
+      "CallFunction": {
+        "address": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+        "args": [],
+        "function": "f"
+      }
+    },
+    {
+      "PutLastInstructionOutputOnWorkspace": {
+        "key": 0
+      }
+    },
+    {
+      "CallMethod": {
+        "args": [
+          {
+            "Workspace": {
+              "id": 0,
+              "offset": null
+            }
+          }
+        ],
+        "call": {
+          "Address": "component_a1b2c3d4e5f60718293a4b5c6d7e8f90112233445566778899aabbccddeeff00"
+        },
+        "method": "m"
+      }
+    }
+  ],
+  "scenarios": [
+    {
+      "instructions": [
+        {
+          "CallFunction": {
+            "address": "707bb481515dededbbeb0473616ea167e18fd1d3ddf53f25c3c87fc88b421554",
+            "args": [
+              {
+                "Literal": "d8835820b27088b955278dbc6093cf52cedcadb0bb4d6f9762064636d2a90e5471bb6dcb"
+              },
+              {
+                "Literal": "d8835820054409253bae3b2032b1cf55f8791b1bc1ed1ed80ef7b6b2299e9a89f4310037"
+              },
+              {
+                "Literal": "181e"
+              }
+            ],
+            "function": "new"
+          }
+        },
+        {
+          "PutLastInstructionOutputOnWorkspace": {
+            "key": 0
+          }
+        },
+        {
+          "CallMethod": {
+            "args": [
+              {
+                "Literal": "d8835820b27088b955278dbc6093cf52cedcadb0bb4d6f9762064636d2a90e5471bb6dcb"
+              },
+              {
+                "Literal": "1a003d0900"
+              }
+            ],
+            "call": {
+              "Address": "component_3230781eb41523d792c58a7f6485e18cef92f71003100b14c347c1bd5d28006a"
+            },
+            "method": "withdraw"
+          }
+        },
+        {
+          "PutLastInstructionOutputOnWorkspace": {
+            "key": 1
+          }
+        },
+        {
+          "CallMethod": {
+            "args": [
+              {
+                "Literal": "d8835820054409253bae3b2032b1cf55f8791b1bc1ed1ed80ef7b6b2299e9a89f4310037"
+              },
+              {
+                "Literal": "1a00895440"
+              }
+            ],
+            "call": {
+              "Address": "component_3230781eb41523d792c58a7f6485e18cef92f71003100b14c347c1bd5d28006a"
+            },
+            "method": "withdraw"
+          }
+        },
+        {
+          "PutLastInstructionOutputOnWorkspace": {
+            "key": 2
+          }
+        },
+        {
+          "CallMethod": {
+            "args": [
+              {
+                "Workspace": {
+                  "id": 1,
+                  "offset": null
+                }
+              },
+              {
+                "Workspace": {
+                  "id": 2,
+                  "offset": null
+                }
+              }
+            ],
+            "call": {
+              "Workspace": 0
+            },
+            "method": "add_liquidity"
+          }
+        },
+        {
+          "PutLastInstructionOutputOnWorkspace": {
+            "key": 3
+          }
+        },
+        {
+          "CallMethod": {
+            "args": [
+              {
+                "Workspace": {
+                  "id": 3,
+                  "offset": null
+                }
+              }
+            ],
+            "call": {
+              "Address": "component_3230781eb41523d792c58a7f6485e18cef92f71003100b14c347c1bd5d28006a"
+            },
+            "method": "deposit"
+          }
+        }
+      ],
+      "name": "create_pool",
+      "params": {
+        "accountAddress": "component_3230781eb41523d792c58a7f6485e18cef92f71003100b14c347c1bd5d28006a",
+        "feeBps": 30,
+        "poolTemplateAddress": "707bb481515dededbbeb0473616ea167e18fd1d3ddf53f25c3c87fc88b421554",
+        "rawAmountA": "4000000",
+        "rawAmountB": "9000000",
+        "resourceA": "resource_b27088b955278dbc6093cf52cedcadb0bb4d6f9762064636d2a90e5471bb6dcb",
+        "resourceB": "resource_054409253bae3b2032b1cf55f8791b1bc1ed1ed80ef7b6b2299e9a89f4310037"
+      }
+    },
+    {
+      "instructions": [
+        {
+          "CallMethod": {
+            "args": [
+              {
+                "Literal": "d8835820b27088b955278dbc6093cf52cedcadb0bb4d6f9762064636d2a90e5471bb6dcb"
+              },
+              {
+                "Literal": "199c40"
+              }
+            ],
+            "call": {
+              "Address": "component_3af8d8c2f59a9b50d2060002382ac631652c931aa134df81ceb3c254164b497c"
+            },
+            "method": "withdraw"
+          }
+        },
+        {
+          "PutLastInstructionOutputOnWorkspace": {
+            "key": 0
+          }
+        },
+        {
+          "CallMethod": {
+            "args": [
+              {
+                "Literal": "d8835820054409253bae3b2032b1cf55f8791b1bc1ed1ed80ef7b6b2299e9a89f4310037"
+              },
+              {
+                "Literal": "1a00015f90"
+              }
+            ],
+            "call": {
+              "Address": "component_3af8d8c2f59a9b50d2060002382ac631652c931aa134df81ceb3c254164b497c"
+            },
+            "method": "withdraw"
+          }
+        },
+        {
+          "PutLastInstructionOutputOnWorkspace": {
+            "key": 1
+          }
+        },
+        {
+          "CallMethod": {
+            "args": [
+              {
+                "Workspace": {
+                  "id": 0,
+                  "offset": null
+                }
+              },
+              {
+                "Workspace": {
+                  "id": 1,
+                  "offset": null
+                }
+              }
+            ],
+            "call": {
+              "Address": "component_9cd4aede6eca72e43a8ae9e22fd88998dffe11d8357353c76ec8a1ca5d039c1f"
+            },
+            "method": "add_liquidity"
+          }
+        },
+        {
+          "PutLastInstructionOutputOnWorkspace": {
+            "key": 2
+          }
+        },
+        {
+          "CallMethod": {
+            "args": [
+              {
+                "Workspace": {
+                  "id": 2,
+                  "offset": null
+                }
+              }
+            ],
+            "call": {
+              "Address": "component_3af8d8c2f59a9b50d2060002382ac631652c931aa134df81ceb3c254164b497c"
+            },
+            "method": "deposit"
+          }
+        }
+      ],
+      "name": "add_liquidity",
+      "params": {
+        "accountAddress": "component_3af8d8c2f59a9b50d2060002382ac631652c931aa134df81ceb3c254164b497c",
+        "poolComponent": "component_9cd4aede6eca72e43a8ae9e22fd88998dffe11d8357353c76ec8a1ca5d039c1f",
+        "rawAmountA": "40000",
+        "rawAmountB": "90000",
+        "resourceA": "resource_b27088b955278dbc6093cf52cedcadb0bb4d6f9762064636d2a90e5471bb6dcb",
+        "resourceB": "resource_054409253bae3b2032b1cf55f8791b1bc1ed1ed80ef7b6b2299e9a89f4310037"
+      }
+    },
+    {
+      "instructions": [
+        {
+          "CallMethod": {
+            "args": [
+              {
+                "Literal": "d8835820b27088b955278dbc6093cf52cedcadb0bb4d6f9762064636d2a90e5471bb6dcb"
+              },
+              {
+                "Literal": "192710"
+              }
+            ],
+            "call": {
+              "Address": "component_3af8d8c2f59a9b50d2060002382ac631652c931aa134df81ceb3c254164b497c"
+            },
+            "method": "withdraw"
+          }
+        },
+        {
+          "PutLastInstructionOutputOnWorkspace": {
+            "key": 0
+          }
+        },
+        {
+          "CallMethod": {
+            "args": [
+              {
+                "Workspace": {
+                  "id": 0,
+                  "offset": null
+                }
+              },
+              {
+                "Literal": "d8835820054409253bae3b2032b1cf55f8791b1bc1ed1ed80ef7b6b2299e9a89f4310037"
+              },
+              {
+                "Literal": "01"
+              }
+            ],
+            "call": {
+              "Address": "component_9cd4aede6eca72e43a8ae9e22fd88998dffe11d8357353c76ec8a1ca5d039c1f"
+            },
+            "method": "swap"
+          }
+        },
+        {
+          "PutLastInstructionOutputOnWorkspace": {
+            "key": 1
+          }
+        },
+        {
+          "CallMethod": {
+            "args": [
+              {
+                "Workspace": {
+                  "id": 1,
+                  "offset": null
+                }
+              }
+            ],
+            "call": {
+              "Address": "component_3af8d8c2f59a9b50d2060002382ac631652c931aa134df81ceb3c254164b497c"
+            },
+            "method": "deposit"
+          }
+        }
+      ],
+      "name": "swap",
+      "params": {
+        "accountAddress": "component_3af8d8c2f59a9b50d2060002382ac631652c931aa134df81ceb3c254164b497c",
+        "inputResource": "resource_b27088b955278dbc6093cf52cedcadb0bb4d6f9762064636d2a90e5471bb6dcb",
+        "minOutput": "1",
+        "outputResource": "resource_054409253bae3b2032b1cf55f8791b1bc1ed1ed80ef7b6b2299e9a89f4310037",
+        "poolComponent": "component_9cd4aede6eca72e43a8ae9e22fd88998dffe11d8357353c76ec8a1ca5d039c1f",
+        "rawInputAmount": "10000"
+      }
+    },
+    {
+      "instructions": [
+        {
+          "CallMethod": {
+            "args": [
+              {
+                "Literal": "d8835820b27088b955278dbc6093cf52cedcadb0bb4d6f9762064636d2a90e5471bb6dcb"
+              },
+              {
+                "Literal": "192710"
+              }
+            ],
+            "call": {
+              "Address": "component_3af8d8c2f59a9b50d2060002382ac631652c931aa134df81ceb3c254164b497c"
+            },
+            "method": "withdraw"
+          }
+        },
+        {
+          "PutLastInstructionOutputOnWorkspace": {
+            "key": 0
+          }
+        },
+        {
+          "CallMethod": {
+            "args": [
+              {
+                "Workspace": {
+                  "id": 0,
+                  "offset": null
+                }
+              },
+              {
+                "Literal": "d8835820054409253bae3b2032b1cf55f8791b1bc1ed1ed80ef7b6b2299e9a89f4310037"
+              },
+              {
+                "Literal": "01"
+              }
+            ],
+            "call": {
+              "Address": "component_9cd4aede6eca72e43a8ae9e22fd88998dffe11d8357353c76ec8a1ca5d039c1f"
+            },
+            "method": "swap"
+          }
+        },
+        {
+          "PutLastInstructionOutputOnWorkspace": {
+            "key": 1
+          }
+        },
+        {
+          "CallMethod": {
+            "args": [
+              {
+                "Workspace": {
+                  "id": 1,
+                  "offset": null
+                }
+              },
+              {
+                "Literal": "d8835820af1c9126b7fe4177c943256a22d4f21db1b78522a890ce5eee5953ac891179d5"
+              },
+              {
+                "Literal": "02"
+              }
+            ],
+            "call": {
+              "Address": "component_db007b24aa641288a4ce6e03c69971e2db5c8fea65205ffaa74a5536e862880e"
+            },
+            "method": "swap"
+          }
+        },
+        {
+          "PutLastInstructionOutputOnWorkspace": {
+            "key": 2
+          }
+        },
+        {
+          "CallMethod": {
+            "args": [
+              {
+                "Workspace": {
+                  "id": 2,
+                  "offset": null
+                }
+              }
+            ],
+            "call": {
+              "Address": "component_3af8d8c2f59a9b50d2060002382ac631652c931aa134df81ceb3c254164b497c"
+            },
+            "method": "deposit"
+          }
+        }
+      ],
+      "name": "multi_hop_swap",
+      "params": {
+        "accountAddress": "component_3af8d8c2f59a9b50d2060002382ac631652c931aa134df81ceb3c254164b497c",
+        "hops": [
+          {
+            "inputResource": "resource_b27088b955278dbc6093cf52cedcadb0bb4d6f9762064636d2a90e5471bb6dcb",
+            "outputResource": "resource_054409253bae3b2032b1cf55f8791b1bc1ed1ed80ef7b6b2299e9a89f4310037",
+            "poolComponent": "component_9cd4aede6eca72e43a8ae9e22fd88998dffe11d8357353c76ec8a1ca5d039c1f"
+          },
+          {
+            "inputResource": "resource_054409253bae3b2032b1cf55f8791b1bc1ed1ed80ef7b6b2299e9a89f4310037",
+            "outputResource": "resource_af1c9126b7fe4177c943256a22d4f21db1b78522a890ce5eee5953ac891179d5",
+            "poolComponent": "component_db007b24aa641288a4ce6e03c69971e2db5c8fea65205ffaa74a5536e862880e"
+          }
+        ],
+        "minOutput": "2",
+        "rawInputAmount": "10000"
+      }
+    },
+    {
+      "instructions": [
+        {
+          "CallMethod": {
+            "args": [
+              {
+                "Literal": "d88358209c0c0c8210777180bb60c725cd77df876c5fcc82d8a1dea485568beb5e8ed407"
+              },
+              {
+                "Literal": "19ea60"
+              }
+            ],
+            "call": {
+              "Address": "component_3af8d8c2f59a9b50d2060002382ac631652c931aa134df81ceb3c254164b497c"
+            },
+            "method": "withdraw"
+          }
+        },
+        {
+          "PutLastInstructionOutputOnWorkspace": {
+            "key": 0
+          }
+        },
+        {
+          "CallMethod": {
+            "args": [
+              {
+                "Workspace": {
+                  "id": 0,
+                  "offset": null
+                }
+              }
+            ],
+            "call": {
+              "Address": "component_9cd4aede6eca72e43a8ae9e22fd88998dffe11d8357353c76ec8a1ca5d039c1f"
+            },
+            "method": "remove_liquidity"
+          }
+        },
+        {
+          "PutLastInstructionOutputOnWorkspace": {
+            "key": 1
+          }
+        },
+        {
+          "CallMethod": {
+            "args": [
+              {
+                "Workspace": {
+                  "id": 1,
+                  "offset": 0
+                }
+              }
+            ],
+            "call": {
+              "Address": "component_3af8d8c2f59a9b50d2060002382ac631652c931aa134df81ceb3c254164b497c"
+            },
+            "method": "deposit"
+          }
+        },
+        {
+          "CallMethod": {
+            "args": [
+              {
+                "Workspace": {
+                  "id": 1,
+                  "offset": 1
+                }
+              }
+            ],
+            "call": {
+              "Address": "component_3af8d8c2f59a9b50d2060002382ac631652c931aa134df81ceb3c254164b497c"
+            },
+            "method": "deposit"
+          }
+        }
+      ],
+      "name": "remove_liquidity",
+      "params": {
+        "accountAddress": "component_3af8d8c2f59a9b50d2060002382ac631652c931aa134df81ceb3c254164b497c",
+        "lpResource": "resource_9c0c0c8210777180bb60c725cd77df876c5fcc82d8a1dea485568beb5e8ed407",
+        "poolComponent": "component_9cd4aede6eca72e43a8ae9e22fd88998dffe11d8357353c76ec8a1ca5d039c1f",
+        "rawLpAmount": "60000"
+      }
+    },
+    {
+      "instructions": [
+        {
+          "CallMethod": {
+            "args": [
+              {
+                "Literal": "d8835820b27088b955278dbc6093cf52cedcadb0bb4d6f9762064636d2a90e5471bb6dcb"
+              },
+              {
+                "Literal": "1903e8"
+              }
+            ],
+            "call": {
+              "Address": "component_3230781eb41523d792c58a7f6485e18cef92f71003100b14c347c1bd5d28006a"
+            },
+            "method": "withdraw"
+          }
+        },
+        {
+          "PutLastInstructionOutputOnWorkspace": {
+            "key": 0
+          }
+        },
+        {
+          "CallFunction": {
+            "address": "67529d21913494f08fe91e4ce05ef70748ea584ad655e6db2be27ef054c15b60",
+            "args": [
+              {
+                "Workspace": {
+                  "id": 0,
+                  "offset": null
+                }
+              },
+              {
+                "Literal": "d8835820054409253bae3b2032b1cf55f8791b1bc1ed1ed80ef7b6b2299e9a89f4310037"
+              },
+              {
+                "Literal": "1909c4"
+              },
+              {
+                "Literal": "f6"
+              },
+              {
+                "Literal": "5820c2a0394cab5ff3b6b51335386d8fb473cf03db714258bc17a10165783b3cf46c"
+              },
+              {
+                "Literal": "5820f556d9a6b8b1c11c7ce1cc13c07afa7c4afab615d132f3d86cfc3f73c3b4be71"
+              },
+              {
+                "Literal": "1a000f4240"
+              }
+            ],
+            "function": "create"
+          }
+        }
+      ],
+      "name": "swap_offer_create",
+      "params": {
+        "accountAddress": "component_3230781eb41523d792c58a7f6485e18cef92f71003100b14c347c1bd5d28006a",
+        "designatedTaker": "c2a0394cab5ff3b6b51335386d8fb473cf03db714258bc17a10165783b3cf46c",
+        "expiresAtEpoch": "1000000",
+        "hashLock": "f556d9a6b8b1c11c7ce1cc13c07afa7c4afab615d132f3d86cfc3f73c3b4be71",
+        "offerTemplateAddress": "67529d21913494f08fe91e4ce05ef70748ea584ad655e6db2be27ef054c15b60",
+        "offered": {
+          "amount": "1000",
+          "kind": "fungible",
+          "resource": "resource_b27088b955278dbc6093cf52cedcadb0bb4d6f9762064636d2a90e5471bb6dcb"
+        },
+        "requested": {
+          "amount": "2500",
+          "kind": "fungible",
+          "resource": "resource_054409253bae3b2032b1cf55f8791b1bc1ed1ed80ef7b6b2299e9a89f4310037"
+        }
+      }
+    },
+    {
+      "instructions": [
+        {
+          "CallMethod": {
+            "args": [
+              {
+                "Literal": "d8835820054409253bae3b2032b1cf55f8791b1bc1ed1ed80ef7b6b2299e9a89f4310037"
+              },
+              {
+                "Literal": "1909c4"
+              }
+            ],
+            "call": {
+              "Address": "component_3af8d8c2f59a9b50d2060002382ac631652c931aa134df81ceb3c254164b497c"
+            },
+            "method": "withdraw"
+          }
+        },
+        {
+          "PutLastInstructionOutputOnWorkspace": {
+            "key": 0
+          }
+        },
+        {
+          "CallMethod": {
+            "args": [
+              {
+                "Workspace": {
+                  "id": 0,
+                  "offset": null
+                }
+              },
+              {
+                "Literal": "98191873186818611864186f1877182d18731877186118701820187718691872186518201870187218651869186d186118671865"
+              }
+            ],
+            "call": {
+              "Address": "component_c842b490c7242d5c1b23264c898d443d0fff2c40e480ce49f2bf3015149c9444"
+            },
+            "method": "fill"
+          }
+        },
+        {
+          "PutLastInstructionOutputOnWorkspace": {
+            "key": 1
+          }
+        },
+        {
+          "CallMethod": {
+            "args": [
+              {
+                "Workspace": {
+                  "id": 1,
+                  "offset": null
+                }
+              }
+            ],
+            "call": {
+              "Address": "component_3af8d8c2f59a9b50d2060002382ac631652c931aa134df81ceb3c254164b497c"
+            },
+            "method": "deposit"
+          }
+        }
+      ],
+      "name": "swap_offer_fill",
+      "params": {
+        "accountAddress": "component_3af8d8c2f59a9b50d2060002382ac631652c931aa134df81ceb3c254164b497c",
+        "offerComponent": "component_c842b490c7242d5c1b23264c898d443d0fff2c40e480ce49f2bf3015149c9444",
+        "payment": {
+          "amount": "2500",
+          "kind": "fungible",
+          "resource": "resource_054409253bae3b2032b1cf55f8791b1bc1ed1ed80ef7b6b2299e9a89f4310037"
+        },
+        "preimage": "736861646f772d73776170207769726520707265696d616765"
+      }
+    },
+    {
+      "instructions": [
+        {
+          "CallMethod": {
+            "args": [],
+            "call": {
+              "Address": "component_c842b490c7242d5c1b23264c898d443d0fff2c40e480ce49f2bf3015149c9444"
+            },
+            "method": "claim"
+          }
+        },
+        {
+          "PutLastInstructionOutputOnWorkspace": {
+            "key": 0
+          }
+        },
+        {
+          "CallMethod": {
+            "args": [
+              {
+                "Workspace": {
+                  "id": 0,
+                  "offset": null
+                }
+              }
+            ],
+            "call": {
+              "Address": "component_3230781eb41523d792c58a7f6485e18cef92f71003100b14c347c1bd5d28006a"
+            },
+            "method": "deposit"
+          }
+        }
+      ],
+      "name": "swap_offer_claim",
+      "params": {
+        "accountAddress": "component_3230781eb41523d792c58a7f6485e18cef92f71003100b14c347c1bd5d28006a",
+        "offerComponent": "component_c842b490c7242d5c1b23264c898d443d0fff2c40e480ce49f2bf3015149c9444"
+      }
+    },
+    {
+      "instructions": [
+        {
+          "CallMethod": {
+            "args": [
+              {
+                "Literal": "d88358206f70df7c55f36a2dbaf4f2a9a7546cfc181cd171dc1341725285a78ff368d964"
+              },
+              {
+                "Literal": "820181656172742d31"
+              }
+            ],
+            "call": {
+              "Address": "component_3230781eb41523d792c58a7f6485e18cef92f71003100b14c347c1bd5d28006a"
+            },
+            "method": "withdraw_non_fungible"
+          }
+        },
+        {
+          "PutLastInstructionOutputOnWorkspace": {
+            "key": 0
+          }
+        },
+        {
+          "CallFunction": {
+            "address": "67529d21913494f08fe91e4ce05ef70748ea584ad655e6db2be27ef054c15b60",
+            "args": [
+              {
+                "Workspace": {
+                  "id": 0,
+                  "offset": null
+                }
+              },
+              {
+                "Literal": "d8835820e42651a76ce8d89c8231ba5f79974cb5c3bfc2421db5c3d203e167c660265791"
+              },
+              {
+                "Literal": "00"
+              },
+              {
+                "Literal": "820181656172742d32"
+              },
+              {
+                "Literal": "f6"
+              },
+              {
+                "Literal": "f6"
+              },
+              {
+                "Literal": "00"
+              }
+            ],
+            "function": "create"
+          }
+        }
+      ],
+      "name": "swap_offer_create_nft",
+      "params": {
+        "accountAddress": "component_3230781eb41523d792c58a7f6485e18cef92f71003100b14c347c1bd5d28006a",
+        "designatedTaker": null,
+        "expiresAtEpoch": "0",
+        "hashLock": null,
+        "offerTemplateAddress": "67529d21913494f08fe91e4ce05ef70748ea584ad655e6db2be27ef054c15b60",
+        "offered": {
+          "kind": "nft",
+          "nftId": "str_art-1",
+          "resource": "resource_6f70df7c55f36a2dbaf4f2a9a7546cfc181cd171dc1341725285a78ff368d964"
+        },
+        "requested": {
+          "kind": "nft",
+          "nftId": "str_art-2",
+          "resource": "resource_e42651a76ce8d89c8231ba5f79974cb5c3bfc2421db5c3d203e167c660265791"
+        }
+      }
+    },
+    {
+      "instructions": [
+        {
+          "CallMethod": {
+            "args": [
+              {
+                "Literal": "d8835820e42651a76ce8d89c8231ba5f79974cb5c3bfc2421db5c3d203e167c660265791"
+              },
+              {
+                "Literal": "820181656172742d32"
+              }
+            ],
+            "call": {
+              "Address": "component_3af8d8c2f59a9b50d2060002382ac631652c931aa134df81ceb3c254164b497c"
+            },
+            "method": "withdraw_non_fungible"
+          }
+        },
+        {
+          "PutLastInstructionOutputOnWorkspace": {
+            "key": 0
+          }
+        },
+        {
+          "CallMethod": {
+            "args": [
+              {
+                "Workspace": {
+                  "id": 0,
+                  "offset": null
+                }
+              },
+              {
+                "Literal": "f6"
+              }
+            ],
+            "call": {
+              "Address": "component_e018c5b24b8e80b236479252e482ea1964386783306975948398ba16f40e0e7f"
+            },
+            "method": "fill"
+          }
+        },
+        {
+          "PutLastInstructionOutputOnWorkspace": {
+            "key": 1
+          }
+        },
+        {
+          "CallMethod": {
+            "args": [
+              {
+                "Workspace": {
+                  "id": 1,
+                  "offset": null
+                }
+              }
+            ],
+            "call": {
+              "Address": "component_3af8d8c2f59a9b50d2060002382ac631652c931aa134df81ceb3c254164b497c"
+            },
+            "method": "deposit"
+          }
+        }
+      ],
+      "name": "swap_offer_fill_nft",
+      "params": {
+        "accountAddress": "component_3af8d8c2f59a9b50d2060002382ac631652c931aa134df81ceb3c254164b497c",
+        "offerComponent": "component_e018c5b24b8e80b236479252e482ea1964386783306975948398ba16f40e0e7f",
+        "payment": {
+          "kind": "nft",
+          "nftId": "str_art-2",
+          "resource": "resource_e42651a76ce8d89c8231ba5f79974cb5c3bfc2421db5c3d203e167c660265791"
+        },
+        "preimage": null
+      }
+    },
+    {
+      "instructions": [
+        {
+          "CallMethod": {
+            "args": [],
+            "call": {
+              "Address": "component_ba09b9b2c2191381471936970d7c2a351601d99a017e6ec48364ab04efef63d3"
+            },
+            "method": "cancel"
+          }
+        },
+        {
+          "PutLastInstructionOutputOnWorkspace": {
+            "key": 0
+          }
+        },
+        {
+          "CallMethod": {
+            "args": [
+              {
+                "Workspace": {
+                  "id": 0,
+                  "offset": null
+                }
+              }
+            ],
+            "call": {
+              "Address": "component_3230781eb41523d792c58a7f6485e18cef92f71003100b14c347c1bd5d28006a"
+            },
+            "method": "deposit"
+          }
+        }
+      ],
+      "name": "swap_offer_cancel",
+      "params": {
+        "accountAddress": "component_3230781eb41523d792c58a7f6485e18cef92f71003100b14c347c1bd5d28006a",
+        "offerComponent": "component_ba09b9b2c2191381471936970d7c2a351601d99a017e6ec48364ab04efef63d3"
+      }
+    },
+    {
+      "instructions": [
+        {
+          "CallMethod": {
+            "args": [
+              {
+                "Literal": "d8835820d4c270f6ddaa669573ac16cc5c549486b77528369cb92c555d92b016920f3d48"
+              },
+              {
+                "Literal": "820181656172742d33"
+              }
+            ],
+            "call": {
+              "Address": "component_3230781eb41523d792c58a7f6485e18cef92f71003100b14c347c1bd5d28006a"
+            },
+            "method": "withdraw_non_fungible"
+          }
+        },
+        {
+          "PutLastInstructionOutputOnWorkspace": {
+            "key": 0
+          }
+        },
+        {
+          "CallFunction": {
+            "address": "ad9f2af9a95a24a11fa0210846359b9e5f31ca454c7f0596efdd349864c91ce8",
+            "args": [
+              {
+                "Literal": "d88058203230781eb41523d792c58a7f6485e18cef92f71003100b14c347c1bd5d28006a"
+              },
+              {
+                "Workspace": {
+                  "id": 0,
+                  "offset": null
+                }
+              },
+              {
+                "Literal": "d8835820b27088b955278dbc6093cf52cedcadb0bb4d6f9762064636d2a90e5471bb6dcb"
+              },
+              {
+                "Literal": "191388"
+              },
+              {
+                "Literal": "00"
+              }
+            ],
+            "function": "create"
+          }
+        }
+      ],
+      "name": "create_listing",
+      "params": {
+        "expiryEpoch": "0",
+        "nftId": "str_art-3",
+        "nftResource": "resource_d4c270f6ddaa669573ac16cc5c549486b77528369cb92c555d92b016920f3d48",
+        "price": "5000",
+        "quoteResource": "resource_b27088b955278dbc6093cf52cedcadb0bb4d6f9762064636d2a90e5471bb6dcb",
+        "sellerAccount": "component_3230781eb41523d792c58a7f6485e18cef92f71003100b14c347c1bd5d28006a",
+        "templateAddress": "ad9f2af9a95a24a11fa0210846359b9e5f31ca454c7f0596efdd349864c91ce8"
+      }
+    },
+    {
+      "instructions": [
+        {
+          "CallMethod": {
+            "args": [
+              {
+                "Literal": "d8835820b27088b955278dbc6093cf52cedcadb0bb4d6f9762064636d2a90e5471bb6dcb"
+              },
+              {
+                "Literal": "191388"
+              }
+            ],
+            "call": {
+              "Address": "component_3af8d8c2f59a9b50d2060002382ac631652c931aa134df81ceb3c254164b497c"
+            },
+            "method": "withdraw"
+          }
+        },
+        {
+          "PutLastInstructionOutputOnWorkspace": {
+            "key": 0
+          }
+        },
+        {
+          "CallMethod": {
+            "args": [
+              {
+                "Workspace": {
+                  "id": 0,
+                  "offset": null
+                }
+              },
+              {
+                "Literal": "d88058203af8d8c2f59a9b50d2060002382ac631652c931aa134df81ceb3c254164b497c"
+              }
+            ],
+            "call": {
+              "Address": "component_4954d048f5222e58000df36bd07689097fff4293b71d2c3c0abc839a5a958389"
+            },
+            "method": "buy"
+          }
+        }
+      ],
+      "name": "buy_listing",
+      "params": {
+        "amount": "5000",
+        "buyerAccount": "component_3af8d8c2f59a9b50d2060002382ac631652c931aa134df81ceb3c254164b497c",
+        "listingAddress": "component_4954d048f5222e58000df36bd07689097fff4293b71d2c3c0abc839a5a958389",
+        "quoteResource": "resource_b27088b955278dbc6093cf52cedcadb0bb4d6f9762064636d2a90e5471bb6dcb"
+      }
+    }
+  ]
+}

@@ -563,6 +563,12 @@ test('secrets: preimage names may appear only as rejection rules, never with a v
   for (const address of Object.values(MARKETPLACE_TEMPLATES)) {
     if (typeof address === 'string' && address) allowed.add(address.replace(/^template_/, ''));
   }
+  // The public-key BADGE resource that `rule!(public_key(..))` names in every access rule
+  // (`resource_0100…00`, read off the engine's own SwapOffer substates). The SwapOffer
+  // decoder pins it to recognise a maker / designated-taker rule; it is a public chain
+  // constant, not secret material. Derived from the export, not retyped.
+  const { PUBLIC_IDENTITY_RESOURCE } = require('@tari-ootle/protocol-client');
+  allowed.add(PUBLIC_IDENTITY_RESOURCE.replace(/^resource_/, ''));
   for (const literal of new Set(hexLiterals)) {
     assert.ok(
       allowed.has(literal),
@@ -586,6 +592,21 @@ test('secrets: no secret-shaped value is written to storage or a URL', () => {
       relative === 'src/lib/errorMessage.ts' ||
       relative === 'src/lib/pendingRequests.ts'
     ) {
+      continue;
+    }
+    if (relative === 'src/components/P2POfferPanel.tsx') {
+      // The P2P panel is where a taker TYPES a hash-lock preimage to fill an offer, so it must
+      // name it. The property that matters is checked instead of the word: the preimage is
+      // never persisted, never put in a URL and never put in an invitation.
+      const lines = text.split('\n');
+      for (const line of lines) {
+        if (/localStorage|sessionStorage|setItem|saveMine\(|history\.|location\.|encodeInvitation|invitationFromChain/.test(line)) {
+          assert.equal(/preimage/i.test(line), false, `${relative}: a preimage must never reach storage, a URL or an invitation: ${line.trim()}`);
+        }
+      }
+      const mine = /interface MyOffer \{[^}]*\}/.exec(text);
+      assert.ok(mine !== null && !/preimage|secret|key/i.test(mine[0]), 'the locally remembered offer list holds no secret');
+      for (const forbidden of ['seedPhrase', 'mnemonic', 'privateKey']) assert.equal(text.includes(forbidden), false, `${relative} must not reference ${forbidden}`);
       continue;
     }
     for (const forbidden of ['preimage', 'seedPhrase', 'mnemonic', 'privateKey']) {

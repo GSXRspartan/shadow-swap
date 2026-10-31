@@ -19,6 +19,7 @@ import { useApp } from '../state/AppContext.js';
 import type { PoolDescriptor } from '../services/pools.js';
 import { executeSwap, newOperationId, IdentityChangedError, ReviewMismatchError, type ExecutionWallets } from '../services/execution.js';
 import { reviewFromAmmIntent } from '../lib/review.js';
+import { stealthInputFor } from '../services/stealthWithdraw.js';
 import { normalizeError } from '../lib/errorMessage.js';
 import { formatUnits, UNAVAILABLE } from '../lib/format.js';
 import { asRawExecutionAmount } from '../lib/tradeBoundary.js';
@@ -158,12 +159,14 @@ export function LiquidityPanel({ pool }: { pool: PoolDescriptor }) {
       }
       // The review is built from the resolver's intent, so the amounts the user
       // sees are the amounts the wallet is asked to sign.
+      const stealthInput = stealthInputFor(resolved.resolved.builderIntent.instructions, wallet);
       const review = reviewFromAmmIntent({
         intent: resolved.resolved.builderIntent,
         operationId: newOperationId(mode === 'add' ? 'lp-add' : 'lp-remove'),
         network: wallet.networkId ?? 'unknown',
         identity,
         maxEpochRaw: MAX_EPOCH,
+        ...(stealthInput !== undefined ? { stealthInput } : {}),
       });
       const result = await executeSwap<AmmTransactionIntent>(wallets as ExecutionWallets, {
         resolvedIntent: resolved.resolved.builderIntent,

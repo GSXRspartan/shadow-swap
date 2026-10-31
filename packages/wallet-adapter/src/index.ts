@@ -2,6 +2,7 @@ export * from './interface';
 export * from './marketplace';
 export * from './amm';
 export * from './amm_wiring';
+export * from './swapOffer';
 export * from './marketplace_wiring';
 export * from './not_implemented';
 // Every adapter exported here is a declared placeholder that refuses to return

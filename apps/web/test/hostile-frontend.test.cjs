@@ -30,7 +30,7 @@ const errors = require('../build-test/lib/errorMessage.js');
 const guard = require('../build-test/lib/asyncGuard.js');
 const tari = require('../build-test/services/tariWindow.js');
 
-const TARI_ASSET = { kind: 'OOTLE_L2', resourceAddress: 'otl_canonical_tari', label: 'TARI', decimals: '6', isCanonicalTari: true };
+const TARI_ASSET = { kind: 'OOTLE_L2', resourceAddress: 'resource_0101010101010101010101010101010101010101010101010101010101010101', label: 'TARI', decimals: '6', isCanonicalTari: true };
 
 function fakeProvider(overrides = {}) {
   return { request: async () => ({}), ...overrides };
@@ -41,7 +41,7 @@ function identityFor(provider, extra = {}) {
     provider,
     expectedNetwork: 'esmeralda',
     providerNetwork: 'esmeralda',
-    account: 'otl_account_A',
+    account: 'component_a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1',
     ...extra,
   });
 }
@@ -58,7 +58,7 @@ test('spoof: a provider with the right shape is not accepted without a capabilit
   const check = identity.verifyIdentity(captured, {
     provider: impostor,
     providerNetwork: 'esmeralda',
-    account: 'otl_account_A',
+    account: 'component_a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1',
     nonce: captured.nonce,
   });
   assert.equal(check.ok, false);
@@ -68,13 +68,13 @@ test('spoof: a provider with the right shape is not accepted without a capabilit
 test('spoof: swapping the provider implementation on the same object is detected', () => {
   const provider = fakeProvider();
   const captured = identityFor(provider);
-  const before = identity.verifyIdentity(captured, { provider, providerNetwork: 'esmeralda', account: 'otl_account_A', nonce: captured.nonce });
+  const before = identity.verifyIdentity(captured, { provider, providerNetwork: 'esmeralda', account: 'component_a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1', nonce: captured.nonce });
   assert.equal(before.ok, true);
 
   // Same object, different `request`. A provider can do this between the
   // handshake and the signing call.
   provider.request = async () => ({ network: 'mainnet' });
-  const after = identity.verifyIdentity(captured, { provider, providerNetwork: 'esmeralda', account: 'otl_account_A', nonce: captured.nonce });
+  const after = identity.verifyIdentity(captured, { provider, providerNetwork: 'esmeralda', account: 'component_a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1', nonce: captured.nonce });
   assert.equal(after.ok, false);
   assert.equal(after.changed, 'providerImplementation');
 });
@@ -92,12 +92,12 @@ test('spoof: a capability downgrade after the handshake is detected', () => {
   const caps = { l1Balance: true, l2HtlcFund: true };
   const captured = identityFor(provider, { capabilities: caps });
   assert.equal(
-    identity.verifyIdentity(captured, { provider, providerNetwork: 'esmeralda', account: 'otl_account_A', capabilities: caps, nonce: captured.nonce }).ok,
+    identity.verifyIdentity(captured, { provider, providerNetwork: 'esmeralda', account: 'component_a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1', capabilities: caps, nonce: captured.nonce }).ok,
     true,
   );
   // The provider now claims it cannot do what it said it could.
   const downgraded = { l1Balance: true, l2HtlcFund: false };
-  const check = identity.verifyIdentity(captured, { provider, providerNetwork: 'esmeralda', account: 'otl_account_A', capabilities: downgraded, nonce: captured.nonce });
+  const check = identity.verifyIdentity(captured, { provider, providerNetwork: 'esmeralda', account: 'component_a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1', capabilities: downgraded, nonce: captured.nonce });
   assert.equal(check.ok, false);
   assert.equal(check.changed, 'capabilities');
 });
@@ -107,7 +107,7 @@ test('spoof: a replayed review from a previous session is refused', () => {
   const old = identityFor(provider);
   const fresh = identityFor(provider);
   assert.notEqual(old.nonce, fresh.nonce);
-  const check = identity.verifyIdentity(old, { provider, providerNetwork: 'esmeralda', account: 'otl_account_A', nonce: fresh.nonce });
+  const check = identity.verifyIdentity(old, { provider, providerNetwork: 'esmeralda', account: 'component_a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1', nonce: fresh.nonce });
   assert.equal(check.ok, false);
   assert.equal(check.changed, 'nonce');
 });
@@ -296,8 +296,8 @@ test('conformance: a resource address is validated as a resource, never as an am
   // A resource address is accepted by the RESOURCE guard and REFUSED by the
   // amount guard. That refusal is the defect: a resolver request carrying a
   // resource field guarded by the amount function could never be constructed.
-  assert.equal(asResourceAddress('otl_canonical_tari', 'inputResource'), 'otl_canonical_tari');
-  assert.throws(() => asRawExecutionAmount('otl_canonical_tari', 'inputResource'), /inputResource/);
+  assert.equal(asResourceAddress('resource_0101010101010101010101010101010101010101010101010101010101010101', 'inputResource'), 'resource_0101010101010101010101010101010101010101010101010101010101010101');
+  assert.throws(() => asRawExecutionAmount('resource_0101010101010101010101010101010101010101010101010101010101010101', 'inputResource'), /inputResource/);
 
   // A raw amount is accepted by the amount guard, which is the one that requires
   // `^\d+$`. The resource guard is deliberately the looser of the two — it only
@@ -452,17 +452,17 @@ test('spoof: a provider that claims mainnet after connecting is refused by the n
 test('toctou: an account switch between review and approval aborts', () => {
   const provider = fakeProvider();
   const captured = identityFor(provider);
-  const check = identity.verifyIdentity(captured, { provider, providerNetwork: 'esmeralda', account: 'otl_account_B', nonce: captured.nonce });
+  const check = identity.verifyIdentity(captured, { provider, providerNetwork: 'esmeralda', account: 'component_b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1', nonce: captured.nonce });
   assert.equal(check.ok, false);
   assert.equal(check.changed, 'account');
-  assert.match(check.reason, /otl_account_A/);
-  assert.match(check.reason, /otl_account_B/);
+  assert.match(check.reason, /component_(a1){32}/);
+  assert.match(check.reason, /component_(b1){32}/);
 });
 
 test('toctou: a network switch between review and approval aborts', () => {
   const provider = fakeProvider();
   const captured = identityFor(provider);
-  const check = identity.verifyIdentity(captured, { provider, providerNetwork: 'localnet', account: 'otl_account_A', nonce: captured.nonce });
+  const check = identity.verifyIdentity(captured, { provider, providerNetwork: 'localnet', account: 'component_a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1', nonce: captured.nonce });
   assert.equal(check.ok, false);
   assert.equal(check.changed, 'network');
 });
@@ -470,7 +470,7 @@ test('toctou: a network switch between review and approval aborts', () => {
 test('toctou: mainnet cannot be reached by switching the provider network', () => {
   const provider = fakeProvider();
   const captured = identityFor(provider);
-  const check = identity.verifyIdentity(captured, { provider, providerNetwork: 'mainnet', account: 'otl_account_A', nonce: captured.nonce });
+  const check = identity.verifyIdentity(captured, { provider, providerNetwork: 'mainnet', account: 'component_a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1', nonce: captured.nonce });
   assert.equal(check.ok, false);
   assert.equal(check.changed, 'network');
 });
@@ -479,7 +479,7 @@ test('toctou: a stale review is refused even when nothing else changed', () => {
   const provider = fakeProvider();
   const captured = identityFor(provider);
   // Same provider, same network, same account, same capabilities, wrong nonce.
-  const check = identity.verifyIdentity(captured, { provider, providerNetwork: 'esmeralda', account: 'otl_account_A', nonce: 'stale-nonce' });
+  const check = identity.verifyIdentity(captured, { provider, providerNetwork: 'esmeralda', account: 'component_a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1', nonce: 'stale-nonce' });
   assert.equal(check.ok, false);
   assert.equal(check.changed, 'nonce');
 });
@@ -490,10 +490,10 @@ test('toctou: a stale review is refused even when nothing else changed', () => {
 
 function swapIntentFor(amountRaw, minOutput) {
   return walletAdapter.buildSwapIntent({
-    poolComponent: 'component_pool_1',
-    accountAddress: 'otl_account_A',
-    inputResource: 'otl_canonical_tari',
-    outputResource: 'otl_wstable',
+    poolComponent: 'component_f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1',
+    accountAddress: 'component_a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1',
+    inputResource: 'resource_0101010101010101010101010101010101010101010101010101010101010101',
+    outputResource: 'resource_e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2',
     rawInputAmount: amountRaw,
     minOutput,
     maxEpoch: '1000',
@@ -524,8 +524,8 @@ test('integrity: the wallet request is generated FROM the review, so it cannot d
   const intent = swapIntentFor('1000000', '900000');
   const built = reviewFor(intent);
   const request = built.walletRequest.transaction.legs[0];
-  assert.equal(request.componentAddress, 'component_pool_1');
-  const tariAmount = request.args.find((arg) => arg.resourceAddress === 'otl_canonical_tari');
+  assert.equal(request.componentAddress, 'component_f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1');
+  const tariAmount = request.args.find((arg) => arg.resourceAddress === 'resource_0101010101010101010101010101010101010101010101010101010101010101');
   assert.equal(tariAmount.amountRaw, '1000000');
   // The min_output the user was shown is the one in the wallet request.
   assert.equal(built.legs[0].minOutputRaw, '900000');
@@ -577,7 +577,7 @@ test('integrity: a decimal-shift is impossible because no Number is involved', (
   // And the intent carries the exact raw value.
   const intent = swapIntentFor(oneTari, '900000');
   const built = reviewFor(intent);
-  assert.equal(built.legs[0].amounts.find((a) => a.resourceAddress === 'otl_canonical_tari').amountRaw, '1000000');
+  assert.equal(built.legs[0].amounts.find((a) => a.resourceAddress === 'resource_0101010101010101010101010101010101010101010101010101010101010101').amountRaw, '1000000');
 });
 
 test('integrity: a zero min_output is refused before the user ever sees an offer', () => {
@@ -587,7 +587,7 @@ test('integrity: a zero min_output is refused before the user ever sees an offer
       review.createReview({
         operationId: 'op',
         network: 'esmeralda',
-        account: 'otl_account_A',
+        account: 'component_a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1',
         identity: id,
         legs: [{ operation: 'AMM_SWAP', componentAddress: 'c', method: 'swap', amounts: [{ resourceAddress: 'otl_a', amountRaw: '100', role: 'INPUT' }], minOutputRaw: '0' }],
       }),
@@ -604,7 +604,7 @@ test('integrity: a review with no named amounts is refused', () => {
       review.createReview({
         operationId: 'op',
         network: 'esmeralda',
-        account: 'otl_account_A',
+        account: 'component_a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1',
         identity: id,
         legs: [{ operation: 'AMM_SWAP', componentAddress: 'c', method: 'swap', amounts: [] }],
       }),
@@ -726,13 +726,13 @@ test('amounts: a zero-decimal asset cannot take a fraction', () => {
 test('poisoning: hostile chart data cannot reach a resolver input', async () => {
   const boundary = require('../build-test/lib/tradeBoundary.js');
   const POOL = {
-    poolComponent: 'component_pool_1',
-    resourceA: 'otl_canonical_tari',
-    resourceB: 'otl_wstable',
+    poolComponent: 'component_f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1',
+    resourceA: 'resource_0101010101010101010101010101010101010101010101010101010101010101',
+    resourceB: 'resource_e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2',
     reserveA: '1000000000',
     reserveB: '4000000000',
     feeBps: '30',
-    lpResource: 'otl_lp',
+    lpResource: 'resource_e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3',
     totalLpSupply: '2000000000',
     lockedLpSupply: '0',
   };
@@ -740,9 +740,9 @@ test('poisoning: hostile chart data cannot reach a resolver input', async () => 
   const readback = { readPool: async () => ({ status: 'FOUND', value: POOL, freshness: FRESH }) };
   const builder = { swap: ({ quote, minOutput }) => ({ minOutput, quoted: quote.quotedOutput }) };
   const request = {
-    poolComponent: 'component_pool_1',
-    inputResource: 'otl_canonical_tari',
-    outputResource: 'otl_wstable',
+    poolComponent: 'component_f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1',
+    inputResource: 'resource_0101010101010101010101010101010101010101010101010101010101010101',
+    outputResource: 'resource_e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2',
     rawInputAmount: '100000000',
     slippage: { slippageBps: '100' },
     maxEpoch: '1000',
@@ -1042,9 +1042,9 @@ test('unicode: a confusable symbol never becomes the identity', () => {
   // Cyrillic О, Greek Ι, and a bidi override all look like "TARI".
   const confusables = ['ТARI', 'TARΙ', 'TARI‮', 'TARI', 'T A R I'];
   for (const symbol of confusables) {
-    const chip = assetIdentity.toAssetChip({ resourceAddress: 'otl_canonical_tari', symbol, decimals: '6', safetyClass: 'CANONICAL_TARI' });
+    const chip = assetIdentity.toAssetChip({ resourceAddress: 'resource_0101010101010101010101010101010101010101010101010101010101010101', symbol, decimals: '6', safetyClass: 'CANONICAL_TARI' });
     // The exact address is the identity; the symbol is only a label.
-    assert.equal(chip.fullAddress, 'otl_canonical_tari');
+    assert.equal(chip.fullAddress, 'resource_0101010101010101010101010101010101010101010101010101010101010101');
     assert.equal(sanitize.safeLabel(symbol, 16).includes('‮'), false, 'a bidi override must be stripped');
   }
   // Two different addresses with the same display symbol remain distinguishable.
@@ -1139,7 +1139,7 @@ const srcRootX = pathx.join(__dirname, '..', 'src');
 function mutableProvider() {
   const state = {
     network: 'esmeralda',
-    account: 'otl_account_A',
+    account: 'component_a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1',
     caps: { l2HtlcFund: true, l2HtlcClaim: true },
   };
   const provider = {
@@ -1168,7 +1168,7 @@ test('identity: a replaced provider object is detected by reference', () => {
     provider: original,
     expectedNetwork: 'esmeralda',
     providerNetwork: 'esmeralda',
-    account: 'otl_account_A',
+    account: 'component_a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1',
     capabilities: { l2HtlcFund: true, l2HtlcClaim: true },
   });
 
@@ -1178,7 +1178,7 @@ test('identity: a replaced provider object is detected by reference', () => {
   const check = verifyIdentity(pinned, {
     provider: impostor,
     providerNetwork: 'esmeralda',
-    account: 'otl_account_A',
+    account: 'component_a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1',
     capabilities: { l2HtlcFund: true, l2HtlcClaim: true },
     nonce: pinned.nonce,
   });
@@ -1193,14 +1193,14 @@ test('identity: a capability downgrade after approval is detected', () => {
     provider,
     expectedNetwork: 'esmeralda',
     providerNetwork: 'esmeralda',
-    account: 'otl_account_A',
+    account: 'component_a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1',
     capabilities: { l2HtlcFund: true, l2HtlcClaim: true },
   });
   // Live capabilities are re-read and differ from the approved snapshot.
   const check = verifyIdentity(pinned, {
     provider,
     providerNetwork: 'esmeralda',
-    account: 'otl_account_A',
+    account: 'component_a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1',
     capabilities: { l2HtlcFund: false, l2HtlcClaim: false },
     nonce: pinned.nonce,
   });
@@ -1215,13 +1215,13 @@ test('identity: a stale review from a previous session cannot be re-authorized',
     provider,
     expectedNetwork: 'esmeralda',
     providerNetwork: 'esmeralda',
-    account: 'otl_account_A',
+    account: 'component_a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1',
     capabilities: { l2HtlcFund: true },
   });
   const check = verifyIdentity(pinned, {
     provider,
     providerNetwork: 'esmeralda',
-    account: 'otl_account_A',
+    account: 'component_a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1',
     capabilities: { l2HtlcFund: true },
     nonce: issueNonce(),
   });
@@ -1377,15 +1377,15 @@ test('review: a marketplace intent is diffed with the marketplace rules', () => 
 
 test('review: a marketplace differential rejects a review bound to the wrong account', () => {
   const { createReview, diffReviewAgainstMarketplaceIntent, isMarketplaceIntent } = require('../build-test/lib/review.js');
-  const identity = { nonce: 'n1', providerRef: {}, providerFingerprint: 'p', expectedNetwork: 'esmeralda', providerNetwork: 'esmeralda', account: 'component_account_B', capabilityFingerprint: 'c', capturedAtUnixMs: 0 };
+  const identity = { nonce: 'n1', providerRef: {}, providerFingerprint: 'p', expectedNetwork: 'esmeralda', providerNetwork: 'esmeralda', account: 'component_b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2', capabilityFingerprint: 'c', capturedAtUnixMs: 0 };
   const intent = {
     operation: 'buy_listing',
-    target: { componentOrOrderId: 'component_listing_1', nftResource: 'otl_nft_1', nftId: 'series#7', quoteResource: 'otl_wstable_0001', amount: '1000' },
-    calls: [{ method: 'buy_listing', args: [], componentAddress: 'component_listing_1' }],
+    target: { componentOrOrderId: 'component_c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1', nftResource: 'resource_d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1', nftId: 'str_series#7', quoteResource: 'resource_e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1', amount: '1000' },
+    calls: [{ method: 'buy_listing', args: [], componentAddress: 'component_c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1' }],
     instructions: [
-      { kind: 'withdraw_non_fungible', accountAddress: 'component_account_B', nftResource: 'otl_nft_1', nonFungibleId: 'series#7', output: { kind: 'workspace_bucket', name: 'nft' } },
-      { kind: 'withdraw_fungible', accountAddress: 'component_account_B', resourceAddress: 'otl_wstable_0001', amount: '1000', output: { kind: 'workspace_bucket', name: 'payment' } },
-      { kind: 'call_method', componentAddress: 'component_listing_1', method: 'buy_listing', args: [{ kind: 'workspace_bucket', name: 'payment' }], resourcesInvolved: ['otl_wstable_0001'] },
+      { kind: 'withdraw_non_fungible', accountAddress: 'component_b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2', nftResource: 'resource_d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1', nonFungibleId: 'str_series#7', output: { kind: 'workspace_bucket', name: 'nft' } },
+      { kind: 'withdraw_fungible', accountAddress: 'component_b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2', resourceAddress: 'resource_e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1', amount: '1000', output: { kind: 'workspace_bucket', name: 'payment' } },
+      { kind: 'call_method', componentAddress: 'component_c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1', method: 'buy_listing', args: [{ kind: 'workspace_bucket', name: 'payment' }], argTypes: ['Bucket'], resourcesInvolved: ['resource_e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1'] },
     ],
   };
   assert.equal(isMarketplaceIntent(intent), true);
@@ -1400,11 +1400,11 @@ test('review: a marketplace differential rejects a review bound to the wrong acc
       legs: [
         {
           operation: 'buy_listing',
-          componentAddress: 'component_listing_1',
+          componentAddress: 'component_c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1',
           method: 'buy_listing',
           amounts: [
-            { resourceAddress: 'otl_nft_1', amountRaw: '0', role: 'INPUT', nftId: 'series#7' },
-            { resourceAddress: 'otl_wstable_0001', amountRaw: '1000', role: 'OUTPUT' },
+            { resourceAddress: 'resource_d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1', amountRaw: '0', role: 'INPUT', nftId: 'str_series#7' },
+            { resourceAddress: 'resource_e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1', amountRaw: '1000', role: 'OUTPUT' },
           ],
         },
       ],
@@ -1412,24 +1412,24 @@ test('review: a marketplace differential rejects a review bound to the wrong acc
 
   // The account the intent settles from is the buyer's, so a review bound to
   // anyone else must be rejected.
-  const wrong = diffReviewAgainstMarketplaceIntent(build('component_account_A'), intent);
+  const wrong = diffReviewAgainstMarketplaceIntent(build('component_a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2'), intent);
   assert.equal(wrong.ok, false);
   assert.ok(wrong.mismatches.some((m) => m.includes('account')), 'a review bound to a different account must be rejected');
 
-  const right = diffReviewAgainstMarketplaceIntent(build('component_account_B'), intent);
+  const right = diffReviewAgainstMarketplaceIntent(build('component_b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2'), intent);
   assert.equal(right.ok, true, `expected a matching review to pass, got: ${right.mismatches.join('; ')}`);
 });
 
 test('review: a marketplace differential rejects a tampered amount', () => {
   const { createReview, diffReviewAgainstMarketplaceIntent } = require('../build-test/lib/review.js');
-  const identity = { nonce: 'n1', providerRef: {}, providerFingerprint: 'p', expectedNetwork: 'esmeralda', providerNetwork: 'esmeralda', account: 'component_account_B', capabilityFingerprint: 'c', capturedAtUnixMs: 0 };
+  const identity = { nonce: 'n1', providerRef: {}, providerFingerprint: 'p', expectedNetwork: 'esmeralda', providerNetwork: 'esmeralda', account: 'component_b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2', capabilityFingerprint: 'c', capturedAtUnixMs: 0 };
   const intent = {
     operation: 'buy_listing',
-    target: { componentOrOrderId: 'component_listing_1', nftResource: 'otl_nft_1', nftId: 'series#7', quoteResource: 'otl_wstable_0001', amount: '1000' },
-    calls: [{ method: 'buy_listing', args: [], componentAddress: 'component_listing_1' }],
+    target: { componentOrOrderId: 'component_c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1', nftResource: 'resource_d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1', nftId: 'str_series#7', quoteResource: 'resource_e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1', amount: '1000' },
+    calls: [{ method: 'buy_listing', args: [], componentAddress: 'component_c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1' }],
     instructions: [
-      { kind: 'withdraw_fungible', accountAddress: 'component_account_B', resourceAddress: 'otl_wstable_0001', amount: '1000', output: { kind: 'workspace_bucket', name: 'payment' } },
-      { kind: 'call_method', componentAddress: 'component_listing_1', method: 'buy_listing', args: [{ kind: 'workspace_bucket', name: 'payment' }], resourcesInvolved: ['otl_wstable_0001'] },
+      { kind: 'withdraw_fungible', accountAddress: 'component_b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2', resourceAddress: 'resource_e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1', amount: '1000', output: { kind: 'workspace_bucket', name: 'payment' } },
+      { kind: 'call_method', componentAddress: 'component_c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1', method: 'buy_listing', args: [{ kind: 'workspace_bucket', name: 'payment' }], argTypes: ['Bucket'], resourcesInvolved: ['resource_e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1'] },
     ],
   };
   // The review shows a different amount than the intent moves — and carries the
@@ -1438,18 +1438,18 @@ test('review: a marketplace differential rejects a tampered amount', () => {
   const review = createReview({
     operationId: 'nft-2',
     network: 'esmeralda',
-    account: 'component_account_B',
+    account: 'component_b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2',
     identity,
     instructions: [
-      { kind: 'withdraw_fungible', accountAddress: 'component_account_B', resourceAddress: 'otl_wstable_0001', amount: '1', output: { kind: 'workspace_bucket', name: 'payment' } },
-      { kind: 'call_method', componentAddress: 'component_listing_1', method: 'buy_listing', args: [{ kind: 'workspace_bucket', name: 'payment' }], resourcesInvolved: ['otl_wstable_0001'] },
+      { kind: 'withdraw_fungible', accountAddress: 'component_b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2', resourceAddress: 'resource_e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1', amount: '1', output: { kind: 'workspace_bucket', name: 'payment' } },
+      { kind: 'call_method', componentAddress: 'component_c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1', method: 'buy_listing', args: [{ kind: 'workspace_bucket', name: 'payment' }], argTypes: ['Bucket'], resourcesInvolved: ['resource_e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1'] },
     ],
     legs: [
       {
         operation: 'buy_listing',
-        componentAddress: 'component_listing_1',
+        componentAddress: 'component_c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1',
         method: 'buy_listing',
-        amounts: [{ resourceAddress: 'otl_wstable_0001', amountRaw: '1', role: 'OUTPUT' }],
+        amounts: [{ resourceAddress: 'resource_e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1', amountRaw: '1', role: 'OUTPUT' }],
       },
     ],
   });
@@ -1464,32 +1464,32 @@ test('review: an amount in the DISPLAY record but not the INSTRUCTIONS is reject
   // differs from what the user saw. The differential must catch it even though
   // every display-side field agrees with the review.
   const { createReview, diffReviewAgainstMarketplaceIntent } = require('../build-test/lib/review.js');
-  const identity = { nonce: 'n1', providerRef: {}, providerFingerprint: 'p', expectedNetwork: 'esmeralda', providerNetwork: 'esmeralda', account: 'component_account_B', capabilityFingerprint: 'c', capturedAtUnixMs: 0 };
+  const identity = { nonce: 'n1', providerRef: {}, providerFingerprint: 'p', expectedNetwork: 'esmeralda', providerNetwork: 'esmeralda', account: 'component_b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2', capabilityFingerprint: 'c', capturedAtUnixMs: 0 };
   const intent = {
     operation: 'buy_listing',
-    target: { componentOrOrderId: 'component_listing_1', nftResource: 'otl_nft_1', nftId: 'series#7', quoteResource: 'otl_wstable_0001', amount: '1000' },
-    calls: [{ method: 'buy_listing', args: [], componentAddress: 'component_listing_1' }],
+    target: { componentOrOrderId: 'component_c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1', nftResource: 'resource_d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1', nftId: 'str_series#7', quoteResource: 'resource_e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1', amount: '1000' },
+    calls: [{ method: 'buy_listing', args: [], componentAddress: 'component_c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1' }],
     instructions: [
-      { kind: 'withdraw_fungible', accountAddress: 'component_account_B', resourceAddress: 'otl_wstable_0001', amount: '1000', output: { kind: 'workspace_bucket', name: 'payment' } },
-      { kind: 'call_method', componentAddress: 'component_listing_1', method: 'buy_listing', args: [{ kind: 'workspace_bucket', name: 'payment' }], resourcesInvolved: ['otl_wstable_0001'] },
+      { kind: 'withdraw_fungible', accountAddress: 'component_b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2', resourceAddress: 'resource_e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1', amount: '1000', output: { kind: 'workspace_bucket', name: 'payment' } },
+      { kind: 'call_method', componentAddress: 'component_c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1', method: 'buy_listing', args: [{ kind: 'workspace_bucket', name: 'payment' }], argTypes: ['Bucket'], resourcesInvolved: ['resource_e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1'] },
     ],
   };
   const review = createReview({
     operationId: 'nft-split',
     network: 'esmeralda',
-    account: 'component_account_B',
+    account: 'component_b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2',
     identity,
     // The signed instructions move 1, not the 1000 the record states.
     instructions: [
-      { kind: 'withdraw_fungible', accountAddress: 'component_account_B', resourceAddress: 'otl_wstable_0001', amount: '1', output: { kind: 'workspace_bucket', name: 'payment' } },
-      { kind: 'call_method', componentAddress: 'component_listing_1', method: 'buy_listing', args: [{ kind: 'workspace_bucket', name: 'payment' }], resourcesInvolved: ['otl_wstable_0001'] },
+      { kind: 'withdraw_fungible', accountAddress: 'component_b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2', resourceAddress: 'resource_e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1', amount: '1', output: { kind: 'workspace_bucket', name: 'payment' } },
+      { kind: 'call_method', componentAddress: 'component_c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1', method: 'buy_listing', args: [{ kind: 'workspace_bucket', name: 'payment' }], argTypes: ['Bucket'], resourcesInvolved: ['resource_e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1'] },
     ],
     legs: [
       {
         operation: 'buy_listing',
-        componentAddress: 'component_listing_1',
+        componentAddress: 'component_c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1',
         method: 'buy_listing',
-        amounts: [{ resourceAddress: 'otl_wstable_0001', amountRaw: '1000', role: 'OUTPUT' }],
+        amounts: [{ resourceAddress: 'resource_e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1', amountRaw: '1000', role: 'OUTPUT' }],
       },
     ],
   });
@@ -1503,25 +1503,25 @@ test('review: an amount in the DISPLAY record but not the INSTRUCTIONS is reject
 
 test('review: a marketplace differential rejects a review for a different order', () => {
   const { createReview, diffReviewAgainstMarketplaceIntent } = require('../build-test/lib/review.js');
-  const identity = { nonce: 'n1', providerRef: {}, providerFingerprint: 'p', expectedNetwork: 'esmeralda', providerNetwork: 'esmeralda', account: 'component_account_B', capabilityFingerprint: 'c', capturedAtUnixMs: 0 };
+  const identity = { nonce: 'n1', providerRef: {}, providerFingerprint: 'p', expectedNetwork: 'esmeralda', providerNetwork: 'esmeralda', account: 'component_b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2', capabilityFingerprint: 'c', capturedAtUnixMs: 0 };
   const intent = {
     operation: 'buy_listing',
-    target: { componentOrOrderId: 'component_listing_1', nftResource: 'otl_nft_1', nftId: 'series#7', quoteResource: 'otl_wstable_0001', amount: '1000' },
-    calls: [{ method: 'buy_listing', args: [], componentAddress: 'component_listing_1' }],
-    instructions: [{ kind: 'withdraw_fungible', accountAddress: 'component_account_B', resourceAddress: 'otl_wstable_0001', amount: '1000', output: { kind: 'workspace_bucket', name: 'payment' } }],
+    target: { componentOrOrderId: 'component_c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1', nftResource: 'resource_d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1', nftId: 'str_series#7', quoteResource: 'resource_e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1', amount: '1000' },
+    calls: [{ method: 'buy_listing', args: [], componentAddress: 'component_c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1' }],
+    instructions: [{ kind: 'withdraw_fungible', accountAddress: 'component_b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2', resourceAddress: 'resource_e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1', amount: '1000', output: { kind: 'workspace_bucket', name: 'payment' } }],
   };
   const review = createReview({
     operationId: 'nft-3',
     network: 'esmeralda',
-    account: 'component_account_B',
+    account: 'component_b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2',
     identity,
-    instructions: [{ kind: 'withdraw_fungible', accountAddress: 'component_account_B', resourceAddress: 'otl_wstable_0001', amount: '1000', output: { kind: 'workspace_bucket', name: 'payment' } }],
+    instructions: [{ kind: 'withdraw_fungible', accountAddress: 'component_b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2', resourceAddress: 'resource_e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1', amount: '1000', output: { kind: 'workspace_bucket', name: 'payment' } }],
     legs: [
       {
         operation: 'buy_listing',
-        componentAddress: 'component_listing_ATTACKER',
+        componentAddress: 'component_c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9',
         method: 'buy_listing',
-        amounts: [{ resourceAddress: 'otl_wstable_0001', amountRaw: '1000', role: 'OUTPUT' }],
+        amounts: [{ resourceAddress: 'resource_e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1', amountRaw: '1000', role: 'OUTPUT' }],
       },
     ],
   });
@@ -1602,31 +1602,31 @@ function buildReviewedBuyListingRequest() {
     providerFingerprint: 'p',
     expectedNetwork: 'esmeralda',
     providerNetwork: 'esmeralda',
-    account: 'component_account_A',
+    account: 'component_a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2',
     capabilityFingerprint: 'c',
     capturedAtUnixMs: 0,
   };
   const review = reviewLib.createReview({
     operationId: 'nft-boundary-1',
     network: 'esmeralda',
-    account: 'component_account_A',
+    account: 'component_a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2',
     identity,
-    // The on-chain expiry the intent carries must be bound into the signed
-    // transaction, or a signature stays valid indefinitely after market state
-    // moves. Passing it to the review is how it reaches the instructions.
+    // Expiry evidence only: Ootle has no max-epoch instruction; the wallet sets the
+    // transaction's max_epoch when it signs.
     maxEpoch: '950',
     instructions: [
-      { kind: 'withdraw_fungible', accountAddress: 'component_account_A', resourceAddress: 'otl_wstable_0001', amount: '1000000', output: { kind: 'workspace_bucket', name: 'payment' } },
-      { kind: 'call_method', componentAddress: 'component_listing_1', method: 'buy_listing', args: [{ kind: 'workspace_bucket', name: 'payment' }], resourcesInvolved: ['otl_wstable_0001'] },
+      { kind: 'withdraw_fungible', accountAddress: 'component_a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2', resourceAddress: 'resource_e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1', amount: '1000000', output: { kind: 'workspace_bucket', name: 'payment' } },
+      { kind: 'call_method', componentAddress: 'component_c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1', method: 'buy_listing', args: [{ kind: 'workspace_bucket', name: 'payment' }], argTypes: ['Bucket'], resourcesInvolved: ['resource_e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1'] },
     ],
     legs: [
       {
         operation: 'NFT_BUY_NOW',
-        componentAddress: 'component_listing_1',
+        componentAddress: 'component_c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1',
         method: 'buy_listing',
         amounts: [
-          { resourceAddress: 'otl_nft_1', amountRaw: '0', role: 'INPUT', nftId: 'series#7' },
-          { resourceAddress: 'otl_wstable_0001', amountRaw: '1000000', role: 'OUTPUT' },
+          // The buyer RECEIVES the NFT (released by the listing) and PAYS 1000000.
+          { resourceAddress: 'resource_d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1', amountRaw: '0', role: 'OUTPUT', nftId: 'str_series#7' },
+          { resourceAddress: 'resource_e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1', amountRaw: '1000000', role: 'INPUT' },
         ],
         minOutputRaw: '1000000',
         maxEpochRaw: '950',
@@ -1668,18 +1668,20 @@ test('F-02: the provider receives the reviewed INSTRUCTIONS, byte for byte', asy
   assert.equal(envelope.params.instructions.transaction, undefined, 'the instructions must not be wrapped twice');
 
   // Specifically the fields the old {method, args, component} reconstruction
-  // lost: the component, the per-resource amount, and the expiry bound.
+  // lost: the component and the per-resource amount (as its v0.48 Amount Literal).
+  // The expiry is NOT an instruction: Ootle has no max-epoch instruction and the wallet
+  // sets the transaction's max_epoch, so nothing epoch-shaped may be smuggled in.
   const serialised = JSON.stringify(envelope.params.instructions);
-  assert.match(serialised, /component_listing_1/, 'the order component must be named');
-  assert.match(serialised, /1000000/, 'the amount must be carried');
-  assert.match(serialised, /950/, 'the on-chain expiry must be bound');
+  assert.match(serialised, /component_(c1){32}/, 'the order component must be named');
+  assert.match(serialised, /"Literal":"1a000f4240"/, 'the amount must be carried as an Amount literal');
+  assert.doesNotMatch(serialised, /WithMaxEpoch/, 'no non-existent instruction may be emitted');
 });
 
 test('F-02: the lossy preview reconstruction is measurably different at the boundary', async () => {
   const provider = recordingProvider(() => ({ transactionId: 'tx_provider_boundary_2' }));
   // This is the shape the old code built: a method/args/component triple with no
   // instructions, no resource addresses, and no minimum output.
-  const lossy = { method: 'buy_listing', args: ['0', '1000000'], component: 'component_listing_1' };
+  const lossy = { method: 'buy_listing', args: ['0', '1000000'], component: 'component_c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1' };
 
   await tari.signAndSubmit(provider, { instructions: [lossy] });
 
@@ -1687,7 +1689,7 @@ test('F-02: the lossy preview reconstruction is measurably different at the boun
   // old shape been signed, nothing in the envelope would have stated which
   // resource moved, or the floor the user accepted.
   const sent = JSON.stringify(provider.seen[0].params.instructions);
-  assert.equal(/otl_wstable_0001/.test(sent), false, 'the reconstruction names no resource address');
+  assert.equal(/(e1){32}/.test(sent), false, 'the reconstruction names no resource address');
   assert.equal(/minOutput/.test(sent), false, 'the reconstruction states no minimum output');
 });
 
@@ -1703,9 +1705,13 @@ test('F-02: the request is derived from the review, so the numbers have one sour
 
   // …and the INSTRUCTIONS, which are what the wallet actually signs.
   const serialised = JSON.stringify(review.walletRequest.instructions);
+  const { encodeLiteral } = require('../build-test/lib/instructionArgs.js');
   for (const amount of leg.amounts) {
     if (amount.role === 'FEE') continue;
-    assert.ok(serialised.includes(amount.amountRaw), `the instructions must carry ${amount.amountRaw} of ${amount.resourceAddress}`);
+    // The NFT a buyer RECEIVES is released by the listing template; `buy` does not take it.
+    if (amount.role === 'OUTPUT' && amount.nftId !== undefined) continue;
+    const expected = amount.nftId !== undefined ? encodeLiteral('NonFungibleId', amount.nftId) : encodeLiteral('Amount', amount.amountRaw);
+    assert.ok(serialised.includes(`"Literal":"${expected}"`), `the instructions must carry ${amount.nftId ?? amount.amountRaw} of ${amount.resourceAddress}`);
   }
 
   // Frozen all the way down, so it cannot drift between approval and signing.
@@ -1727,7 +1733,7 @@ test('F-02: a review with no instruction list is refused, not signed as nothing'
         account: 'component_a',
         identity,
         instructions: [],
-        legs: [{ operation: 'AMM_SWAP', componentAddress: 'component_pool_1', method: 'swap', amounts: [{ resourceAddress: 'otl_r', amountRaw: '1', role: 'INPUT' }] }],
+        legs: [{ operation: 'AMM_SWAP', componentAddress: 'component_f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1', method: 'swap', amounts: [{ resourceAddress: 'otl_r', amountRaw: '1', role: 'INPUT' }] }],
       }),
     /empty instruction list|instruction list/,
   );
@@ -1746,9 +1752,9 @@ test('F-02: the signing gate requires a frozen review, and the requirement is as
   const review = buildReviewedBuyListingRequest();
   assert.throws(() => {
     'use strict';
-    review.walletRequest.instructions[0].CallMethod.call.Address = 'component_attacker';
+    review.walletRequest.instructions[0].CallMethod.call.Address = 'component_9999999999999999999999999999999999999999999999999999999999999999';
   }, TypeError);
-  assert.equal(review.walletRequest.instructions[0].CallMethod.call.Address, 'component_account_A');
+  assert.equal(review.walletRequest.instructions[0].CallMethod.call.Address, 'component_a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2');
 });
 
 // ===========================================================================

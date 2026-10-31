@@ -100,32 +100,79 @@ function componentState(componentSubstate: unknown): unknown[] {
 /**
  * `NonFungibleId` reaches this decoder in TWO different renderings, and both are real.
  *
- * Inside a component's own `body.state` it is CBOR, so it arrives as the positional
- * enum tuple `[variantIndex, [payload]]` — variant 1 is `String`, variant 0 is `U64`.
+ * Inside a component's own `body.state` it is CBOR, so it arrives as the positional enum
+ * `[variantIndex, [payload]]`. The variant indices are upstream's minicbor tags
+ * (crates/template_lib_types/src/substates/non_fungible.rs at v0.48.0):
+ *   0 U256([u8; 32])   1 String   2 Uint32   3 Uint64
  *
- * Inside a vault's `resource_container` it is a plain serde-derived substate, so the
- * same type arrives as a NAMED variant object: `{"String":"..."}` or `{"U64":n}`.
+ * Inside a vault's `resource_container` it is a serde-derived substate, so the same type
+ * arrives as a NAMED variant object: `{"U256": "<64 hex>"}`, `{"String": "..."}`,
+ * `{"Uint32": n}`, `{"Uint64": n}` (`{"U64": n}` is also accepted: it is what the v0.46
+ * indexers were observed to serve).
  *
- * These are the same value in two encodings, not two different values, so both are
- * accepted here. Anything else is refused: a token id we cannot name is a token id we
- * cannot settle.
+ * Both are returned as upstream's CANONICAL string (`NonFungibleId::to_canonical_string`):
+ * `uuid_<hex>`, `str_<text>`, `u32_<n>`, `u64_<n>`. That is the one form the instruction
+ * encoder accepts, so an id read from chain is exactly the id a withdrawal will name; two
+ * different ids can never collapse to the same string (`u64_7` is not `str_7`). Anything
+ * else is refused: a token id we cannot name is a token id we cannot settle.
  */
+const U32_MAX = 4_294_967_295n;
+const U64_MAX = 18_446_744_073_709_551_615n;
+
+function boundedUint(value: unknown, max: bigint, what: string): string {
+  const text = intString(value, what);
+  if (BigInt(text) > max) throw new MarketplaceDecodeError(`${what} exceeds ${max}`);
+  return String(BigInt(text));
+}
+
+function stringId(value: unknown, what: string): string {
+  if (typeof value !== 'string' || value === '' || new TextEncoder().encode(value).length > 64) {
+    throw new MarketplaceDecodeError(`${what} is not a 1..64 byte string NonFungibleId`);
+  }
+  return `str_${value}`;
+}
+
+function u256Id(value: unknown, what: string): string {
+  const hex = typeof value === 'string' ? value : record(value)?.hex;
+  if (typeof hex !== 'string' || !HEX64.test(hex)) throw new MarketplaceDecodeError(`${what} is not a 32-byte U256 NonFungibleId`);
+  return `uuid_${hex}`;
+}
+
 function nonFungibleId(node: unknown, what: string): string {
   const named = record(node);
   if (named !== undefined) {
-    if (typeof named.String === 'string' && named.String !== '') return named.String;
-    if (named.U64 !== undefined) return `u64:${intString(named.U64, what)}`;
-    throw new MarketplaceDecodeError(`${what} is not a string or u64 NonFungibleId variant`);
+    const keys = Object.keys(named);
+    if (keys.length === 1) {
+      if (named.String !== undefined) return stringId(named.String, what);
+      if (named.U256 !== undefined) return u256Id(named.U256, what);
+      if (named.Uint32 !== undefined) return `u32_${boundedUint(named.Uint32, U32_MAX, what)}`;
+      if (named.Uint64 !== undefined) return `u64_${boundedUint(named.Uint64, U64_MAX, what)}`;
+      if (named.U64 !== undefined) return `u64_${boundedUint(named.U64, U64_MAX, what)}`;
+    }
+    throw new MarketplaceDecodeError(`${what} is not a NonFungibleId variant`);
   }
-  if (!Array.isArray(node) || node.length !== 2) throw new MarketplaceDecodeError(`${what} is not a NonFungibleId enum`);
-  const variant = node[0];
-  const payload = node[1];
-  if (variant === 1 && Array.isArray(payload) && typeof payload[0] === 'string' && payload[0] !== '') {
-    return payload[0];
+  if (!Array.isArray(node) || node.length !== 2 || !Array.isArray(node[1]) || node[1].length !== 1) {
+    throw new MarketplaceDecodeError(`${what} is not a NonFungibleId enum`);
   }
-  if (variant === 0 && Array.isArray(payload)) return `u64:${intString(payload[0], what)}`;
-  throw new MarketplaceDecodeError(`${what} is not a string or u64 NonFungibleId variant`);
+  const payload = node[1][0];
+  switch (node[0]) {
+    case 0:
+      return u256Id(payload, what);
+    case 1:
+      return stringId(payload, what);
+    case 2:
+      return `u32_${boundedUint(payload, U32_MAX, what)}`;
+    case 3:
+      return `u64_${boundedUint(payload, U64_MAX, what)}`;
+    default:
+      throw new MarketplaceDecodeError(`${what} has unknown NonFungibleId variant ${JSON.stringify(node[0])}`);
+  }
 }
+
+/** A decoded `NonFungibleId` node (either rendering) as upstream's canonical string. */
+export const decodeNonFungibleId = (node: unknown, what = 'NonFungibleId'): string => nonFungibleId(node, what);
+/** Exposed for the decoder's own tests. */
+export const decodeNonFungibleIdForTest = (node: unknown): string => nonFungibleId(node, 'NonFungibleId');
 
 /** A unit enum decodes to `[variantIndex, []]`. An out-of-range index yields `undefined`. */
 function unitEnum(node: unknown, names: readonly string[], what: string): string | undefined {
@@ -154,6 +201,11 @@ export interface MarketplaceEscrow {
   /** Non-fungible ids held. Empty for a fungible escrow. */
   readonly tokenIds: readonly string[];
   readonly empty: boolean;
+  /**
+   * The vault's resource-container kind, as the chain reports it. This is the asset's
+   * privacy representation; a trade must deliver the same kind it escrowed.
+   */
+  readonly containerKind: 'Fungible' | 'Stealth' | 'Confidential' | 'NonFungible';
 }
 
 const LISTING_STATUSES = ['ACTIVE', 'SOLD', 'CANCELLED', 'EXPIRED'] as const;
@@ -199,7 +251,7 @@ export async function readEscrow(reader: MarketplaceRawSubstateReader, vault: st
       throw new MarketplaceDecodeError(`Escrow vault ${vault} holds ${address}, but the component declares ${expectResource}`);
     }
     const amount = intString(inner.amount ?? inner.revealed_amount ?? '0', `${vault}.amount`);
-    return { vaultAddress: vault, resourceAddress: address, amount, tokenIds: [], empty: amount === '0' };
+    return { vaultAddress: vault, resourceAddress: address, amount, tokenIds: [], empty: amount === '0', containerKind: kind };
   }
   const nft = record(container.NonFungible);
   if (nft === undefined) {
@@ -215,7 +267,7 @@ export async function readEscrow(reader: MarketplaceRawSubstateReader, vault: st
   const rawIds = nft.token_ids;
   if (!Array.isArray(rawIds)) throw new MarketplaceDecodeError(`Escrow vault ${vault} carries no token_ids list`);
   const tokenIds = rawIds.map((id, index) => nonFungibleId(id, `${vault}.token_ids[${index}]`));
-  return { vaultAddress: vault, resourceAddress: address, amount: '0', tokenIds, empty: tokenIds.length === 0 };
+  return { vaultAddress: vault, resourceAddress: address, amount: '0', tokenIds, empty: tokenIds.length === 0, containerKind: 'NonFungible' };
 }
 
 /**

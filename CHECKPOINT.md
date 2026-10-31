@@ -1,3 +1,36 @@
+# END-OF-RUN CHECKPOINT (2026-10-31, Phase 2) — browser SwapOffer, Sapient Stealth input, v0.48 wire format
+
+> Supersedes only the facts it contradicts below. Full record: `docs/SHADOW_SWAP_P2P_SWAPOFFER_BROWSER.md`.
+
+## F1. Outcome
+Branch `claude/shadow-swap-swapoffer-browser`, stacked on PR #9 (`7b325f9`, unchanged). The
+browser now builds, reviews and verifies every P2P SwapOffer flow (create, fill, claim, cancel;
+fungible, created-Stealth, revealed Confidential, NFT barter; designated taker, hash lock,
+expiry), shareable invitations verified against chain, and Sapient `withdrawStealthAndExecute`
+for Stealth-typed inputs. SwapOffer is unpublished, so P2P is unavailable in production. Nothing
+was published, merged or deployed.
+
+## F2. Defects fixed
+- CRITICAL: browser instruction JSON was not v0.48 `Instruction` serde: bare-string args (must be
+  `{Literal: hex(tari_bor)}`), a non-existent `WithMaxEpoch`, NFT withdrawn via `withdraw`
+  (must be `withdraw_non_fungible`), `template_`-prefixed `CallFunction.address`. Every wallet
+  write would have been refused. Fixed and engine-pinned (`instruction_wire_v048.rs`).
+- NonFungibleId decoder mislabelled variant 0 and lacked Uint32/Uint64; now all four, canonical.
+- Review carry check matched substrings; now matches encoded literals.
+- Publishing: the raw WASM carries custom sections the v0.48 engine rejects; walletd's
+  optimiser is required (docs corrected).
+
+## F3. Evidence
+See the PR description for the final counts of this run (engine, web, protocol-client,
+wallet-adapter, e2e). Verification levels: engine-verified and reference-provider verified only;
+nothing real-wallet or live-Esmeralda verified (indexers unreachable from this environment).
+
+## F4. Open
+Operator: publish Pool + SwapOffer via walletd and record addresses; switch to
+`add_liquidity_exact` before publishing the Pool; Windows acceptance (Phase 2 doc §10),
+including the first real-wallet check of the `withdrawStealthAndExecute` workspace-id convention.
+
+---
 # END-OF-RUN CHECKPOINT (2026-10-31, later) — trading routes: multi-hop AMM, pool creation, P2P lane
 
 > Supersedes only the facts it contradicts below. Full record: `docs/SHADOW_SWAP_TRADING_ROUTES_IMPLEMENTATION.md`.

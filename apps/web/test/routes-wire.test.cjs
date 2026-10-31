@@ -14,6 +14,8 @@ const w = require('@tari-ootle/wallet-adapter');
 const { buildSignableInstructions } = require('../build-test/lib/instructions.js');
 const review = require('../build-test/lib/review.js');
 const executionIdentity = require('../build-test/lib/executionIdentity.js');
+const { encodeLiteral } = require('../build-test/lib/instructionArgs.js');
+const lit = (type, value) => ({ Literal: encodeLiteral(type, value) });
 
 const R = (n) => `resource_${n.repeat(64).slice(0, 64)}`;
 const P = (n) => `component_${n.repeat(64).slice(0, 64)}`;
@@ -23,18 +25,18 @@ const identity = executionIdentity.captureIdentity({ provider: {}, expectedNetwo
 test('wire: a direct swap is withdraw -> put -> swap -> put -> deposit (the output is never dangling)', () => {
   const intent = w.buildSwapIntent({ poolComponent: P('1'), accountAddress: ACCT, inputResource: R('a'), outputResource: R('b'), rawInputAmount: '10', minOutput: '5', maxEpoch: '9', operationId: 'op', quoteEvidence: { quotedOutput: '6', feeBps: '30', slippageBps: '50', effectiveInput: '9' } });
   const wire = buildSignableInstructions({ instructions: intent.instructions, maxEpoch: '9' });
+  // No WithMaxEpoch: Ootle has no such instruction; the wallet sets the transaction's max_epoch.
   assert.deepEqual(wire, [
-    { CallMethod: { call: { Address: ACCT }, method: 'withdraw', args: [R('a'), '10'] } },
+    { CallMethod: { call: { Address: ACCT }, method: 'withdraw', args: [lit('ResourceAddress', R('a')), lit('Amount', '10')] } },
     { PutLastInstructionOutputOnWorkspace: { key: 0 } },
-    { CallMethod: { call: { Address: P('1') }, method: 'swap', args: [{ Workspace: { id: 0, offset: null } }, R('b'), '5'] } },
+    { CallMethod: { call: { Address: P('1') }, method: 'swap', args: [{ Workspace: { id: 0, offset: null } }, lit('ResourceAddress', R('b')), lit('Amount', '5')] } },
     { PutLastInstructionOutputOnWorkspace: { key: 1 } },
     { CallMethod: { call: { Address: ACCT }, method: 'deposit', args: [{ Workspace: { id: 1, offset: null } }] } },
-    { WithMaxEpoch: { epoch: '9' } },
   ]);
 });
 
 test('wire: remove liquidity deposits BOTH tuple elements by offset', () => {
-  const intent = w.buildRemoveLiquidityIntent({ poolComponent: P('1'), accountAddress: ACCT, lpResource: R('l'), rawLpAmount: '10', maxEpoch: '9', operationId: 'op' });
+  const intent = w.buildRemoveLiquidityIntent({ poolComponent: P('1'), accountAddress: ACCT, lpResource: R('e'), rawLpAmount: '10', maxEpoch: '9', operationId: 'op' });
   const wire = buildSignableInstructions({ instructions: intent.instructions });
   const deposits = wire.filter((i) => i.CallMethod?.method === 'deposit');
   assert.deepEqual(deposits.map((d) => d.CallMethod.args[0]), [{ Workspace: { id: 1, offset: 0 } }, { Workspace: { id: 1, offset: 1 } }]);
@@ -45,9 +47,9 @@ test('wire: a two-hop route is ONE instruction list chaining workspace ids, fina
   const wire = buildSignableInstructions({ instructions: intent.instructions, maxEpoch: '99' });
   const swaps = wire.filter((i) => i.CallMethod?.method === 'swap');
   assert.equal(swaps.length, 2);
-  assert.deepEqual(swaps[0].CallMethod.args, [{ Workspace: { id: 0, offset: null } }, R('b'), '1']);
-  assert.deepEqual(swaps[1].CallMethod.args, [{ Workspace: { id: 1, offset: null } }, R('c'), '875000']);
-  assert.deepEqual(wire.at(-2), { CallMethod: { call: { Address: ACCT }, method: 'deposit', args: [{ Workspace: { id: 2, offset: null } }] } });
+  assert.deepEqual(swaps[0].CallMethod.args, [{ Workspace: { id: 0, offset: null } }, lit('ResourceAddress', R('b')), lit('Amount', '1')]);
+  assert.deepEqual(swaps[1].CallMethod.args, [{ Workspace: { id: 1, offset: null } }, lit('ResourceAddress', R('c')), lit('Amount', '875000')]);
+  assert.deepEqual(wire.at(-1), { CallMethod: { call: { Address: ACCT }, method: 'deposit', args: [{ Workspace: { id: 2, offset: null } }] } });
 });
 
 test('review: a route shows the WHOLE-ROUTE minimum, never the intermediate hop bound of 1', () => {
@@ -61,7 +63,8 @@ test('review: a route shows the WHOLE-ROUTE minimum, never the intermediate hop 
 test('wire: create pool calls Pool::new, then add_liquidity on ComponentReference::Workspace, then deposits LP', () => {
   const intent = w.buildCreatePoolIntent({ poolTemplateAddress: 'ab'.repeat(32), accountAddress: ACCT, resourceA: R('a'), resourceB: R('b'), rawAmountA: '4000000', rawAmountB: '9000000', feeBps: 30, maxEpoch: '9', operationId: 'op' });
   const wire = buildSignableInstructions({ instructions: intent.instructions });
-  assert.deepEqual(wire[0], { CallFunction: { address: 'template_' + 'ab'.repeat(32), function: 'new', args: [R('a'), R('b'), '30'] } });
+  // TemplateAddress serialises as the bare 64-hex hash (engine fixture "probe").
+  assert.deepEqual(wire[0], { CallFunction: { address: 'ab'.repeat(32), function: 'new', args: [lit('ResourceAddress', R('a')), lit('ResourceAddress', R('b')), lit('u16', '30')] } });
   assert.deepEqual(wire[1], { PutLastInstructionOutputOnWorkspace: { key: 0 } });
   const add = wire.find((i) => i.CallMethod?.method === 'add_liquidity');
   assert.deepEqual(add.CallMethod.call, { Workspace: 0 }, 'the new pool is addressed through the workspace');

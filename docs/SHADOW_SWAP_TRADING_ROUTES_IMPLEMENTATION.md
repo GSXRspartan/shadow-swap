@@ -4,6 +4,11 @@ Date: **2026-10-31** · Branch: `claude/shadow-swap-v047-release-25lmq7` (contin
 Engine: tari-ootle **v0.48.0** (`6a25dbc`) · All engine evidence below ran in the REAL engine
 (`audit_engine_tests`, `TemplateTest`), with freshly created disposable resources.
 
+> **Superseded in part by Phase 2** (`docs/SHADOW_SWAP_P2P_SWAPOFFER_BROWSER.md`): the browser
+> now builds every SwapOffer flow and the Sapient Stealth withdrawal, and the instruction wire
+> format below this record was found NOT to be v0.48 `Instruction` JSON and was fixed there.
+> "IMPLEMENTED" statements in this file presuppose that fix.
+
 Status vocabulary: **LIVE VERIFIED** (settled on Esmeralda, recorded tx) · **ENGINE VERIFIED**
 (executed in the real v0.48 engine) · **IMPLEMENTED, NOT LIVE VERIFIED** (browser builds and
 signs it; no live wallet run yet) · **PARTIALLY IMPLEMENTED** · **BLOCKED BY ENGINE OR WALLET** ·
@@ -150,8 +155,9 @@ unpublished. Cross-chain HTLC (with L1) remains the gated cross-layer work.
 
 ## 11. Feature flags and known limitations
 
-- `SwapOffer` is **unpublished** and has **no browser builder**: P2P lanes are reported, never
-  offered. No feature flag can enable them in this build.
+- `SwapOffer` is **unpublished**. Phase 2 added the browser builders, invitations and UI; the
+  P2P lanes stay unavailable until a SwapOffer address is recorded for the verified generation.
+  No feature flag can enable them.
 - Pool creation and all AMM routes require a Pool template **recorded** for the verified network
   generation; the v0.48 reset network has none until the operator publishes.
 - The frontend still calls `add_liquidity` for existing pools (the published pre-reset Pool
@@ -219,4 +225,4 @@ pnpm --filter @tari-ootle/web build; pnpm --filter @tari-ootle/web preview -- --
   account fixes); previously unsettleable from the browser.
 - **Created-Stealth (revealed) → public fungible, created-Stealth ↔ created-Stealth, confidential
   (revealed) → public fungible, NFT ↔ NFT barter, invited and hash-locked offers** — executable in the
-  real v0.48 engine via `SwapOffer`; not yet enabled in the browser (no builder, unpublished).
+  real v0.48 engine via `SwapOffer`; browser-built since Phase 2, unavailable until published.
