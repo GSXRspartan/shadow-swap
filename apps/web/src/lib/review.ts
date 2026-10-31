@@ -24,6 +24,12 @@ import type { ExecutionIdentity } from './executionIdentity.js';
 import { asRawExecutionAmount, asResourceAddress } from './tradeBoundary.js';
 import { buildSignableInstructions, type TariInstruction } from './instructions.js';
 import { encodeLiteral } from './instructionArgs.js';
+import { buildStealthWithdrawOperation } from '../services/stealthWithdraw.js';
+
+/** The intent's first instruction withdraws this Stealth-typed resource via the wallet's native path. */
+export interface StealthInput {
+  readonly resourceAddress: string;
+}
 
 export type ReviewOperation =
   | 'AMM_SWAP'
@@ -152,7 +158,7 @@ function validateAmounts(amounts: readonly ReviewAmount[], operation: string): r
  * another.
  */
 export function buildWalletRequest(
-  review: Omit<TransactionReview, 'walletRequest'> & { instructions?: readonly unknown[]; maxEpoch?: string },
+  review: Omit<TransactionReview, 'walletRequest'> & { instructions?: readonly unknown[]; maxEpoch?: string; stealthInput?: StealthInput },
 ): Readonly<Record<string, unknown>> {
   const transaction = {
     operationId: review.operationId,
@@ -186,6 +192,17 @@ export function buildWalletRequest(
     // which would let a user "approve" a transaction that does nothing.
     throw new ReviewViolationError('a review must carry the instruction list that will be signed');
   }
+  if (review.stealthInput !== undefined) {
+    // Sapient local account + Stealth-typed input: the wallet withdraws through its own
+    // StealthTransfer and runs these follow-ups (services/stealthWithdraw.ts). Built from the
+    // SAME intent instructions; `instructions` carries the follow-ups for the carry check.
+    if (review.maxEpoch !== undefined && review.maxEpoch !== '') asRawExecutionAmount(review.maxEpoch, 'maxEpoch');
+    const { operation, followUps } = buildStealthWithdrawOperation(review.instructions, review.account);
+    if (operation.resourceAddress !== review.stealthInput.resourceAddress) {
+      throw new ReviewViolationError('the Stealth input is not the resource the intent withdraws first');
+    }
+    return Object.freeze({ operation: freezeDeep(operation), instructions: freezeDeep(followUps), transaction: freezeDeep(transaction), display: freezeDeep(display) });
+  }
   const instructions: TariInstruction[] = buildSignableInstructions({
     instructions: review.instructions,
     maxEpoch: review.maxEpoch,
@@ -204,6 +221,8 @@ export function createReview(input: {
   instructions: readonly unknown[];
   /** Expiry evidence (raw epoch). Validated; the wallet sets the transaction's real max_epoch. */
   maxEpoch?: string;
+  /** Present when the input must go through the wallet's native Stealth withdrawal. */
+  stealthInput?: StealthInput;
   createdAtUnixMs?: number;
 }): TransactionReview {
   if (input.network.trim() === '') throw new ReviewViolationError('a review must name the network it is bound to');
@@ -226,7 +245,7 @@ export function createReview(input: {
     }),
   );
 
-  const base: Omit<TransactionReview, 'walletRequest'> & { instructions: readonly unknown[]; maxEpoch?: string } = {
+  const base: Omit<TransactionReview, 'walletRequest'> & { instructions: readonly unknown[]; maxEpoch?: string; stealthInput?: StealthInput } = {
     operationId: input.operationId,
     network: input.network,
     account: input.account,
@@ -234,6 +253,7 @@ export function createReview(input: {
     legs,
     instructions: input.instructions,
     maxEpoch: input.maxEpoch,
+    ...(input.stealthInput !== undefined ? { stealthInput: input.stealthInput } : {}),
     createdAtUnixMs: input.createdAtUnixMs ?? Date.now(),
   };
   return Object.freeze({ ...base, walletRequest: buildWalletRequest(base) });
@@ -296,6 +316,8 @@ export function reviewFromAmmIntent(input: {
   identity: ExecutionIdentity;
   minOutputRaw?: string;
   maxEpochRaw?: string;
+  /** Present when the swap input must go through the wallet's native Stealth withdrawal. */
+  stealthInput?: StealthInput;
 }): TransactionReview {
   const intent = input.intent;
   const amounts: ReviewAmount[] = [];
@@ -333,6 +355,7 @@ export function reviewFromAmmIntent(input: {
     // transaction cannot outlive its own validity window.
     instructions: intent.instructions,
     maxEpoch: input.maxEpochRaw,
+    ...(input.stealthInput !== undefined ? { stealthInput: input.stealthInput } : {}),
     legs: [
       {
         operation: AMM_OPERATION[intent.operation],
@@ -434,6 +457,10 @@ function checkInstructionsCarryAmounts(review: TransactionReview, amounts: reado
     return ['the reviewed request carries no instruction list for the provider to sign'];
   }
   const literals = collectLiterals(request.instructions);
+  // A Stealth input is carried by the wallet operation itself, not by a literal.
+  const stealthOp = (review.walletRequest as { operation?: { kind?: string; resourceAddress?: string; amount?: string } }).operation;
+  const stealthCarried = (amount: ReviewAmount): boolean =>
+    stealthOp?.kind === 'withdrawStealthAndExecute' && amount.role === 'INPUT' && amount.nftId === undefined && amount.resourceAddress === stealthOp.resourceAddress && amount.amountRaw === stealthOp.amount;
   const carries = (type: 'Amount' | 'ResourceAddress' | 'NonFungibleId', value: string): boolean => {
     try {
       return literals.has(encodeLiteral(type, value));
@@ -450,6 +477,7 @@ function checkInstructionsCarryAmounts(review: TransactionReview, amounts: reado
     // An NFT the template itself RETURNS (a cancelled listing) is not an argument either:
     // `cancel()` takes none. The marketplace differential still requires the review to name it.
     if (amount.role === 'OUTPUT' && amount.nftId !== undefined && !carries('NonFungibleId', amount.nftId)) continue;
+    if (stealthCarried(amount)) continue;
     if (amount.nftId !== undefined) {
       if (!carries('NonFungibleId', amount.nftId)) {
         mismatches.push(`the instructions the provider will sign do not carry NFT ${amount.nftId} of ${amount.resourceAddress}`);
@@ -748,6 +776,7 @@ export function reviewFromSwapOfferIntent(input: {
   /** What the escrow releases, from decodeSwapOffer (required for fill/claim/cancel). */
   chainReceive?: OfferAssetLike;
   maxEpochRaw?: string;
+  stealthInput?: StealthInput;
 }): TransactionReview {
   const { intent } = input;
   return createReview({
@@ -757,6 +786,7 @@ export function reviewFromSwapOfferIntent(input: {
     identity: input.identity,
     instructions: intent.instructions,
     maxEpoch: input.maxEpochRaw,
+    ...(input.stealthInput !== undefined ? { stealthInput: input.stealthInput } : {}),
     legs: [
       {
         operation: SWAP_OFFER_OPERATION[intent.operation],
@@ -794,7 +824,8 @@ export function diffReviewAgainstSwapOfferIntent(review: TransactionReview, inte
   }
   let fresh: string;
   try {
-    fresh = JSON.stringify(buildSignableInstructions({ instructions: intent.instructions }));
+    const stealth = (review.walletRequest as { operation?: { kind?: string } }).operation?.kind === 'withdrawStealthAndExecute';
+    fresh = JSON.stringify(stealth ? buildStealthWithdrawOperation(intent.instructions, intent.accountAddress).followUps : buildSignableInstructions({ instructions: intent.instructions }));
   } catch (error) {
     mismatches.push(`the intent does not serialise: ${(error as Error).message}`);
     return { ok: false, mismatches };

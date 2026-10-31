@@ -60,6 +60,9 @@ struct Capture {
     /// offer component -> the vaults its create transaction brought up at version 0
     /// (escrow + proceeds).
     vaults: BTreeMap<String, Vec<String>>,
+    /// offer component -> `Encoded<ExecuteResult>` (base64) of the transaction that created it:
+    /// what `IndexerTransactionFinalizedResult.Finalized.execution_result` carries at v0.48.
+    created_by: BTreeMap<String, String>,
 }
 
 impl Capture {
@@ -159,6 +162,7 @@ fn generate() -> Value {
     let mut cap = Capture {
         live: BTreeMap::new(),
         vaults: BTreeMap::new(),
+        created_by: BTreeMap::new(),
     };
 
     let fungible = |t: &mut TemplateTest, cap: &mut Capture, symbol: &str| -> ResourceAddress {
@@ -230,6 +234,13 @@ fn generate() -> Value {
             .call_function(tmpl, "create", args)
             .build_and_seal(&maker_key);
         let res = t.execute_expect_success(tx, vec![maker_proof.clone()]);
+        let encoded_result =
+            match serde_json::to_value(Encoded::encode(&res).expect("execute result encodes"))
+                .unwrap()
+            {
+                Value::String(b64) => b64,
+                other => panic!("unexpected execute-result encoding {other}"),
+            };
         let diff = res.expect_success();
         cap.absorb(diff);
         let offer = diff
@@ -251,6 +262,7 @@ fn generate() -> Value {
             "create brings up exactly the escrow and proceeds vaults"
         );
         cap.vaults.insert(offer.to_string(), fresh);
+        cap.created_by.insert(offer.to_string(), encoded_result);
         offer
     };
 
@@ -339,5 +351,6 @@ fn generate() -> Value {
         "maker": { "account": maker.to_string(), "publicKey": hex(maker_pk.as_ref()) },
         "taker": { "account": taker.to_string(), "publicKey": hex(taker_pk.as_ref()) },
         "offers": offers,
+        "createExecuteResult": { "component": a.to_string(), "executeResult": cap.created_by[&a.to_string()] },
     })
 }

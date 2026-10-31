@@ -793,14 +793,18 @@ test('conformance: a malformed transaction-request summary is refused, not guess
   }
 });
 
-test('conformance: a non-instructions transaction-request kind is refused', async () => {
-  // This is a public AMM. A private/stealth kind would be hand-building a
-  // stealth transfer, which the documentation says must never be done from a
-  // dApp and is rejected by the wallet anyway.
+test('conformance: only "instructions" and a well-formed "withdrawStealthAndExecute" can be requested', async () => {
+  // Every other private kind (shield, private sends, HTLC, redeem) would hand the dApp a
+  // reason to ask for a stealth transfer it has no business asking for; they stay refused.
+  // withdrawStealthAndExecute is the documented way a Sapient seed account moves a
+  // Stealth-typed input into a contract call: every field is public and the WALLET builds
+  // the StealthTransfer. A malformed one is refused before the wallet sees it.
   const provider = strictProvider();
-  for (const kind of ['shield', 'unshield', 'sendPrivately', 'htlcFund', 'withdrawStealthAndExecute']) {
-    await assert.rejects(() => tari.createTransactionRequest(provider, { kind, resourceAddress: 'otl_r', amount: '1' }), /public AMM/);
+  for (const kind of ['shield', 'unshield', 'sendPrivately', 'htlcFund', 'htlcClaim', 'htlcRefund', 'redeemStealthOutputAndExecute', 'redeemStealthOutputWithPrivateFee']) {
+    await assert.rejects(() => tari.createTransactionRequest(provider, { kind, resourceAddress: 'otl_r', amount: '1' }), /creates only "instructions" and "withdrawStealthAndExecute"/, kind);
   }
+  await assert.rejects(() => tari.createTransactionRequest(provider, { kind: 'withdrawStealthAndExecute', resourceAddress: 'otl_r', amount: '1' }), /resourceAddress must be resource_/);
+  assert.equal(provider.seen.filter((c) => c.method === 'tari_createTransactionRequest').length, 0, 'nothing refused ever reached the wallet');
 });
 
 // ===========================================================================

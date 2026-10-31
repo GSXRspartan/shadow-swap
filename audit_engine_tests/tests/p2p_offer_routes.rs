@@ -11,6 +11,8 @@
 //   p07 wrong resource / wrong amount / wrong NFT id refused, escrow untouched
 //   p08 cancel refunds; fill after cancel, claim before fill, non-maker cancel all refused
 //   p09 expiry: an expired offer cannot be filled; the maker still recovers the escrow
+//   p10 created-Stealth held in the maker's ACCOUNT -> offer -> taker's account (type kept)
+//   c03 revealed Confidential held in the maker's ACCOUNT -> offer -> taker's account
 use ootle_byte_type::ToByteType;
 use tari_crypto::{keys::PublicKey as _, ristretto::RistrettoPublicKey};
 use tari_engine_types::virtual_substate::{VirtualSubstate, VirtualSubstateId};
@@ -594,4 +596,110 @@ fn c02_pool_v2_refuses_a_confidential_resource() {
             .build_and_seal(w.t.secret_key());
     let reason = format!("{:?}", w.t.execute_expect_failure(tx, vec![]));
     assert!(reason.contains("not eligible"), "{reason}");
+}
+
+/// The maker's ACCOUNT holds `amount` of the probe's resource (revealed), so the offer is made
+/// from the account exactly as a wallet makes it, not from a probe component.
+fn into_account(w: &mut World, probe: ComponentAddress, amount: u64, to: ComponentAddress) {
+    let tx =
+        w.t.transaction()
+            .call_method(probe, "take", args![Amount::from(amount)])
+            .put_last_instruction_output_on_workspace("s")
+            .call_method(to, "deposit", args![Workspace("s")]);
+    w.t.build_and_execute(tx, vec![]).expect_success();
+}
+
+/// Maker offers `amount` of a private-typed resource held in their ACCOUNT, taker fills with
+/// `y`; returns the offer. Asserts the escrow vault keeps the asset's container kind.
+fn account_held_private_offer(
+    w: &mut World,
+    private: ResourceAddress,
+    amount: u64,
+    y: ResourceAddress,
+    want: u64,
+    kind: &str,
+) -> ComponentAddress {
+    let maker = w.maker;
+    let tmpl = w.t.get_template_address("SwapOffer");
+    let tx =
+        w.t.transaction()
+            .call_method(maker, "withdraw", args![private, Amount::from(amount)])
+            .put_last_instruction_output_on_workspace("o")
+            .call_function(
+                tmpl,
+                "create",
+                args![
+                    Workspace("o"),
+                    y,
+                    Amount::from(want),
+                    NONE_ID,
+                    NONE_KEY,
+                    NONE_HASH,
+                    0u64
+                ],
+            )
+            .build_and_seal(&w.maker_key.clone());
+    let p = w.maker_proof.clone();
+    let result = w.t.execute_expect_success(tx, vec![p]);
+    // The escrow is the vault this transaction brought up at version 0; its Debug form names
+    // the container kind (`resource_container: Stealth { .. }` etc.).
+    let escrow = result
+        .expect_success()
+        .up_iter()
+        .filter(|(id, s)| id.to_string().starts_with("vault_") && u64::from(s.version()) == 0)
+        .map(|(_, s)| format!("{:?}", s.substate_value()))
+        .find(|v| v.contains(&format!("{private:?}")))
+        .expect("the escrow vault was created");
+    assert!(
+        escrow.contains(&format!("resource_container: {kind} {{")),
+        "escrow keeps the {kind} container, got {escrow}"
+    );
+    offer_address(w)
+}
+
+#[test]
+fn p10_created_stealth_from_the_makers_account_into_an_offer_and_back_out_to_the_taker() {
+    // A plain Account::withdraw of a REVEALED created-Stealth balance is accepted by the v0.48
+    // engine (Sapient's client-side signer refuses that instruction for its local accounts and
+    // uses its native withdrawStealthAndExecute instead; that is a wallet constraint, not an
+    // engine one). The escrow vault is a Stealth container, and the taker receives the same
+    // Stealth-typed resource.
+    let mut w = world();
+    let (maker, taker) = (w.maker, w.taker);
+    let (probe, pstl) = stealth(&mut w);
+    let y = fungible(&mut w, "YYY", taker);
+    into_account(&mut w, probe, 400, maker);
+    assert_eq!(balance(&mut w, maker, pstl), Amount::from(400u64));
+    let offer = account_held_private_offer(&mut w, pstl, 400, y, 700, "Stealth");
+    assert_eq!(balance(&mut w, maker, pstl), Amount::zero());
+    let tx = fill_tx(&w, offer, y, 700, None, &w.taker_key.clone());
+    let p = w.taker_proof.clone();
+    w.t.execute_expect_success(tx, vec![p]);
+    assert_eq!(
+        balance(&mut w, taker, pstl),
+        Amount::from(400u64),
+        "created-Stealth delivered, type unchanged"
+    );
+    claim(&mut w, offer);
+    assert_eq!(balance(&mut w, maker, y), Amount::from(700u64));
+}
+
+#[test]
+fn c03_confidential_revealed_from_the_makers_account_into_an_offer_and_back_out() {
+    let mut w = confidential_world();
+    let (maker, taker) = (w.maker, w.taker);
+    let (probe, conf) = confidential(&mut w);
+    let y = fungible(&mut w, "YYY", taker);
+    into_account(&mut w, probe, 250, maker);
+    let offer = account_held_private_offer(&mut w, conf, 250, y, 900, "Confidential");
+    let tx = fill_tx(&w, offer, y, 900, None, &w.taker_key.clone());
+    let p = w.taker_proof.clone();
+    w.t.execute_expect_success(tx, vec![p]);
+    assert_eq!(
+        balance(&mut w, taker, conf),
+        Amount::from(250u64),
+        "revealed confidential delivered, type unchanged"
+    );
+    claim(&mut w, offer);
+    assert_eq!(balance(&mut w, maker, y), Amount::from(900u64));
 }

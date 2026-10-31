@@ -36,11 +36,13 @@ import {
   TARI_ERROR_USER_REJECTED,
   type TariProvider,
   type TariInstructionsTransactionRequestOperation,
+  type TariTransactionRequestOperation,
+  type TariWithdrawStealthAndExecuteOperation,
   type TariTransactionRequestStatus,
   type TariTransactionRequestSummary,
   type TariWalletCapabilities,
 } from './tariDappTypes.js';
-import { getValueCodec, interpretIndexerTransactionResult, normalizeSingleSubstate, type ReadAssurance, type ValueCodec } from './ootleWire.js';
+import { createdComponentsOf, getValueCodec, interpretIndexerTransactionResult, normalizeSingleSubstate, type ReadAssurance, type ValueCodec } from './ootleWire.js';
 
 export type { TariProvider, TariWalletCapabilities, TariInstructionsTransactionRequestOperation, TariTransactionRequestSummary, TariTransactionRequestStatus };
 
@@ -731,6 +733,13 @@ export async function fetchTransactionResult(provider: TariProvider, transaction
   return view;
 }
 
+/** Components `templateHex` created in a committed transaction (see `createdComponentsOf`). */
+export async function fetchCreatedComponents(provider: TariProvider, transactionId: string, templateHex: string): Promise<string[] | undefined> {
+  const reply = await call<unknown>(provider, TARI_METHODS.getTransactionResult, { transactionId });
+  const bag = typeof reply === 'object' && reply !== null ? (reply as Record<string, unknown>) : {};
+  return createdComponentsOf(bag, await codecIfNeeded(bag), templateHex);
+}
+
 export function mapTransactionStatus(view: TariTransactionView): 'COMMITTED' | 'REJECTED' | 'NOT_FOUND' | 'UNKNOWN' {
   // Case-insensitive, because providers are inconsistent about casing and a
   // lowercase "committed" must not be silently downgraded to UNKNOWN.
@@ -829,6 +838,27 @@ export type TariRequestOutcome =
    */
   | { state: 'UNKNOWN_STATUS'; requestId: string; rawStatus: string };
 
+/**
+ * Strict shape check for the one Stealth request this app makes. Exactly the documented
+ * fields, each well-formed; anything else is refused before the wallet sees it.
+ */
+export function assertStealthWithdrawOperation(operation: TariWithdrawStealthAndExecuteOperation): void {
+  const allowed = new Set(['kind', 'resourceAddress', 'amount', 'workspaceVarName', 'followUpInstructions', 'relatedComponents', 'maxFee']);
+  for (const key of Object.keys(operation)) {
+    if (!allowed.has(key)) throw new TariProviderError(`Refusing a withdrawStealthAndExecute request with undocumented field "${key}".`, 'REJECTED');
+  }
+  if (!/^resource_[0-9a-f]{64}$/.test(operation.resourceAddress)) throw new TariProviderError('withdrawStealthAndExecute.resourceAddress must be resource_<64 hex>.', 'REJECTED');
+  if (!/^[1-9]\d*$/.test(operation.amount)) throw new TariProviderError('withdrawStealthAndExecute.amount must be a positive raw integer.', 'REJECTED');
+  if (!/^[a-z][a-z0-9_]{0,63}$/.test(operation.workspaceVarName)) throw new TariProviderError('withdrawStealthAndExecute.workspaceVarName is malformed.', 'REJECTED');
+  if (!Array.isArray(operation.followUpInstructions) || operation.followUpInstructions.length === 0) {
+    throw new TariProviderError('Refusing a withdrawStealthAndExecute request with no follow-up instructions: the withdrawn bucket would dangle.', 'REJECTED');
+  }
+  if (operation.relatedComponents !== undefined && (!Array.isArray(operation.relatedComponents) || !operation.relatedComponents.every((c) => /^component_[0-9a-f]{64}$/.test(c)))) {
+    throw new TariProviderError('withdrawStealthAndExecute.relatedComponents must be component addresses.', 'REJECTED');
+  }
+  if (operation.maxFee !== undefined && !/^[1-9]\d*$/.test(operation.maxFee)) throw new TariProviderError('withdrawStealthAndExecute.maxFee must be a positive raw integer.', 'REJECTED');
+}
+
 /** `{ kind: 'instructions', instructions, maxFee? }` — the exact reviewed operation. */
 export function instructionsOperation(instructions: readonly unknown[], maxFee?: string): TariInstructionsTransactionRequestOperation {
   const operation: TariInstructionsTransactionRequestOperation = { kind: 'instructions', instructions: [...instructions] };
@@ -843,12 +873,15 @@ export function instructionsOperation(instructions: readonly unknown[], maxFee?:
  * The returned `requestId` is durable wallet-side: it survives a page reload,
  * which is the reason this flow is preferred over the one-shot call.
  */
-export async function createTransactionRequest(provider: TariProvider, operation: TariInstructionsTransactionRequestOperation): Promise<string> {
-  if (operation.kind !== 'instructions') {
-    throw new TariProviderError(`Refusing to create a "${operation.kind}" transaction request: this app is a public AMM and uses only "instructions".`, 'REJECTED');
-  }
-  if (!Array.isArray(operation.instructions) || operation.instructions.length === 0) {
-    throw new TariProviderError('Refusing to create a transaction request with an empty instruction list.', 'REJECTED');
+export async function createTransactionRequest(provider: TariProvider, operation: TariTransactionRequestOperation): Promise<string> {
+  if (operation.kind === 'instructions') {
+    if (!Array.isArray(operation.instructions) || operation.instructions.length === 0) {
+      throw new TariProviderError('Refusing to create a transaction request with an empty instruction list.', 'REJECTED');
+    }
+  } else if (operation.kind === 'withdrawStealthAndExecute') {
+    assertStealthWithdrawOperation(operation);
+  } else {
+    throw new TariProviderError(`Refusing to create a "${(operation as { kind?: unknown }).kind}" transaction request: this app creates only "instructions" and "withdrawStealthAndExecute".`, 'REJECTED');
   }
   const reply = await call<unknown>(provider, TARI_METHODS.createTransactionRequest, operation);
   const bag = typeof reply === 'object' && reply !== null ? (reply as Record<string, unknown>) : {};
@@ -963,7 +996,7 @@ export interface TransactionRequestHooks {
  */
 export async function submitViaTransactionRequest(
   provider: TariProvider,
-  operation: TariInstructionsTransactionRequestOperation,
+  operation: TariTransactionRequestOperation,
   hooks: TransactionRequestHooks,
 ): Promise<TariSignResult | { pendingRequestId: string }> {
   const requestId = await createTransactionRequest(provider, operation);

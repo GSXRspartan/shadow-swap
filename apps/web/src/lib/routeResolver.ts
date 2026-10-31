@@ -45,6 +45,8 @@ export interface PairInput {
   readonly pools: readonly PoolEdge[];
   /** Whether the verified network generation records a Shadow Swap Pool template. */
   readonly poolTemplateRecorded: boolean;
+  /** Whether the verified network generation records a SwapOffer template (P2P offers). */
+  readonly offerTemplateRecorded?: boolean;
 }
 
 /** Native tTARI is a Stealth-typed resource the Pool accepts by exact address. */
@@ -54,8 +56,8 @@ function ammEligible(resource: string, kind: AssetKind): boolean {
   return kind === 'fungible' || resource === CANONICAL_TARI;
 }
 
-const P2P_REASON =
-  'The SwapOffer escrow settles this pair in the real v0.48 engine (audit_engine_tests/tests/p2p_offer_routes.rs), but the template is not published and this build has no SwapOffer transaction builder yet, so it cannot be signed here.';
+const P2P_UNPUBLISHED =
+  'The SwapOffer escrow settles this pair in the real v0.48 engine (audit_engine_tests/tests/p2p_offer_routes.rs) and this app builds, reviews and verifies the whole maker/taker flow, but no SwapOffer template is published and recorded for this network generation, so no offer can be created or filled here.';
 
 export function resolvePairRoutes(pair: PairInput): RouteOption[] {
   const { input, output } = pair;
@@ -70,7 +72,7 @@ export function resolvePairRoutes(pair: PairInput): RouteOption[] {
     const multi = ranked?.routes.filter((r) => r.kind === 'MULTI_HOP_AMM') ?? [];
     const noTemplate = 'No Shadow Swap Pool template is recorded for this network generation, so there is no pool to trade against.';
     const tariInput = input.resource === CANONICAL_TARI;
-    const caps = tariInput ? ['transactionRequests', 'stealth withdraw for tTARI input (Sapient local accounts: withdrawStealthAndExecute — not yet built)'] : ['transactionRequests'];
+    const caps = tariInput ? ['transactionRequests', 'tTARI input: Sapient seed accounts use withdrawStealthAndExecute (capabilities.stealthWithdraw); walletd-relayed accounts use a plain withdraw'] : ['transactionRequests'];
     options.push({
       mechanism: 'AMM',
       label: 'AMM',
@@ -94,23 +96,39 @@ export function resolvePairRoutes(pair: PairInput): RouteOption[] {
   if (input.kind === 'non_fungible' && output.kind !== 'non_fungible') {
     options.push({ mechanism: 'NFT_MARKETPLACE', label: 'NFT marketplace', availability: 'EXECUTABLE', privacy: 'Public listing, offer or collection bid.', requiredCapabilities: ['transactionRequests'] });
   }
+  const p2p = (mechanism: 'P2P_OFFER' | 'NFT_BARTER', label: string, privacy: string, extraReason = '', caps: readonly string[] = ['transactionRequests']): RouteOption => ({
+    mechanism,
+    label,
+    availability: pair.offerTemplateRecorded === true ? 'EXECUTABLE' : 'BLOCKED',
+    ...(pair.offerTemplateRecorded === true ? (extraReason === '' ? {} : { reason: extraReason.trim() }) : { reason: P2P_UNPUBLISHED + extraReason }),
+    privacy,
+    requiredCapabilities: caps,
+  });
+
   if (input.kind === 'non_fungible' && output.kind === 'non_fungible') {
-    options.push({ mechanism: 'NFT_BARTER', label: 'NFT barter (P2P)', availability: 'ENGINE_VERIFIED_NOT_ENABLED', reason: P2P_REASON, privacy: 'Public: both NFTs are visible in escrow.', requiredCapabilities: ['transactionRequests'] });
+    options.push(p2p('NFT_BARTER', 'NFT barter (P2P offer)', 'Public: both NFTs and their ids are visible in escrow.'));
   }
 
   // A created-Stealth (anything Stealth-typed except native tTARI) or Confidential side can
-  // never enter Pool v2; the P2P escrow is its lane.
+  // never enter Pool v2; the P2P escrow is its lane. Public pairs get it too: it is how a
+  // pair with no AMM liquidity trades at an agreed price.
   const isPrivate = (side: PairInput['input']) => (side.kind === 'stealth' && side.resource !== CANONICAL_TARI) || side.kind === 'confidential';
-  if (isPrivate(input) || isPrivate(output)) {
+  const nftOnly = input.kind === 'non_fungible' && output.kind === 'non_fungible';
+  if (!nftOnly && input.kind !== 'unknown' && output.kind !== 'unknown') {
+    const priv = isPrivate(input) || isPrivate(output);
     const confidential = input.kind === 'confidential' || output.kind === 'confidential';
-    options.push({
-      mechanism: 'P2P_OFFER',
-      label: 'Revealed private-asset trade (P2P)',
-      availability: 'ENGINE_VERIFIED_NOT_ENABLED',
-      reason: P2P_REASON + (confidential ? ' Only REVEALED confidential balances are covered; blinded commitments need wallet-built ConfidentialWithdrawProofs.' : ''),
-      privacy: 'The traded amount is REVEALED: privacy is given up for the portion you trade, and only for it.',
-      requiredCapabilities: ['transactionRequests', 'reveal of the offered stealth/confidential amount'],
-    });
+    const stealthIn = input.kind === 'stealth';
+    options.push(
+      p2p(
+        'P2P_OFFER',
+        priv ? 'Revealed private-asset offer (P2P)' : 'P2P offer at your price',
+        priv
+          ? 'The traded amount is REVEALED: privacy is given up for the portion you trade, and only for it. The asset keeps its type; nothing is converted.'
+          : 'Public: the offer, both assets and their amounts are visible on-chain. No pool, no price impact; someone must accept your terms.',
+        confidential ? ' Only REVEALED confidential balances are covered; blinded commitments need wallet-built ConfidentialWithdrawProofs, which no browser wallet exposes.' : '',
+        stealthIn ? ['transactionRequests', 'Stealth-typed input: Sapient seed accounts (withdrawStealthAndExecute)'] : ['transactionRequests'],
+      ),
+    );
   }
 
   if (input.kind === 'unknown' || output.kind === 'unknown') {
