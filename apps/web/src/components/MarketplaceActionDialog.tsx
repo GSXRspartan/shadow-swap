@@ -23,6 +23,7 @@
 import { useRef, useState } from 'react';
 import { toMarketplacePreview, type MarketplaceTransactionIntent } from '@tari-ootle/wallet-adapter';
 import { useApp } from '../state/AppContext.js';
+import { activeDeployment } from '../services/protocolDeployment.js';
 import { executeSwap, newOperationId, IdentityChangedError, ReviewMismatchError, PendingApprovalError } from '../services/execution.js';
 import {
   buildMarketplaceIntent,
@@ -70,7 +71,7 @@ export interface MarketplaceActionRequest {
  * wallet is merely waiting, because nothing has happened yet.
  */
 export function MarketplaceActionDialog({ request, onClose, onDone }: { request: MarketplaceActionRequest; onClose: () => void; onDone: () => void }) {
-  const { wallet, walletBridge, executionWallets, liveExecutionIdentity } = useApp();
+  const { config, wallet, walletBridge, executionWallets, liveExecutionIdentity } = useApp();
   const { action, quoteDecimals } = request;
   const summary = summarizeAction(action);
   const [phase, setPhase] = useState<Phase>('TERMS');
@@ -133,7 +134,13 @@ export function MarketplaceActionDialog({ request, onClose, onDone }: { request:
       return;
     }
     setAmountError(undefined);
-    setIntent(buildMarketplaceIntent(concrete));
+    try {
+      // Templates come from the generation this session VERIFIED, never from a constant.
+      setIntent(buildMarketplaceIntent(concrete, activeDeployment(config.network)?.marketplaceTemplates));
+    } catch (error) {
+      setStatus({ tone: 'danger', title: 'Not available on this network', detail: (error as Error).message });
+      return;
+    }
     setPhase('REVIEW');
   };
 

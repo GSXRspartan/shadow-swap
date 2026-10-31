@@ -9,6 +9,7 @@ import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import { AppProvider } from './state/AppContext.js';
 import { AppShell } from './components/AppShell.js';
 import { PoolsPage } from './pages/PoolsPage.js';
+import { SwapRoutesPage } from './pages/SwapRoutesPage.js';
 import { HomePage } from './pages/HomePage.js';
 import { PoolPage } from './pages/PoolPage.js';
 import { NftMarketplacePage } from './pages/NftMarketplacePage.js';
@@ -26,6 +27,7 @@ export default function App() {
                 so a bookmarked deep link keeps working after the redirect was
                 introduced. */}
             <Route path="/" element={<HomePage />} />
+            <Route path="/swap" element={<SwapRoutesPage />} />
             <Route path="/pools" element={<PoolsPage />} />
             <Route path="/pools/:poolComponent" element={<PoolPage />} />
             <Route path="/nfts" element={<NftMarketplacePage />} />

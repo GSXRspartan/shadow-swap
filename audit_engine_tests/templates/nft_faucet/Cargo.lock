@@ -118,8 +118,8 @@ checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
 
 [[package]]
 name = "ootle_serde"
-version = "0.6.0"
-source = "git+https://github.com/tari-project/tari-ootle.git?rev=4732f65ec17a96547050989d78fd70a4e3d94113#4732f65ec17a96547050989d78fd70a4e3d94113"
+version = "0.6.1"
+source = "git+https://github.com/tari-project/tari-ootle.git?rev=6a25dbc524581bfaa0a3c6ef120f8d59cc827572#6a25dbc524581bfaa0a3c6ef120f8d59cc827572"
 dependencies = [
  "serde",
 ]
@@ -205,8 +205,8 @@ dependencies = [
 
 [[package]]
 name = "tari_bor"
-version = "0.16.0"
-source = "git+https://github.com/tari-project/tari-ootle.git?rev=4732f65ec17a96547050989d78fd70a4e3d94113#4732f65ec17a96547050989d78fd70a4e3d94113"
+version = "0.16.5"
+source = "git+https://github.com/tari-project/tari-ootle.git?rev=6a25dbc524581bfaa0a3c6ef120f8d59cc827572#6a25dbc524581bfaa0a3c6ef120f8d59cc827572"
 dependencies = [
  "borsh",
  "minicbor",
@@ -215,8 +215,8 @@ dependencies = [
 
 [[package]]
 name = "tari_template_abi"
-version = "0.20.0"
-source = "git+https://github.com/tari-project/tari-ootle.git?rev=4732f65ec17a96547050989d78fd70a4e3d94113#4732f65ec17a96547050989d78fd70a4e3d94113"
+version = "0.22.0"
+source = "git+https://github.com/tari-project/tari-ootle.git?rev=6a25dbc524581bfaa0a3c6ef120f8d59cc827572#6a25dbc524581bfaa0a3c6ef120f8d59cc827572"
 dependencies = [
  "minicbor",
  "serde",
@@ -226,8 +226,8 @@ dependencies = [
 
 [[package]]
 name = "tari_template_lib"
-version = "0.32.0"
-source = "git+https://github.com/tari-project/tari-ootle.git?rev=4732f65ec17a96547050989d78fd70a4e3d94113#4732f65ec17a96547050989d78fd70a4e3d94113"
+version = "0.36.0"
+source = "git+https://github.com/tari-project/tari-ootle.git?rev=6a25dbc524581bfaa0a3c6ef120f8d59cc827572#6a25dbc524581bfaa0a3c6ef120f8d59cc827572"
 dependencies = [
  "minicbor",
  "serde",
@@ -239,8 +239,8 @@ dependencies = [
 
 [[package]]
 name = "tari_template_lib_types"
-version = "0.32.0"
-source = "git+https://github.com/tari-project/tari-ootle.git?rev=4732f65ec17a96547050989d78fd70a4e3d94113#4732f65ec17a96547050989d78fd70a4e3d94113"
+version = "0.36.0"
+source = "git+https://github.com/tari-project/tari-ootle.git?rev=6a25dbc524581bfaa0a3c6ef120f8d59cc827572#6a25dbc524581bfaa0a3c6ef120f8d59cc827572"
 dependencies = [
  "borsh",
  "minicbor",
@@ -253,8 +253,8 @@ dependencies = [
 
 [[package]]
 name = "tari_template_macros"
-version = "0.23.0"
-source = "git+https://github.com/tari-project/tari-ootle.git?rev=4732f65ec17a96547050989d78fd70a4e3d94113#4732f65ec17a96547050989d78fd70a4e3d94113"
+version = "0.25.0"
+source = "git+https://github.com/tari-project/tari-ootle.git?rev=6a25dbc524581bfaa0a3c6ef120f8d59cc827572#6a25dbc524581bfaa0a3c6ef120f8d59cc827572"
 dependencies = [
  "proc-macro2",
  "quote",

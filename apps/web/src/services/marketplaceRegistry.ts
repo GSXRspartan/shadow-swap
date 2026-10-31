@@ -39,6 +39,7 @@
  */
 
 import { isComponentAddress, type RegistryStorage } from './poolRegistry.js';
+import { deploymentFor } from './protocolDeployment.js';
 
 /**
  * The three published marketplace templates, verified present on Esmeralda.
@@ -47,13 +48,19 @@ import { isComponentAddress, type RegistryStorage } from './poolRegistry.js';
  * that is the route the indexer serves. The `template_`-prefixed form returns 400,
  * and the catalogue listing is NOT consulted here — see `templateAvailability`.
  */
-export const MARKETPLACE_TEMPLATES = {
-  FixedPriceListing: '612114e382c28205ee5d4d24754dbdb13351d648237e880b77c991d5f2fa2329',
-  ItemOffer: '083fef7d75857d83ea5424e24d7f47058b4082fa727b91b515aace1c50ec22a6',
-  CollectionBid: '999ef37f1da524e4d3e06132145c1c6e7bef735a66549da24b747c22d4706a54',
-} as const;
+/*
+ * These are the PRE-v0.48-RESET addresses. The single source of truth is
+ * `services/protocolDeployment.ts`; this export is kept for the code and tests that
+ * name the pre-reset templates directly. Nothing may use it to build a transaction
+ * without first checking `activeDeployment()` — the v0.48 reset network has none.
+ */
+const PRE_RESET_MARKETPLACE = deploymentFor('esmeralda', 'PRE_V048_RESET').marketplaceTemplates;
+if (PRE_RESET_MARKETPLACE === undefined) throw new Error('The pre-reset Esmeralda deployment must record its marketplace templates.');
 
-export type MarketplaceTemplateName = keyof typeof MARKETPLACE_TEMPLATES;
+export const MARKETPLACE_TEMPLATES = PRE_RESET_MARKETPLACE;
+
+export type { MarketplaceTemplateName } from './protocolDeployment.js';
+import type { MarketplaceTemplateName } from './protocolDeployment.js';
 
 export const MARKETPLACE_TEMPLATE_ADDRESSES: readonly string[] = Object.values(MARKETPLACE_TEMPLATES);
 
@@ -84,7 +91,10 @@ export interface KnownMarketplaceEntry {
  * wrong or stale entry degrades to "ignored", never to a wrong listing.
  */
 export const MARKETPLACE_REGISTRY_SEED: Readonly<Record<string, readonly KnownMarketplaceEntry[]>> = {
+  // Keyed by `ProtocolDeployment.registryKey`: `esmeralda` is the pre-reset network,
+  // `esmeralda@v048` the v0.48 reset network. Both empty, for the reasons above.
   esmeralda: [],
+  'esmeralda@v048': [],
 };
 
 /** Storage key prefix. Deliberately distinct from the pool registry's. */

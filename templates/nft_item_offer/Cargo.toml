@@ -7,9 +7,10 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
-# Pinned to the v0.46.0 marketplace and engine-test revision (cc8a83b).
-tari_template_abi = { git = "https://github.com/tari-project/tari-ootle.git", rev = "cc8a83bcab88e03e0fcf760d2652ab6f1e067d8a" }
-tari_template_lib = { git = "https://github.com/tari-project/tari-ootle.git", rev = "cc8a83bcab88e03e0fcf760d2652ab6f1e067d8a" }
+# Pinned to the v0.48.0 release commit (6a25dbc), the same cohort as every other template and the
+# engine suite. v0.48.0 is a testnet reset: templates must be republished on the reset network.
+tari_template_abi = { git = "https://github.com/tari-project/tari-ootle.git", rev = "6a25dbc524581bfaa0a3c6ef120f8d59cc827572" }
+tari_template_lib = { git = "https://github.com/tari-project/tari-ootle.git", rev = "6a25dbc524581bfaa0a3c6ef120f8d59cc827572" }
 
 [profile.release]
 opt-level = "z"

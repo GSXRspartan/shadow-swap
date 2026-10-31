@@ -42,6 +42,7 @@
  */
 
 import { NETWORK_BYTES, type FrontendNetworkId } from '../lib/networks.js';
+import { classifyIndexerVersion, type IndexerCohort } from '../lib/ootleCohort.js';
 import { getJson, type JsonFetchOptions } from './net.js';
 
 /** The canonical identity path on a `tari_indexer` REST API. */
@@ -55,6 +56,11 @@ export type IndexerIdentityVerdict =
       readonly networkByte: number;
       readonly version: string;
       readonly currentEpoch?: string;
+      /**
+       * The release cohort the endpoint's reported version places it in: which network
+       * generation it serves (pre-reset or the v0.48 reset) and how it encodes values.
+       */
+      readonly cohort: IndexerCohort;
     }
   /** The endpoint could not be reached. Says nothing about the network. */
   | { readonly status: 'UNREACHABLE'; readonly url: string; readonly reason: string }
@@ -63,7 +69,13 @@ export type IndexerIdentityVerdict =
   /** Reached and readable, but it does not identify itself at all. */
   | { readonly status: 'UNIDENTIFIED'; readonly url: string; readonly reason: string }
   /** Identified, and it is NOT the network this build permits. */
-  | { readonly status: 'NETWORK_MISMATCH'; readonly url: string; readonly reason: string };
+  | { readonly status: 'NETWORK_MISMATCH'; readonly url: string; readonly reason: string }
+  /**
+   * The right network, but a software version whose reply format this build has not
+   * been verified against (or no version at all). Refused, because every minor since
+   * v0.46 has changed the wire format; see `lib/ootleCohort.ts`.
+   */
+  | { readonly status: 'UNSUPPORTED_VERSION'; readonly url: string; readonly reason: string };
 
 /** Join a configured base URL with a path without duplicating or dropping the slash. */
 export function identityUrl(base: string, path: string = INDEXER_IDENTITY_PATH): string | undefined {
@@ -115,7 +127,11 @@ export function classifyIndexerIdentity(
     };
   }
 
-  const version = typeof bag.version === 'string' && bag.version !== '' ? bag.version : 'unknown';
+  const cohort = classifyIndexerVersion(bag.version);
+  if (!cohort.ok) {
+    return { status: 'UNSUPPORTED_VERSION', url, reason: cohort.reason };
+  }
+  const version = cohort.cohort.version;
   const epoch = bag.currentEpoch !== undefined ? bag.currentEpoch : bag.current_epoch;
   const epochText = typeof epoch === 'string' || typeof epoch === 'number' ? String(epoch) : undefined;
   const verdict: {
@@ -125,7 +141,8 @@ export function classifyIndexerIdentity(
     networkByte: number;
     version: string;
     currentEpoch?: string;
-  } = { status: 'VERIFIED', url, network: name, networkByte: byte, version };
+    cohort: IndexerCohort;
+  } = { status: 'VERIFIED', url, network: name, networkByte: byte, version, cohort: cohort.cohort };
   if (epochText !== undefined) verdict.currentEpoch = epochText;
   return verdict;
 }
@@ -174,6 +191,8 @@ export function describeIdentity(verdict: IndexerIdentityVerdict): string {
     case 'UNIDENTIFIED':
       return `The indexer at ${verdict.url} could not be identified. ${verdict.reason}`;
     case 'NETWORK_MISMATCH':
+      return `Endpoint refused: ${verdict.reason}`;
+    case 'UNSUPPORTED_VERSION':
       return `Endpoint refused: ${verdict.reason}`;
   }
 }

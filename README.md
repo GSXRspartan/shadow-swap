@@ -84,9 +84,13 @@ The relationship is deliberately one-directional:
 > trade compatible assets or provide liquidity through Shadow Swap.**
 
 Shadow Swap does not mint assets, custody assets, or replace a wallet. It assumes
-assets already exist and routes them. An asset that cannot enter a public fungible
-pool — a Stealth or Confidential resource, for example — is labelled as unsupported
-rather than quietly offered.
+assets already exist and routes them. An asset that cannot enter the **existing public
+fungible pool** — a created-Stealth or Confidential resource, for example — is labelled
+as *not supported by that pool* rather than quietly offered. That is a statement about
+one template's deliberate safety boundary, not about what Shadow Swap will ever support:
+the per-pair status (supported today, engine-compatible but unverified, needs a new
+template, needs wallet changes, blocked) is tracked in
+[`docs/SHADOW_SWAP_V047_RELEASE_READINESS.md`](docs/SHADOW_SWAP_V047_RELEASE_READINESS.md#6-route-capability-matrix).
 
 ### Public fungible AMM trading
 
@@ -121,6 +125,10 @@ Three marketplace templates, each verified settling live on Esmeralda:
 Stealth and Confidential assets are modelled and explicitly routed **away** from the
 public AMM rather than into it. The privacy work is a separate lane: bringing them
 into a public pool today would break the confidentiality the asset exists to provide.
+The real v0.48 engine confirms a created-Stealth resource's *revealed* balance can sit in
+a component vault (`audit_engine_tests/tests/stealth_route_probe.rs`), which makes a
+separate, opt-in pool for such assets engine-feasible; it is not enabled, and the public
+pool's resource guard is unchanged.
 
 ### Future Tari L1/L2 routing
 
@@ -148,6 +156,9 @@ reconciled readback.
 - **CollectionBid** settled — bid `FILLED`.
 - **Ootle v0.46.0 / Protocol V2** migration complete across all eight manifests,
   four templates rebuilt, engine suite green on Linux CI.
+- *All live evidence above was recorded on the **pre-reset** Esmeralda network. Ootle
+  v0.48.0 (2026-10-29) resets Esmeralda; those components do not exist on the reset
+  network. See [Project status](#project-status).*
 - **WASM module-shape ceilings** verified safe by a non-mutating publish dry-run of
   all four templates against the live 0.46.0 daemon. Nothing was published.
 
@@ -295,7 +306,14 @@ first-class state meaning "not yet known", never "failed" and never "retry".
   come from the Rust enum, but unlike `CallMethod` it has not been verified against
   a deployed provider. A wallet that does not recognise it rejects the request, which
   fails closed.
-- **Stealth/Confidential assets are unsupported in the public AMM** by design.
+- **Stealth/Confidential assets are not supported by the public AMM pool** by design
+  (its resource guard), which is distinct from "never supported by Shadow Swap".
+- **Ootle v0.48.0 reset Esmeralda.** No Shadow Swap template is published on the reset
+  network yet, so discovery there truthfully reports "not deployed".
+- **Sapient local accounts cannot spend tTARI through a plain `withdraw`.** The wallet
+  requires its `withdrawStealthAndExecute` request for Stealth-typed funds; this app
+  sends a plain instruction list, so a tTARI-*input* swap through a Sapient local account
+  is refused by the wallet (no funds move). Tracked as a release blocker.
 - **Cross-layer routing is not live.**
 - **No mainnet deployment exists.**
 
@@ -387,10 +405,14 @@ sign-and-submit path. Everything still works; it simply loses reload survival.
 
 ## Deployment
 
-### Published Esmeralda templates
+### Published Esmeralda templates (pre-reset generation)
 
-These are **live on-chain deployment identities**. They are not affected by the
-product rename and must not be republished because the name changed.
+These were the **live on-chain deployment identities on the pre-reset Esmeralda network**
+(Ootle ≤ v0.47). Ootle v0.48.0 restarts Esmeralda from a fresh genesis, so they are
+**stale on the reset network** and are only ever consulted against an indexer that reports
+a pre-reset version (`apps/web/src/services/protocolDeployment.ts`). Replacement v0.48
+builds exist and are reproducible (`templates/WASM_SHA256SUMS`, `tools/build-templates.sh`)
+but have **not** been published.
 
 | Template | Address |
 |---|---|
@@ -403,6 +425,10 @@ Live Pool v2 component:
 `component_8c20c6448cd1d9840a1506d27166fb82621a67f5d1604ed03435c0d0a92c59a2`
 
 ### Testnet deployments
+
+No public deployment is live. Preview/production deployment is a manual workflow
+(`.github/workflows/cloudflare-pages.yml`) followed by automated header and smoke
+verification; see [`docs/SHADOW_SWAP_CLOUDFLARE_STAGING.md`](docs/SHADOW_SWAP_CLOUDFLARE_STAGING.md).
 
 The frontend is configured for the **Cloudflare Pages** project `ootle-liquidity-testnet`.
 That project name predates the rename and is **deliberately unchanged** — renaming it
@@ -426,7 +452,11 @@ mainnet configuration is a code change, not a flag flip.
 
 ## Project status
 
-Current: **Ootle v0.46.0, Protocol V2, Esmeralda testnet.**
+Current: **Ootle v0.48.0 build cohort** (`6a25dbc`, the testnet-reset release); the
+frontend reads both the pre-reset (≤ v0.47) and reset (v0.48) Esmeralda indexers and never
+mixes them. Release gates and evidence:
+[`docs/SHADOW_SWAP_V047_RELEASE_READINESS.md`](docs/SHADOW_SWAP_V047_RELEASE_READINESS.md).
+The table below is the **historical** v0.46 live record and is kept unchanged.
 
 ### Verified on-chain
 

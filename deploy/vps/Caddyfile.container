@@ -1,0 +1,12 @@
+# Used only by docker-compose.example.yml (listens inside the container).
+:8088 {
+	root * /srv
+	@notget not method GET HEAD
+	respond @notget 405
+	import /etc/caddy/shadow-swap-headers.caddy
+	@assets path /assets/*
+	header @assets Cache-Control "public, max-age=31536000, immutable"
+	respond /healthz "ok" 200
+	try_files {path} /index.html
+	file_server
+}

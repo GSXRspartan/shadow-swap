@@ -22,6 +22,8 @@ import { getJson, postJson } from './net.js';
 import { describeIdentity, isVerified, verifyIndexerIdentity } from './indexerIdentity.js';
 import { TariIndexerDiscovery, CANONICAL_TARI_RESOURCE, type DiscoveredComponent, type IndexerTransport, type ProtocolDeploymentState, type TemplateCatalogueEntry } from './ootleIndexer.js';
 import { knownComponents as registryKnownComponents, rememberDiscovered, safeLocalStorage, type RegistryStorage } from './poolRegistry.js';
+import { deploymentFor, recordVerifiedGeneration, type ProtocolDeployment } from './protocolDeployment.js';
+import { describeGeneration, type IndexerCohort } from '../lib/ootleCohort.js';
 import type { AppConfig } from './config.js';
 
 /**
@@ -294,6 +296,8 @@ export class IndexerPoolDiscovery implements PoolDiscoverySource {
   /** Set when the configured URL is unusable. Discovery then fails closed. */
   private readonly invalid: string | undefined;
   private readonly client: TariIndexerDiscovery;
+  /** Set by a successful identity check; selects the generation's seeds and templates. */
+  private cohort: IndexerCohort | undefined;
 
   constructor(
     indexerUrl: string,
@@ -324,7 +328,13 @@ export class IndexerPoolDiscovery implements PoolDiscoverySource {
       transport,
       verifyIdentity: async (url) => {
         const identity = await this.verify(url, this.expected);
-        if (isVerified(identity)) return { ok: true };
+        if (isVerified(identity)) {
+          // Generation lock: a session never mixes the pre-reset and reset networks.
+          const lock = recordVerifiedGeneration(this.expected.network, identity.cohort.generation);
+          if (!lock.ok) return { ok: false, reason: lock.reason, wrongNetwork: true };
+          this.cohort = identity.cohort;
+          return { ok: true, wireFormat: identity.cohort.wireFormat };
+        }
         return {
           ok: false,
           reason: describeIdentity(identity),
@@ -349,8 +359,27 @@ export class IndexerPoolDiscovery implements PoolDiscoverySource {
     }
     // Durable registry: seed + previously-discovered component ids, reverified on
     // chain by discovery. Never a source of truth on its own (see poolRegistry.ts).
-    const known = registryKnownComponents(this.expected.network, this.storage);
-    const result = await this.client.discover(PROTOCOL_TEMPLATE_NAMES.pool, known);
+    // Both the registry and the trusted templates are chosen AFTER the endpoint proves
+    // which network generation it serves, so a pre-reset address is never read against
+    // the reset network or vice versa.
+    const deployment = (): ProtocolDeployment | undefined =>
+      this.cohort === undefined ? undefined : deploymentFor(this.expected.network, this.cohort.generation);
+    const result = await this.client.discover(
+      PROTOCOL_TEMPLATE_NAMES.pool,
+      () => {
+        const active = deployment();
+        return active === undefined ? [] : registryKnownComponents(active.registryKey, this.storage);
+      },
+      {
+        templates: () => deployment()?.poolTemplates ?? [],
+        get notDeployedDetail(): string {
+          const active = deployment();
+          return active === undefined
+            ? 'The network generation could not be established, so no template is trusted.'
+            : `The network is reachable: the indexer answered and serves the ${describeGeneration(active.generation)}. ${active.status}`;
+        },
+      },
+    );
     if (!result.ok) {
       return {
         pools: [],
@@ -364,7 +393,8 @@ export class IndexerPoolDiscovery implements PoolDiscoverySource {
     // Persist the components that reverified, so they stay discoverable after they
     // age out of the receipt window. Only addresses are stored; everything is
     // reverified against chain on the next load.
-    rememberDiscovered(this.expected.network, result.components.map((c) => c.componentAddress), this.storage);
+    const active = deployment();
+    if (active !== undefined) rememberDiscovered(active.registryKey, result.components.map((c) => c.componentAddress), this.storage);
     return {
       // No pool is decoded here. Only the wallet can decode component state, and
       // a pool whose pair and reserves have not been read authoritatively is not

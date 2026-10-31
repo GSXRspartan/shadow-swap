@@ -8,6 +8,7 @@
  */
 
 import { useEffect, useMemo, useState } from 'react';
+import { CreatePoolPanel } from '../components/CreatePoolPanel.js';
 import { Link } from 'react-router-dom';
 import { useApp } from '../state/AppContext.js';
 import { presentSafety, weakestClassification, type SafetyPresentation } from '../lib/assetIdentity.js';
@@ -354,6 +355,8 @@ export function PoolsPage() {
       <p className="hint">
         Liquidity is shown as native quantities. No fiat total value locked is shown, because nothing in this build has a defensible price for it.
       </p>
+
+      <CreatePoolPanel />
     </div>
   );
 }

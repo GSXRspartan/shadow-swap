@@ -37,6 +37,8 @@ import { asRawExecutionAmount, asResourceAddress } from './tradeBoundary.js';
 export interface SymbolicBucket {
   kind: 'workspace_bucket';
   name: string;
+  /** Tuple element (e.g. `remove_liquidity` returns `(Bucket, Bucket)`). */
+  offset?: number;
 }
 
 type Arg = string | number | SymbolicBucket;
@@ -55,6 +57,8 @@ interface IntentInstructionLike {
   nftId?: string;
   output?: SymbolicBucket;
   bucket?: SymbolicBucket;
+  /** A component created earlier in this same transaction. */
+  componentWorkspace?: SymbolicBucket;
 }
 
 export interface InstructionBuildInput {
@@ -89,13 +93,17 @@ function callMethod(componentAddress: string, method: string, args: unknown[]): 
   return { CallMethod: { call: { Address: componentAddress }, method, args } };
 }
 
-function workspaceRef(id: number): unknown {
-  return { Workspace: { id, offset: null } };
+function workspaceRef(id: number, offset?: number): unknown {
+  if (offset !== undefined && (!Number.isSafeInteger(offset) || offset < 0 || offset > 15)) {
+    throw new Error(`Workspace tuple offset ${offset} is not a small non-negative integer.`);
+  }
+  return { Workspace: { id, offset: offset ?? null } };
 }
 
 function translateArg(arg: Arg, ids: WorkspaceIds): unknown {
   if (arg !== null && typeof arg === 'object' && (arg as SymbolicBucket).kind === 'workspace_bucket') {
-    return workspaceRef(ids.idFor(arg as SymbolicBucket));
+    const ref = arg as SymbolicBucket;
+    return workspaceRef(ids.idFor(ref), ref.offset);
   }
   if (typeof arg === 'number') {
     // A numeric argument reaching the wire would be a float by construction.
@@ -157,10 +165,20 @@ export function buildSignableInstructions(input: InstructionBuildInput): TariIns
       }
 
       case 'call_method': {
-        const component = requireComponent(instruction.componentAddress ?? instruction.templateAddress, 'call_method.componentAddress');
         const method = requireOpaque(instruction.method, 'call_method.method');
         const args = (instruction.args ?? []).map((arg) => translateArg(arg, ids));
-        out.push(callMethod(component, method, args));
+        if (instruction.componentWorkspace !== undefined) {
+          // A component this transaction created (e.g. a new pool), called by workspace id.
+          out.push({ CallMethod: { call: { Workspace: ids.idFor(instruction.componentWorkspace) }, method, args } });
+        } else {
+          const component = requireComponent(instruction.componentAddress ?? instruction.templateAddress, 'call_method.componentAddress');
+          out.push(callMethod(component, method, args));
+        }
+        // A returned bucket that is not captured and consumed fails the whole transaction
+        // (dangling resources, audit_engine_tests/tests/multihop_routes.rs m05).
+        if (instruction.output !== undefined) {
+          out.push({ PutLastInstructionOutputOnWorkspace: { key: ids.idFor(instruction.output) } });
+        }
         break;
       }
 
@@ -187,6 +205,9 @@ export function buildSignableInstructions(input: InstructionBuildInput): TariIns
         const fn = requireOpaque(instruction.method, 'call_function.method');
         const args = (instruction.args ?? []).map((arg) => translateArg(arg, ids));
         out.push({ CallFunction: { address: template, function: fn, args } });
+        if (instruction.output !== undefined) {
+          out.push({ PutLastInstructionOutputOnWorkspace: { key: ids.idFor(instruction.output) } });
+        }
         break;
       }
 
@@ -194,7 +215,7 @@ export function buildSignableInstructions(input: InstructionBuildInput): TariIns
         const account = requireComponent(instruction.accountAddress, 'deposit_all.accountAddress');
         const bucketRef = instruction.bucket ?? instruction.output;
         if (bucketRef === undefined) throw new Error('deposit_all requires a bucket to deposit.');
-        out.push(callMethod(account, 'deposit', [workspaceRef(ids.idFor(bucketRef))]));
+        out.push(callMethod(account, 'deposit', [workspaceRef(ids.idFor(bucketRef), bucketRef.offset)]));
         break;
       }
 
