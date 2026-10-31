@@ -1,5 +1,5 @@
-import type { SwapIntentBuilder, SwapQuote, LiquidityIntentBuilder } from '@tari-ootle/protocol-client';
-import { AmmTransactionIntent, buildSwapIntent, buildAddLiquidityIntent, buildRemoveLiquidityIntent, SwapIntentEvidenceQuote } from './amm.js';
+import type { SwapIntentBuilder, SwapQuote, LiquidityIntentBuilder, MultiHopIntentBuilder } from '@tari-ootle/protocol-client';
+import { AmmTransactionIntent, buildSwapIntent, buildAddLiquidityIntent, buildRemoveLiquidityIntent, buildMultiHopSwapIntent, SwapIntentEvidenceQuote } from './amm.js';
 
 /**
  * Wires the protocol-client AMM resolvers (which perform the authoritative reread and
@@ -52,6 +52,41 @@ export function ammLiquidityIntentBuilder(accountAddress: string, operationId: (
         rawLpAmount: input.rawLpAmount,
         maxEpoch: input.maxEpoch,
         operationId: operationId(),
+      });
+    },
+  };
+}
+
+/**
+ * Wires `resolveMultiHopSwap` to the builders: a one-hop route is an ordinary swap intent,
+ * a 2..3-hop route is ONE atomic multi-hop transaction (never sequential submissions).
+ */
+export function ammRouteIntentBuilder(accountAddress: string, operationId: () => string): MultiHopIntentBuilder<AmmTransactionIntent> {
+  return {
+    multiHopSwap({ quote, minOutput, maxEpoch, slippageBps }) {
+      if (quote.hops.length === 1) {
+        const hop = quote.hops[0]!;
+        const effective = (BigInt(hop.amountIn) * (10_000n - BigInt(hop.feeBps))) / 10_000n;
+        return buildSwapIntent({
+          poolComponent: hop.poolComponent,
+          accountAddress,
+          inputResource: hop.inputResource,
+          outputResource: hop.outputResource,
+          rawInputAmount: hop.amountIn,
+          minOutput,
+          maxEpoch,
+          operationId: operationId(),
+          quoteEvidence: { quotedOutput: hop.amountOut, feeBps: hop.feeBps, slippageBps, effectiveInput: String(effective) },
+        });
+      }
+      return buildMultiHopSwapIntent({
+        accountAddress,
+        rawInputAmount: quote.amountIn,
+        hops: quote.hops.map((h) => ({ poolComponent: h.poolComponent, inputResource: h.inputResource, outputResource: h.outputResource, quotedOutput: h.amountOut, feeBps: h.feeBps })),
+        minOutput,
+        maxEpoch,
+        operationId: operationId(),
+        slippageBps,
       });
     },
   };
