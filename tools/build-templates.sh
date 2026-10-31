@@ -19,7 +19,7 @@
 set -euo pipefail
 
 TOOLCHAIN="1.97.1"
-TEMPLATES=(fungible_pool nft_marketplace nft_item_offer nft_collection_bid p2p_offer)
+TEMPLATES=(fungible_pool nft_marketplace nft_item_offer nft_collection_bid p2p_offer revealed_asset_pool)
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CARGO_HOME_DIR="${CARGO_HOME:-$HOME/.cargo}"

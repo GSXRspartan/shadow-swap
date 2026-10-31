@@ -1,0 +1,26 @@
+[package]
+name = "revealed_asset_pool"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+# A SEPARATE constant-product AMM for resources whose value is held as an exact REVEALED
+# integer: ordinary public fungibles, created-Stealth resources (including native tTARI), and
+# Confidential resources while the deposited bucket carries no blinded commitments.
+#
+# This exists instead of relaxing Pool v2's eligibility guard. Pool v2 stays restricted to
+# public fungibles and native tTARI; nothing here can be used to put a private-typed resource
+# into it. Reserves in THIS pool are publicly visible integers, so it is transparent liquidity
+# for privacy-typed assets, NOT confidential liquidity.
+#
+# Same v0.48.0 cohort as every other template. Unpublished.
+[dependencies]
+tari_template_abi = { git = "https://github.com/tari-project/tari-ootle.git", rev = "6a25dbc524581bfaa0a3c6ef120f8d59cc827572" }
+tari_template_lib = { git = "https://github.com/tari-project/tari-ootle.git", rev = "6a25dbc524581bfaa0a3c6ef120f8d59cc827572", features = ["precision", "extra-arith"] }
+
+[profile.release]
+opt-level = "z"
+lto = true
+panic = "abort"
