@@ -1,0 +1,55 @@
+# Shadow Swap static frontend — ISOLATED nginx server block (example; nothing here is live).
+#
+# Install as a NEW file, e.g. /etc/nginx/sites-available/shadow-swap.conf, then symlink into
+# sites-enabled. It does not modify any existing server block, certificate, upstream or route.
+# Validate with `sudo nginx -t` BEFORE `sudo systemctl reload nginx` (reload, never restart).
+#
+# Placeholders: SHADOW_SWAP_HOSTNAME (a hostname of Shadow Swap's OWN — never another
+# project's domain), and the listen port. Behind Cloudflare (proxied DNS or a Tunnel), TLS is
+# terminated at the edge; keep origin TLS ("Full (strict)") if the origin is reachable directly.
+#
+# This serves STATIC FILES ONLY. There is no upstream, no proxy_pass, no wallet, no walletd,
+# no signing, no admin path. Every financial action is signed in the user's own wallet.
+
+limit_req_zone $binary_remote_addr zone=shadow_swap_static:10m rate=30r/s;
+
+server {
+    listen 127.0.0.1:8088;            # loopback only: published via the existing reverse proxy or a Tunnel
+    server_name SHADOW_SWAP_HOSTNAME;
+
+    root /srv/shadow-swap/current;    # atomic symlink managed by deploy/vps/release.sh
+    index index.html;
+
+    access_log /var/log/nginx/shadow-swap.access.log;
+    error_log  /var/log/nginx/shadow-swap.error.log warn;
+
+    client_max_body_size 1k;          # a static site accepts no uploads
+    if ($request_method !~ ^(GET|HEAD)$) { return 405; }   # static site: nothing else is accepted
+    limit_req zone=shadow_swap_static burst=60 nodelay;
+    server_tokens off;
+
+    types { application/wasm wasm; }  # the v0.48 value decoder must be served as application/wasm
+
+    # The audited policy, rendered from apps/web/src/lib/deploymentHeaders.ts:
+    #   node deploy/vps/render-static-headers.mjs nginx > /etc/nginx/snippets/shadow-swap-headers.conf
+    include /etc/nginx/snippets/shadow-swap-headers.conf;
+
+    location /assets/ {
+        include /etc/nginx/snippets/shadow-swap-headers.conf;   # nginx does not inherit add_header into a location that sets its own
+        add_header Cache-Control "public, max-age=31536000, immutable" always;
+        try_files $uri =404;          # a missing hashed asset is a 404, never the SPA document
+    }
+
+    location = /healthz {
+        access_log off;
+        default_type text/plain;
+        return 200 "ok\n";
+    }
+
+    # SPA fallback: every client route is served index.html with 200 (same as dist/_redirects).
+    location / {
+        add_header Cache-Control "no-cache" always;
+        include /etc/nginx/snippets/shadow-swap-headers.conf;
+        try_files $uri /index.html;
+    }
+}
