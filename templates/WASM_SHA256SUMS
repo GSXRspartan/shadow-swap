@@ -1,0 +1,6 @@
+# sha256 of the reproducible template builds (tools/build-templates.sh, Rust 1.97.1,
+# tari-ootle v0.48.0 6a25dbc). Regenerate with: tools/build-templates.sh --write
+15d80c680019923cc0edb2141a2f09af81b145f63469c8e52dbc686b44cef17e  fungible_pool.wasm
+51d395ee8bed74a285e75374a555dee4c697545ce377df47ea4b5b795b50bc17  nft_marketplace.wasm
+84de608187ee0bbaf53abd0331c576cd63cb8d23aff0c1c2a50cf0897cb0d03b  nft_item_offer.wasm
+5a14be7afa9913c98f3f0fd56aeb43370661ad00bce6a3f2f7becda5004d538a  nft_collection_bid.wasm
