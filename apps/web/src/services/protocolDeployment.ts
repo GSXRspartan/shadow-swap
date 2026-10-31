@@ -53,6 +53,14 @@ export interface ProtocolDeployment {
    * names any other template is refused by `decodeSwapOffer`.
    */
   readonly offerTemplates: readonly string[];
+  /**
+   * Bare 64-hex RevealedAssetPool addresses (templates/revealed_asset_pool) trusted for
+   * revealed-value liquidity. Empty = not published, and every revealed-pool route is
+   * unavailable. Deliberately a SEPARATE list from `poolTemplates`: a revealed pool must never
+   * be quoted, listed or traded as a public Pool v2, because the assets it admits are exactly
+   * the ones Pool v2 refuses.
+   */
+  readonly revealedPoolTemplates: readonly string[];
   /** One line for the UI and the docs. */
   readonly status: string;
 }
@@ -68,8 +76,9 @@ const ESMERALDA_PRE_V048: ProtocolDeployment = {
     ItemOffer: '083fef7d75857d83ea5424e24d7f47058b4082fa727b91b515aace1c50ec22a6',
     CollectionBid: '999ef37f1da524e4d3e06132145c1c6e7bef735a66549da24b747c22d4706a54',
   },
-  // SwapOffer was never published before the reset, and is not published after it.
+  // SwapOffer and RevealedAssetPool were never published before the reset.
   offerTemplates: [],
+  revealedPoolTemplates: [],
   status: 'Pool v2 and the three marketplace templates were published and live-verified on this generation (2026-10-13 to 2026-10-16).',
 };
 
@@ -81,6 +90,7 @@ const ESMERALDA_V048: ProtocolDeployment = {
   poolTemplates: [],
   marketplaceTemplates: undefined,
   offerTemplates: [],
+  revealedPoolTemplates: [],
   status:
     'Shadow Swap templates have not been published on the v0.48 reset network. The v0.48 builds exist and are tested, but publishing them is an operator decision outside this release candidate.',
 };
@@ -92,6 +102,7 @@ const LOCALNET: ProtocolDeployment = {
   poolTemplates: [],
   marketplaceTemplates: undefined,
   offerTemplates: [],
+  revealedPoolTemplates: [],
   status: 'Localnet has no recorded deployment. Record a locally published template address here to use it.',
 };
 
@@ -106,6 +117,25 @@ function bare(address: string): string {
 
 export function isTrustedPoolTemplate(deployment: ProtocolDeployment, templateAddress: string): boolean {
   return deployment.poolTemplates.includes(bare(templateAddress));
+}
+
+/** Whether this address is a RevealedAssetPool recorded for the generation. Never conflated with Pool v2. */
+export function isTrustedRevealedPoolTemplate(deployment: ProtocolDeployment, templateAddress: string): boolean {
+  return deployment.revealedPoolTemplates.includes(bare(templateAddress));
+}
+
+/**
+ * Which KIND of Shadow Swap pool a template address is, or undefined for anything else. The
+ * two lists are disjoint by construction; an address in both would be a recording error, so it
+ * is reported as neither rather than silently preferring one.
+ */
+export function poolKindOf(deployment: ProtocolDeployment, templateAddress: string): 'PUBLIC' | 'REVEALED' | undefined {
+  const isPublic = isTrustedPoolTemplate(deployment, templateAddress);
+  const isRevealed = isTrustedRevealedPoolTemplate(deployment, templateAddress);
+  if (isPublic && isRevealed) return undefined;
+  if (isPublic) return 'PUBLIC';
+  if (isRevealed) return 'REVEALED';
+  return undefined;
 }
 
 export function marketplaceTemplateNameFor(deployment: ProtocolDeployment, templateAddress: string): MarketplaceTemplateName | undefined {

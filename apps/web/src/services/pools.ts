@@ -40,8 +40,10 @@ import type { AppConfig } from './config.js';
  * authoritative read, so a mismatch is not cosmetic: it makes every pool read
  * refuse.
  */
-export const PROTOCOL_TEMPLATE_NAMES: Readonly<Record<'pool' | 'marketplace' | 'itemOffer' | 'collectionBid', string>> = {
+export const PROTOCOL_TEMPLATE_NAMES: Readonly<Record<'pool' | 'revealedPool' | 'marketplace' | 'itemOffer' | 'collectionBid', string>> = {
   pool: 'Pool',
+  /** templates/revealed_asset_pool: a SEPARATE pool kind, never quoted as a `Pool`. */
+  revealedPool: 'RevealedAssetPool',
   marketplace: 'FixedPriceListing',
   itemOffer: 'ItemOffer',
   collectionBid: 'CollectionBid',
@@ -49,6 +51,13 @@ export const PROTOCOL_TEMPLATE_NAMES: Readonly<Record<'pool' | 'marketplace' | '
 
 export interface PoolDescriptor {
   poolComponent: string;
+  /**
+   * Which Shadow Swap pool template this component is. Absent means `PUBLIC`, so every
+   * existing fixture and seed keeps its meaning. A `REVEALED` pool admits the privacy-typed
+   * assets Pool v2 refuses and holds public reserves, so it must never be presented, quoted
+   * or routed as a public pool.
+   */
+  kind?: 'PUBLIC' | 'REVEALED';
   pair: PoolPair;
   base: PoolAssetInfo;
   quote: PoolAssetInfo;
@@ -390,6 +399,34 @@ export class IndexerPoolDiscovery implements PoolDiscoverySource {
         unavailableReason: result.detail,
       };
     }
+    // A SECOND pass for revealed-value pools. Its own trusted list and registry key, so a
+    // revealed pool can never be returned as a `Pool` candidate and vice versa. Its state is
+    // deliberately ignored: with no RevealedAssetPool recorded the pass reports "not
+    // deployed", which must not turn a healthy public-pool answer into an outage.
+    const revealedCandidates = await (async () => {
+      const active = deployment();
+      if (active === undefined || active.revealedPoolTemplates.length === 0) return [];
+      try {
+        const revealed = await this.client.discover(
+          PROTOCOL_TEMPLATE_NAMES.revealedPool,
+          () => registryKnownComponents(`${active.registryKey}#revealed`, this.storage),
+          {
+            templates: () => active.revealedPoolTemplates,
+            notDeployedDetail: 'No RevealedAssetPool template is recorded for this network generation.',
+          },
+        );
+        if (!revealed.ok) return [];
+        rememberDiscovered(
+          `${active.registryKey}#revealed`,
+          revealed.components.map((c) => c.componentAddress),
+          this.storage,
+        );
+        return revealed.components;
+      } catch {
+        // A failure to discover revealed pools must not break the public-pool answer.
+        return [];
+      }
+    })();
     // Persist the components that reverified, so they stay discoverable after they
     // age out of the receipt window. Only addresses are stored; everything is
     // reverified against chain on the next load.
@@ -400,7 +437,7 @@ export class IndexerPoolDiscovery implements PoolDiscoverySource {
       // a pool whose pair and reserves have not been read authoritatively is not
       // yet a pool this app may describe.
       pools: [],
-      candidates: result.components,
+      candidates: [...result.components, ...revealedCandidates],
       publishedTemplates: result.publishedTemplates,
       state: result.state,
       source: this.name,

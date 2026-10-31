@@ -41,7 +41,12 @@ export type ReviewOperation =
   | 'P2P_OFFER_CREATE'
   | 'P2P_OFFER_FILL'
   | 'P2P_OFFER_CLAIM'
-  | 'P2P_OFFER_CANCEL';
+  | 'P2P_OFFER_CANCEL'
+  // RevealedAssetPool: named apart from the public AMM so a review can never present a
+  // transparent trade of a privacy-typed asset as an ordinary public-pool trade.
+  | 'REVEALED_POOL_SWAP'
+  | 'REVEALED_POOL_ADD_LIQUIDITY'
+  | 'REVEALED_POOL_REMOVE_LIQUIDITY';
 
 export interface ReviewAmount {
   /** EXACT resource identity. A symbol is never used here. */
@@ -264,7 +269,16 @@ export function createReview(input: {
 // ---------------------------------------------------------------------------
 
 interface AmmIntentLike {
-  operation: 'swap' | 'add_liquidity' | 'remove_liquidity' | 'multi_hop_swap' | 'create_pool';
+  operation:
+    | 'swap'
+    | 'add_liquidity'
+    | 'remove_liquidity'
+    | 'multi_hop_swap'
+    | 'create_pool'
+    | 'revealed_swap'
+    | 'revealed_add_liquidity'
+    | 'revealed_remove_liquidity'
+    | 'create_revealed_pool';
   poolComponent: string;
   instructions: Array<{
     kind: string;
@@ -290,6 +304,10 @@ const AMM_OPERATION: Record<AmmIntentLike['operation'], ReviewOperation> = {
   multi_hop_swap: 'AMM_SWAP',
   // Creating a pool funds its first liquidity in the same transaction.
   create_pool: 'AMM_ADD_LIQUIDITY',
+  revealed_swap: 'REVEALED_POOL_SWAP',
+  revealed_add_liquidity: 'REVEALED_POOL_ADD_LIQUIDITY',
+  revealed_remove_liquidity: 'REVEALED_POOL_REMOVE_LIQUIDITY',
+  create_revealed_pool: 'REVEALED_POOL_ADD_LIQUIDITY',
 };
 
 /**
