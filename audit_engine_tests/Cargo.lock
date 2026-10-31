@@ -98,7 +98,9 @@ checksum = "a8ab6b55fe97976e46f91ddbed8d147d966475dc29b2032757ba47e02376fbc3"
 name = "audit_engine_tests"
 version = "0.0.0"
 dependencies = [
+ "ootle_byte_type",
  "serde_json",
+ "sha2 0.10.9",
  "tari_crypto",
  "tari_engine_types",
  "tari_ootle_common_types",
