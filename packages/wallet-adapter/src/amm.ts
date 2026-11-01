@@ -35,7 +35,13 @@ export type AmmOperation =
   | 'revealed_swap'
   | 'revealed_add_liquidity'
   | 'revealed_remove_liquidity'
-  | 'create_revealed_pool';
+  | 'create_revealed_pool'
+  // A multi-hop route whose hops are not all the same venue. Both pool templates expose the
+  // same `swap(Bucket, ResourceAddress, Amount)`, so the instruction shape is identical and
+  // such a route settles atomically (engine: revealed_asset_pool r11) — but a review must
+  // still say WHICH hops were transparent, so the operation is named separately.
+  | 'revealed_multi_hop_swap'
+  | 'mixed_multi_hop_swap';
 
 interface WorkspaceBucket {
   kind: 'workspace_bucket';
@@ -122,7 +128,20 @@ export interface RouteHopEvidence {
   /** On-chain min_output for this hop: 1 for intermediate hops, the whole-route minimum for the last. */
   minOutput: string;
   feeBps: string;
+  /**
+   * Which venue this hop traded at, as named by the pool component's OWN template address in
+   * the authoritative read — never by the discovery snapshot that proposed the route. A
+   * `REVEALED` hop is a transparent pool, and that is what the review card must disclose.
+   */
+  venue?: PoolVenue;
 }
+
+/**
+ * The two pool templates a route may cross. They are deliberately not interchangeable: a
+ * `REVEALED` pool admits exactly the privacy-typed assets Pool v2 refuses, and holds its
+ * reserves as public integers.
+ */
+export type PoolVenue = 'PUBLIC' | 'REVEALED';
 
 function bucket(name: string): WorkspaceBucket {
   return { kind: 'workspace_bucket', name };
@@ -388,14 +407,49 @@ function safeEpochShim(maxEpoch: string): number {
 export interface MultiHopSwapIntentInput {
   accountAddress: string;
   rawInputAmount: string;
-  /** Hops in execution order. hops[i].outputResource === hops[i+1].inputResource. */
-  hops: ReadonlyArray<{ poolComponent: string; inputResource: string; outputResource: string; quotedOutput: string; feeBps: string }>;
+  /**
+   * Hops in execution order. hops[i].outputResource === hops[i+1].inputResource.
+   *
+   * `venue` is each hop's pool kind as read from the component's own template address. Omit
+   * it for a route that is entirely public (the historical shape); supply it on every hop or
+   * on none, because a route that can only name some of its venues cannot be disclosed.
+   */
+  hops: ReadonlyArray<{ poolComponent: string; inputResource: string; outputResource: string; quotedOutput: string; feeBps: string; venue?: PoolVenue }>;
   /** Whole-route on-chain minimum, enforced by the LAST hop. Must be positive. */
   minOutput: string;
   maxEpoch: string;
   operationId: string;
   slippageBps: string;
   readEpoch?: string;
+}
+
+/**
+ * The operation name for a route, from its hops' venues.
+ *
+ * A route that crosses both kinds is `mixed_multi_hop_swap`, one wholly inside revealed-value
+ * pools is `revealed_multi_hop_swap`, and the all-public case keeps the original name so
+ * existing reviews, history records and tests are unaffected.
+ */
+export function multiHopOperationFor(venues: ReadonlyArray<PoolVenue | undefined>): AmmOperation {
+  const named = venues.filter((v): v is PoolVenue => v !== undefined);
+  if (named.length === 0) return 'multi_hop_swap';
+  if (named.length !== venues.length) {
+    throw new Error('every hop must name its venue, or none may: a partially classified route cannot be disclosed');
+  }
+  const revealed = named.filter((v) => v === 'REVEALED').length;
+  if (revealed === 0) return 'multi_hop_swap';
+  return revealed === named.length ? 'revealed_multi_hop_swap' : 'mixed_multi_hop_swap';
+}
+
+/** The disclosure a route must carry, given its venues. Transparency is stated, never implied. */
+export function multiHopDisclosureFor(operation: AmmOperation): string {
+  if (operation === 'mixed_multi_hop_swap') {
+    return 'MIXED ROUTE: this route crosses a transparent (revealed-value) pool and a public pool in ONE atomic transaction. Every amount, including the intermediate one, is revealed on-chain, and so are the timing and your account. The intermediate asset never reaches your account, and no asset changes type.';
+  }
+  if (operation === 'revealed_multi_hop_swap') {
+    return 'TRANSPARENT ROUTE: every hop is a revealed-value pool with publicly visible reserves. All amounts, the timing and your account are revealed on-chain for this trade. The intermediate asset never reaches your account, and no asset changes type.';
+  }
+  return 'PUBLIC AMM BOUNDARY: pool reserves, swap direction, and amounts are revealed.';
 }
 
 /** Engine-proven bound on route length; three hops already cost three pool fees. */
@@ -454,14 +508,27 @@ export function buildMultiHopSwapIntent(input: MultiHopSwapIntentInput): AmmTran
     };
     calls.push(call);
     instructions.push({ kind: 'call_method', ...call });
-    route.push({ poolComponent: hop.poolComponent, inputResource: hop.inputResource, outputResource: hop.outputResource, quotedOutput: hop.quotedOutput, minOutput: min, feeBps: hop.feeBps });
+    route.push({
+      poolComponent: hop.poolComponent,
+      inputResource: hop.inputResource,
+      outputResource: hop.outputResource,
+      quotedOutput: hop.quotedOutput,
+      minOutput: min,
+      feeBps: hop.feeBps,
+      ...(hop.venue === undefined ? {} : { venue: hop.venue }),
+    });
   });
   instructions.push({ kind: 'deposit_all', accountAddress: input.accountAddress, bucket: finalBucket });
 
   const first = hops[0]!;
   const last = hops[hops.length - 1]!;
+  // The instruction list above is venue-independent on purpose: both templates expose the
+  // same `swap(Bucket, ResourceAddress, Amount)`, so a mixed route is the SAME transaction
+  // shape as a public one and settles atomically. Only the operation name and the disclosure
+  // differ, and both are derived from the hops' own template addresses.
+  const operation = multiHopOperationFor(hops.map((h) => h.venue));
   return {
-    operation: 'multi_hop_swap',
+    operation,
     poolComponent: first.poolComponent,
     calls,
     instructions,

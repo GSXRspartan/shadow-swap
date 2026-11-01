@@ -209,8 +209,10 @@ The earlier Windows instructions are corrected accordingly.
    (and the Pool in `poolTemplates`), in a reviewed PR. That single change is what turns the P2P
    routes from `BLOCKED` to `EXECUTABLE`; nothing else enables them.
 
-Before publishing the Pool, also switch the add-liquidity builder to `add_liquidity_exact`
-(release blocker 3 in `SHADOW_SWAP_V047_RELEASE_READINESS.md`, still open).
+Before publishing the Pool, also switch the **existing-pool** add-liquidity builder to
+`add_liquidity_exact` (release blocker 3 in `SHADOW_SWAP_V047_RELEASE_READINESS.md`, still
+open). Do **not** switch pool creation: `add_liquidity_exact` cannot serve a first deposit
+(`pool_engine` `e07e`), so creation keeps `add_liquidity`.
 
 ## 9. Test results (this phase)
 
