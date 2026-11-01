@@ -171,13 +171,18 @@ export function getTariProvider(scope: unknown = globalThis): TariProvider {
  * Methods that wait on a human, and must therefore NEVER be given a deadline.
  *
  * A signing request can legitimately sit unanswered for minutes while the user
- * reads it. Aborting one on a timer would manufacture an `UNKNOWN` submission
- * for a transaction the wallet may still be about to sign — the exact state the
- * protocol is most careful to avoid. `tari_getTransactionRequest` polls an
- * approval that may already be open, so it is interactive too. Only
+ * reads it, and `tari_requestAccounts` is the connection prompt itself: the
+ * user unlocks their wallet, reads the origin name and approves at their own
+ * pace. Aborting any of these on a timer would manufacture an `UNKNOWN`
+ * submission for a transaction the wallet may still be about to sign — the
+ * exact state the protocol is most careful to avoid — and for the connection
+ * prompt it would orphan an approval window the wallet keeps open, leaving the
+ * app refusing a connection the user just granted. `tari_getTransactionRequest`
+ * polls an approval that may already be open, so it is interactive too. Only
  * non-interactive reads are bounded.
  */
 const INTERACTIVE_METHODS: ReadonlySet<string> = new Set<TariMethod>([
+  TARI_METHODS.requestAccounts,
   TARI_METHODS.signAndSubmit,
   TARI_METHODS.createTransactionRequest,
   TARI_METHODS.getTransactionRequest,
@@ -186,6 +191,11 @@ const INTERACTIVE_METHODS: ReadonlySet<string> = new Set<TariMethod>([
 
 /** Deadline for a non-interactive provider read. */
 export const PROVIDER_READ_TIMEOUT_MS = 15_000;
+
+/** Whether a method waits on a human and must never be deadline-bounded. */
+export function isInteractiveMethod(method: TariMethod): boolean {
+  return INTERACTIVE_METHODS.has(method);
+}
 
 /**
  * Normalise a provider rejection.

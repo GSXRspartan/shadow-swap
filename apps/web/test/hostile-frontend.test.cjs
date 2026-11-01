@@ -36,12 +36,14 @@ function fakeProvider(overrides = {}) {
   return { request: async () => ({}), ...overrides };
 }
 
+const TEST_ACCOUNT = 'component_a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1';
+
 function identityFor(provider, extra = {}) {
   return identity.captureIdentity({
     provider,
     expectedNetwork: 'esmeralda',
     providerNetwork: 'esmeralda',
-    account: 'component_a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1',
+    account: TEST_ACCOUNT,
     ...extra,
   });
 }
@@ -87,19 +89,63 @@ test('spoof: a provider that inherits its request method is still fingerprinted'
   assert.notEqual(identity.providerFingerprint(inherited), identity.providerFingerprint(own), 'prototype-inherited providers must be distinguishable');
 });
 
-test('spoof: a capability downgrade after the handshake is detected', () => {
+test('spoof: a required-capability downgrade after the handshake is detected', () => {
+  // Captured the way the app captures an execution identity: signed over the
+  // keys the operations actually depend on (`stealthWithdraw`, `transactionRequests`).
+  // (The original full-set fingerprint voided live reviews whenever the wallet
+  // legitimately flipped a non-signing key between review and approval.)
   const provider = fakeProvider();
-  const caps = { l1Balance: true, l2HtlcFund: true };
+  const caps = { stealthWithdraw: true, transactionRequests: true, privateScan: false, privateViewGranted: false };
   const captured = identityFor(provider, { capabilities: caps });
   assert.equal(
-    identity.verifyIdentity(captured, { provider, providerNetwork: 'esmeralda', account: 'component_a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1', capabilities: caps, nonce: captured.nonce }).ok,
+    identity.verifyIdentity(captured, { provider, providerNetwork: 'esmeralda', account: TEST_ACCOUNT, capabilities: caps, nonce: captured.nonce }).ok,
     true,
   );
-  // The provider now claims it cannot do what it said it could.
-  const downgraded = { l1Balance: true, l2HtlcFund: false };
-  const check = identity.verifyIdentity(captured, { provider, providerNetwork: 'esmeralda', account: 'component_a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1', capabilities: downgraded, nonce: captured.nonce });
+  // The provider now claims it cannot do what the review requires it to do.
+  const downgraded = { ...caps, stealthWithdraw: false };
+  const check = identity.verifyIdentity(captured, { provider, providerNetwork: 'esmeralda', account: TEST_ACCOUNT, capabilities: downgraded, nonce: captured.nonce });
   assert.equal(check.ok, false);
   assert.equal(check.changed, 'capabilities');
+});
+
+test('spoof: a wallet flipping non-signing keys between review and approval does not void the review', () => {
+  // The Sapient wallet scans privately in the background; between the moment a
+  // review is created and the moment the user approves, non-signing keys flip
+  // without the transaction changing. The identity comparison covers only the
+  // keys the operation depends on, so those flips must NOT void it (observed
+  // live: every re-derivation was refused for this reason).
+  const provider = fakeProvider();
+  const caps = { stealthWithdraw: true, transactionRequests: true, privateScan: true, privateViewGranted: false, exactInputSelection: true };
+  const captured = identityFor(provider, { capabilities: caps });
+  assert.equal(
+    identity.verifyIdentity(captured, { provider, providerNetwork: 'esmeralda', account: TEST_ACCOUNT, capabilities: caps, nonce: captured.nonce }).ok,
+    true,
+  );
+  const flipped = { ...caps, privateScan: false, privateViewGranted: true, exactInputSelection: false, minimumValuePromise: false };
+  assert.equal(
+    identity.verifyIdentity(captured, { provider, providerNetwork: 'esmeralda', account: TEST_ACCOUNT, capabilities: flipped, nonce: captured.nonce }).ok,
+    true,
+  );
+  // ...while a REQUIRED key going away still fails closed.
+  const missing = { ...flipped, transactionRequests: false };
+  const check = identity.verifyIdentity(captured, { provider, providerNetwork: 'esmeralda', account: TEST_ACCOUNT, capabilities: missing, nonce: captured.nonce });
+  assert.equal(check.ok, false);
+  assert.equal(check.changed, 'capabilities');
+});
+
+test('connect: the connection prompt is not subject to the provider-read deadline', () => {
+  // `tari_requestAccounts` waits on a human reading an approval window. A
+  // deadline on it manufactured "Wallet connection refused … 15000ms" refusals
+  // for users who approved carefully (observed live). Prompting methods are
+  // classified as interactive and never raced against a timer.
+  assert.equal(tari.isInteractiveMethod(tari.TARI_METHODS.requestAccounts), true, 'requestAccounts must be interactive');
+  assert.equal(tari.isInteractiveMethod(tari.TARI_METHODS.signAndSubmit), true);
+  assert.equal(tari.isInteractiveMethod(tari.TARI_METHODS.createTransactionRequest), true);
+  assert.equal(tari.isInteractiveMethod(tari.TARI_METHODS.getTransactionRequest), true);
+  assert.equal(tari.isInteractiveMethod(tari.TARI_METHODS.submitTransactionRequest), true);
+  assert.equal(tari.isInteractiveMethod(tari.TARI_METHODS.getNetwork), false);
+  assert.equal(tari.isInteractiveMethod(tari.TARI_METHODS.getBalances), false);
+  assert.equal(tari.isInteractiveMethod(tari.TARI_METHODS.getSubstate), false);
 });
 
 test('spoof: a replayed review from a previous session is refused', () => {
@@ -1189,18 +1235,22 @@ test('identity: a replaced provider object is detected by reference', () => {
 test('identity: a capability downgrade after approval is detected', () => {
   const { captureIdentity, verifyIdentity } = require('../build-test/lib/executionIdentity.js');
   const provider = mutableProvider();
+  // A route that depends on specific capabilities captures its identity with an
+  // explicit basis (the crosschain routes do exactly this with the L2 HTLC keys).
+  // A downgrade of ANY key in that basis is a refusal.
   const pinned = captureIdentity({
     provider,
     expectedNetwork: 'esmeralda',
     providerNetwork: 'esmeralda',
-    account: 'component_a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1',
+    account: TEST_ACCOUNT,
     capabilities: { l2HtlcFund: true, l2HtlcClaim: true },
+    capabilityKeys: ['transactionRequests', 'l2HtlcFund', 'l2HtlcClaim'],
   });
   // Live capabilities are re-read and differ from the approved snapshot.
   const check = verifyIdentity(pinned, {
     provider,
     providerNetwork: 'esmeralda',
-    account: 'component_a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1',
+    account: TEST_ACCOUNT,
     capabilities: { l2HtlcFund: false, l2HtlcClaim: false },
     nonce: pinned.nonce,
   });
