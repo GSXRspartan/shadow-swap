@@ -205,7 +205,19 @@ export function resolvePairRoutes(pair: PairInput): RouteOption[] {
   }
 
   if (input.kind === 'unknown' || output.kind === 'unknown') {
-    options.push({ mechanism: 'CROSS_LAYER', label: 'Cross-layer (L1 <-> L2)', availability: 'BLOCKED', reason: 'Disabled until proven: the cross-layer coordinator is gated off and no live settlement exists.', privacy: 'n/a', requiredCapabilities: [] });
+    // Burn-and-claim (L1 -> L2) is a real upstream protocol and has its own page, but it is a
+    // one-way CONVERSION whose first step is irreversible, so it is never offered here beside
+    // trades that settle or do not. The reverse direction does not exist at all: v0.48's
+    // instruction set has a one-way `ClaimBurn` and nothing that burns or exits on L2.
+    options.push({
+      mechanism: 'CROSS_LAYER',
+      label: 'Cross-layer (L1 → L2 conversion)',
+      availability: 'BLOCKED',
+      reason:
+        'Not a trade: converting Minotari (L1) into Ootle (L2) is a one-way burn-and-claim whose first step is irreversible, and the claim is signed by your own wallet. It has its own page. There is no L2 → L1 route in this protocol.',
+      privacy: 'The L1 burn and the L2 claim are both public.',
+      requiredCapabilities: ['a base-layer wallet for the burn', 'your own wallet for the claim (no browser wallet exposes one)'],
+    });
   }
   return options;
 }
