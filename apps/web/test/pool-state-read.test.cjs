@@ -74,6 +74,8 @@ test('wallet readPoolState wiring decodes the exact live Pool v2 state via tari_
     lpResource: LP,
     totalLpSupply: '600000',
     lockedLpSupply: '1000',
+    // From the component's own header: the venue a route hop traded at is read from here.
+    templateAddress: 'f47a330eee1bbf91f58d9ff4280b4279c3c4fe91fb59ab5812cd5128442819ab',
   });
 });
 

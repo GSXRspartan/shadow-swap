@@ -79,6 +79,26 @@ revealed-pool route from `BLOCKED` to `EXECUTABLE`; nothing else enables them. `
 refuses an address recorded in both the public and revealed lists, so a mis-recording fails
 closed rather than letting a revealed pool be quoted as a public one.
 
+### How a revealed pool is distinguished at execution time
+
+Both templates produce the same component shape — `[pools, lp_resource, fee_bps,
+locked_lp_vault]` — and expose the same `swap(Bucket, ResourceAddress, Amount)`. That is what
+makes a mixed route possible, and it is also why **nothing on the wire** says a hop was a
+transparent pool. So the venue is established from the one source that cannot be forged by
+whatever proposed the route:
+
+1. `decodePoolComponent` already REQUIRES the component header to name its template; that
+   address is now surfaced as `PoolState.templateAddress`.
+2. `withTrustedPoolTemplates` accepts a component whose template is recorded as **either**
+   kind, and refuses a FOUND read whose reported template is unrecorded or absent.
+3. `resolveMultiHopSwap` reports each hop's template address, in route order.
+4. `ammRouteIntentBuilder` classifies them with the application's registry and derives the
+   builder, the operation name and the disclosure. An unrecorded or unreported template
+   **throws**: guessing would mean guessing "public", the less revealing of the two.
+
+The Swap page therefore signs a transparent-pool swap and a mixed route directly, and the
+review card it freezes says which venues were crossed.
+
 ## 6. Engine evidence
 
 `audit_engine_tests/tests/revealed_asset_pool.rs`, 11/11:

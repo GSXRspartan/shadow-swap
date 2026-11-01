@@ -257,5 +257,9 @@ export async function decodePoolState(reader: RawSubstateReader, poolComponent: 
     lpResource: shape.lpResource,
     totalLpSupply: resourceTotalSupply(lpResourceSubstate, 'lpResource'),
     lockedLpSupply: vaultAmount(lockedVaultSubstate, 'lockedLpVault'),
+    // From the component's OWN header, already required above. The caller uses it to
+    // classify the venue (public pool vs revealed-value pool) against its recorded
+    // registry, because both templates share this exact component shape.
+    templateAddress: shape.templateAddress,
   };
 }

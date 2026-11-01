@@ -27,6 +27,22 @@ export type Mechanism =
 
 export type Availability = 'EXECUTABLE' | 'NO_LIQUIDITY' | 'ENGINE_VERIFIED_NOT_ENABLED' | 'BLOCKED' | 'NOT_APPLICABLE';
 
+/**
+ * The mechanisms the Swap page builds, reviews and submits itself.
+ *
+ * All four are AMM-shaped: both pool templates expose the same
+ * `swap(Bucket, ResourceAddress, Amount)`, so one hop or several, in one venue or across
+ * both, is one atomic transaction of the same shape (engine: `revealed_asset_pool` r11).
+ * Each hop's venue is re-derived from the pool component's own template address at submit
+ * time, which decides the builder and the disclosure.
+ *
+ * The others are reachable but not from this page's quote list: `NFT_MARKETPLACE` has its own
+ * page, `P2P_OFFER`/`NFT_BARTER` are escrow flows driven by the offer panel below the quotes,
+ * and `CROSS_LAYER` is a conversion rather than a trade. Keeping the set explicit is what
+ * stops a button appearing for a route that cannot build its transaction.
+ */
+export const SIGNABLE_MECHANISMS: readonly Mechanism[] = ['AMM', 'MULTI_HOP_AMM', 'REVEALED_POOL', 'MIXED_MULTI_HOP'];
+
 export interface RouteOption {
   readonly mechanism: Mechanism;
   readonly label: string;
