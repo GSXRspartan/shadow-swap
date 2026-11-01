@@ -2,7 +2,7 @@
 
 Cohort: tari-ootle **v0.48.0** (`6a25dbc`), still the latest upstream tag on 2026-10-31.
 Branches: `feat/universal-trading-v048` (PR #11), `feat/cross-layer-v048` (PR #12),
-`feat/mixed-route-execution-v048` (PR #13).
+`feat/mixed-route-execution-v048` (PR #13), `feat/cross-layer-claim-engine-v048` (PR #14).
 Start commit: `838cbb6` (`main`, with PRs #9 and #10 merged).
 
 ## Verification levels
@@ -46,7 +46,8 @@ Live verification was impossible in this environment: `esme-indexer-a/b.ootle.ta
 | **Mixed multi-hop: revealed pool → public pool, atomic** | NOT IMPLEMENTED | **ENGINE VERIFIED** (`r11`) and **wire-verified** (`mixed_multi_hop_swap`), **signable from `/swap`**, gated |
 | **Multi-hop wholly inside revealed pools, atomic** | NOT IMPLEMENTED | **ENGINE VERIFIED** (same shape as `r11`), signable from `/swap`, gated |
 | Blinded (non-revealed) Confidential trading | BLOCKED BY UPSTREAM | unchanged, and now **refused in the engine** (`r09`) rather than merely avoided |
-| **Minotari L1 → Ootle L2 conversion** | NOT IMPLEMENTED | **IMPLEMENTED for every step this app can do**; the claim is BLOCKED BY UPSTREAM for browser wallets and is performed by the user's own wallet |
+| **Minotari L1 → Ootle L2 conversion** | NOT IMPLEMENTED | **IMPLEMENTED for every step this app can do**; the claim is BLOCKED BY UPSTREAM for browser wallets and is performed by the user's own wallet. Per-operation levels: `SHADOW_SWAP_L1_L2_ROUTING_IMPLEMENTATION.md` §6 |
+| **L1 claim authorization model** (who may claim, and what the engine checks) | not investigated | **ENGINE VERIFIED** (`claim_burn_authorization` `x01`–`x03`): only the stealth claim key may claim (`AccessDenied` otherwise), a relayer may seal and pay, and the engine does **not** verify proof authenticity at all |
 | **Ootle L2 → Minotari L1** | not investigated | **BLOCKED BY UPSTREAM — no such route exists** (see §4) |
 | L1↔L2 atomic HTLC swap | BLOCKED BY UPSTREAM (L1 leg) | unchanged (`docs/TARI_BROWSER_ATOMIC_SWAP_PROVIDER_GAP.md`) |
 
@@ -78,7 +79,13 @@ are still refused by Pool v2, so this is an addition and never a bypass.
 4. **An account's NFT ids are not available from the wallet** (Sapient's documented
    `DappTokenBalance` has no token-id field), but they are public chain data in the account's
    own vaults. `readAccountInventory` reads them, which is authoritative rather than advisory.
-5. **A Stealth container has no commitment field at all** upstream, so a Stealth bucket's value
+5. **The L1 claim's blocker is a signature, not an instruction.** A claim co-signed by the
+   stealth claim key while an unrelated key seals and pays is accepted (`x02`), so a third
+   party can build and fund one. The single missing primitive is a provider API that co-signs
+   with a key derived as `H(R·p) + p`. Separately, the engine delegates burn-proof authenticity
+   to a validator-supplied `ClaimProofVerifier` (`x01`), so nothing in this project — and no
+   engine test anywhere — may be cited as evidence that a burn happened.
+6. **A Stealth container has no commitment field at all** upstream, so a Stealth bucket's value
    is entirely revealed; a Confidential container can carry commitments beside the revealed
    amount. That asymmetry is what makes the revealed-value pool safe, enforced by
    `assert_contains_no_confidential_funds` and proved against a real blinded commitment (`r09`).
@@ -139,8 +146,8 @@ page says so.
 
 | Suite | Result |
 |---|---|
-| Real v0.48 engine (`audit_engine_tests`) | **93/93** across 16 binaries |
-| web | **560/560** |
+| Real v0.48 engine (`audit_engine_tests`) | **96/96** across 17 binaries |
+| web | **565/565** |
 | wallet-adapter | 31/31 |
 | protocol-client | 268/268 |
 | Browser e2e (Chromium desktop) | 91 passed, 4 skipped, 1 failed only on the sandbox's blocked connector host (passes in CI) |
