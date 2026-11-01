@@ -329,6 +329,67 @@ export function assertNoSecrets(record: Readonly<Record<string, unknown>>): void
   }
 }
 
+/**
+ * Serialise a record for durable storage, refusing anything secret-shaped on the way out.
+ *
+ * The record is a RECOVERY AID, never the source of truth: an L1 burn is irreversible and its
+ * consequences live on two chains, so the authority is always a fresh read. What this protects
+ * against is a stage being lost mid-conversion — a user who reloads after burning, with the
+ * proof not yet claimed, must not be left without the context to finish.
+ */
+export function serializeCrossLayer(record: CrossLayerRecord): string {
+  assertNoSecrets(record as unknown as Record<string, unknown>);
+  return JSON.stringify(record);
+}
+
+/**
+ * Restore a record, or `undefined` if it cannot be trusted for this network and account.
+ *
+ * Every rejection path matters, so each is explicit rather than a catch-all:
+ *
+ *   * malformed or non-object JSON — storage is attacker-writable in a shared browser;
+ *   * a record for ANOTHER account or network — switching accounts must never resurrect
+ *     someone else's conversion and show it as this account's;
+ *   * a record carrying a secret-shaped field — if one was written by an older build or by
+ *     hand, reading it back is the moment to refuse, not to propagate;
+ *   * a record with no recognised stage — an unknown stage cannot be rendered honestly.
+ *
+ * It never throws: a conversion's truth is on chain, so an unreadable aid is dropped rather
+ * than turned into an error the user cannot act on.
+ */
+export function restoreCrossLayer(raw: string | null | undefined, expect: { network: string; account: string }): CrossLayerRecord | undefined {
+  if (typeof raw !== 'string' || raw.length === 0) return undefined;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return undefined;
+  }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return undefined;
+  const record = parsed as Record<string, unknown>;
+  if (record.network !== expect.network || record.account !== expect.account) return undefined;
+  if (!CROSS_LAYER_STAGES.includes(record.stage as CrossLayerStage)) return undefined;
+  if (typeof record.updatedAtUnixMs !== 'number' || !Number.isFinite(record.updatedAtUnixMs)) return undefined;
+  try {
+    assertNoSecrets(record);
+  } catch {
+    return undefined;
+  }
+  return record as unknown as CrossLayerRecord;
+}
+
+/** Every stage, so a restored record naming anything else is refused rather than rendered. */
+export const CROSS_LAYER_STAGES: readonly CrossLayerStage[] = [
+  'NOT_STARTED',
+  'DESTINATION_READY',
+  'BURN_PROOF_LOADED',
+  'AWAITING_L2_EPOCH',
+  'CLAIM_READY',
+  'CLAIM_REPORTED_BY_USER',
+  'CLAIMED_CONFIRMED_ON_CHAIN',
+  'BLOCKED',
+];
+
 export function startCrossLayer(network: string, account: string, ownerPublicKey: string, now = Date.now()): CrossLayerRecord {
   return { stage: 'DESTINATION_READY', network, account, accountOwnerPublicKey: ownerPublicKey.toLowerCase(), updatedAtUnixMs: now };
 }
