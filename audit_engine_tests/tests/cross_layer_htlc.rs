@@ -213,9 +213,6 @@ fn terms_debug(w: &mut World, htlc: ComponentAddress) -> String {
 fn h01_fund_then_claim_pays_the_claimant_and_publishes_the_preimage() {
     let mut w = world();
     let claimant_pk = pk(&w.claimant_key);
-    let funder_pk = pk(&w.funder_key);
-    let funder_acct = w.funder;
-    let claimant_acct = w.claimant;
     let funder_acct = w.funder;
     let claimant_acct = w.claimant;
     let x = fungible(&mut w, "TARI", funder_acct);
@@ -263,9 +260,7 @@ fn h01_fund_then_claim_pays_the_claimant_and_publishes_the_preimage() {
 fn h02_only_the_committed_preimage_opens_the_escrow() {
     let mut w = world();
     let claimant_pk = pk(&w.claimant_key);
-    let funder_pk = pk(&w.funder_key);
     let funder_acct = w.funder;
-    let claimant_acct = w.claimant;
     let x = fungible(&mut w, "TARI", funder_acct);
     let (preimage, hash) = l1_preimage_and_hash();
     let htlc = fund(&mut w, x, 500_000, hash, claimant_pk, 20, L1_LEG);
@@ -301,7 +296,6 @@ fn h02_only_the_committed_preimage_opens_the_escrow() {
 fn h03_only_the_named_claimant_claims_and_only_the_funder_refunds() {
     let mut w = world();
     let claimant_pk = pk(&w.claimant_key);
-    let funder_pk = pk(&w.funder_key);
     let funder_acct = w.funder;
     let claimant_acct = w.claimant;
     let x = fungible(&mut w, "TARI", funder_acct);
@@ -310,7 +304,6 @@ fn h03_only_the_named_claimant_claims_and_only_the_funder_refunds() {
 
     // The funder knows the hash and may even know the preimage; they still cannot claim.
     let stranger = RistrettoSecretKey::random(&mut rand::rng());
-    let funder_acct = w.funder;
     for (what, key) in [
         ("the funder", w.funder_key.clone()),
         ("an unrelated third party", stranger.clone()),
@@ -331,7 +324,6 @@ fn h03_only_the_named_claimant_claims_and_only_the_funder_refunds() {
 
     // And at/after expiry, only the funder refunds.
     set_epoch(&mut w, 25);
-    let claimant_acct = w.claimant;
     let claimant_key = w.claimant_key.clone();
     let tx =
         w.t.transaction()
@@ -351,11 +343,7 @@ fn h03_only_the_named_claimant_claims_and_only_the_funder_refunds() {
 fn h04_refund_is_refused_before_expiry_and_pays_the_funder_after() {
     let mut w = world();
     let claimant_pk = pk(&w.claimant_key);
-    let funder_pk = pk(&w.funder_key);
     let funder_acct = w.funder;
-    let claimant_acct = w.claimant;
-    let funder_acct = w.funder;
-    let claimant_acct = w.claimant;
     let x = fungible(&mut w, "TARI", funder_acct);
     let (_preimage, hash) = l1_preimage_and_hash();
     let htlc = fund(&mut w, x, 700_000, hash, claimant_pk, 20, L1_LEG);
@@ -391,9 +379,7 @@ fn h05_claim_and_refund_can_never_both_succeed() {
     // deliberately stricter than the L1 script (whose claim branch has no height condition).
     let mut w = world();
     let claimant_pk = pk(&w.claimant_key);
-    let funder_pk = pk(&w.funder_key);
     let funder_acct = w.funder;
-    let claimant_acct = w.claimant;
     let x = fungible(&mut w, "TARI", funder_acct);
     let (preimage, hash) = l1_preimage_and_hash();
     let htlc = fund(&mut w, x, 300_000, hash, claimant_pk, 20, L1_LEG);
@@ -417,9 +403,7 @@ fn h05_claim_and_refund_can_never_both_succeed() {
 fn h06_an_escrow_settles_exactly_once() {
     let mut w = world();
     let claimant_pk = pk(&w.claimant_key);
-    let funder_pk = pk(&w.funder_key);
     let funder_acct = w.funder;
-    let claimant_acct = w.claimant;
     let x = fungible(&mut w, "TARI", funder_acct);
 
     // claim, then claim again; then refund the same claimed escrow.
@@ -480,7 +464,6 @@ fn h07_funding_terms_are_validated_before_anything_is_escrowed() {
     let claimant_pk = pk(&w.claimant_key);
     let funder_pk = pk(&w.funder_key);
     let funder_acct = w.funder;
-    let claimant_acct = w.claimant;
     let x = fungible(&mut w, "TARI", funder_acct);
     let (_p, hash) = l1_preimage_and_hash();
     let claimant = claimant_pk;
@@ -553,9 +536,6 @@ fn h09_whatever_is_escrowed_is_exactly_what_is_delivered() {
     // escrow must carry it through without changing its type or amount.
     let mut w = world();
     let claimant_pk = pk(&w.claimant_key);
-    let funder_pk = pk(&w.funder_key);
-    let funder_acct = w.funder;
-    let claimant_acct = w.claimant;
     let funder_acct = w.funder;
     let claimant_acct = w.claimant;
     let probe: ComponentAddress = w.t.call_function(
