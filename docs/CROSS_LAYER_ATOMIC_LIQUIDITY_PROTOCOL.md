@@ -111,14 +111,18 @@ escrowed asset is delivered unchanged, including created-Stealth (`h09`).
 | L1 script shape and gRPC surface | **Source verified** at `3994846`; no L1 script executed here |
 | L1 funding / claiming / refunding | **Blocked in this environment** — needs a local wallet and a funded L1 account |
 | **The composed two-layer exchange** | **NOT VERIFIED** — neither simulated nor live |
-| Browser-only cross-layer trading | **Blocked by upstream** — Tari Universe Tapplets DO reach both layers, but expose plain payments only (`sendOneSided`, `sendOotleStealth`); neither can build an L1 HTLC script nor call an L2 template method. See the capability matrix §3 |
+| Browser-only cross-layer trading | **Blocked for the L1 leg only.** The L2 leg is browser-signable today through Sapient or Tari Universe's embedded dApp provider (transaction requests carry an instruction list, so they can call a template method). L1 needs a local wallet because no browser API expresses a TariScript. See the capability matrix §3 |
 
-**Signer assignment, from the capability matrix §3:** the L1 leg needs a local wallet over gRPC
-(the only surface that builds the HTLC script); the L2 leg is driven by **Sapient**, whose
-transaction requests can call a template method. A Universe Tapplet can read both layers and make
-plain payments on both, but cannot sign either HTLC leg today — the single change that would make
-the L2 side browser-complete inside Universe is one generic L2 transaction-request method in the
-Tapplet allowlist.
+**Signer assignment, from the capability matrix §3:** the L1 leg needs a local wallet over gRPC —
+the only surface that builds the HTLC script at all. The **L2 leg is browser-signable today**,
+through either Sapient or Tari Universe's embedded dApp provider: both implement the same
+13-method dApp API, and a transaction request carries an instruction list, so it can call
+`CrossLayerHtlc::fund` / `claim` / `refund`. A dApp never detects which wallet it has, so these
+are two capability sets rather than two integrations.
+
+Universe's separate **in-app Tapplet signer** is a different, narrower channel that can sign
+neither leg; it matters only if Shadow Swap is ever shipped as a Tapplet rather than as an
+ordinary web page.
 
 **This document does not claim an atomic cross-layer swap.** Both legs are individually
 characterised; the composition is not verified. Per the campaign's own rule, that claim waits for
