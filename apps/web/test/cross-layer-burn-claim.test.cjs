@@ -130,6 +130,28 @@ test('verify: the connected account, past the epoch, is claimable — with the i
   assert.match(v.warnings.join(' '), /irreversible/);
   assert.match(v.warnings.join(' '), /not an atomic swap/);
   assert.match(v.warnings.join(' '), /no browser wallet exposes a burn claim/);
+  // The fee is revealed OUT OF the claimed amount and a positive remainder is required
+  // (ClaimBurn::prepare -> BurnClaimFeeTooHigh), so a burn worth less than the fee is
+  // permanently unclaimable. That is a precondition no proof check can catch, so it is stated.
+  assert.equal(v.warnings.includes(pc.CLAIM_FEE_RULE), true, 'the fee-out-of-the-claim rule is stated');
+  assert.match(pc.CLAIM_FEE_RULE, /taken out of the claimed amount/);
+  // And the limit of what was actually checked: the engine delegates burn-proof authenticity to
+  // the validator nodes (claim_burn_authorization x01), so this app must never imply it verified
+  // that a burn happened.
+  assert.match(v.warnings.join(' '), /cannot tell you whether this burn really happened|delegates that to the validator nodes/);
+  assert.match(v.warnings.join(' '), /proof's structure and whether it names your account/);
+});
+
+test('verify: no warning or blocker claims that the burn itself was verified', async () => {
+  // The engine asks a ClaimProofVerifier supplied by a validator node; it performs no base-layer
+  // check of its own. So nothing user-facing may say the burn was confirmed, proven or verified
+  // — only that the PROOF's structure was checked.
+  const key = await accountKey();
+  const facts = pc.parseBurnClaimProof(proofFile({ claim: { burn_public_key: key } }));
+  const v = pc.verifyBurnClaim(facts, { accountOwnerPublicKey: key, currentEpoch: '200' });
+  const text = [...v.warnings, ...v.blockers].join(' ');
+  assert.doesNotMatch(text, /burn (is|was) (verified|confirmed|proven)/i);
+  assert.doesNotMatch(text, /we (verified|confirmed)/i);
 });
 
 test('verify: before the burn\'s L1 epoch, and with an unknown epoch, a claim is refused', async () => {
@@ -209,6 +231,15 @@ test('claim instructions: the walletd call is described for the user, never perf
   assert.equal(call.params.account, fixture.account);
   assert.equal(call.params.dry_run, true, 'a dry run first');
   assert.match(call.note, /your own walletd/);
+  // The note must name the key that actually SEALS the claim. "a key derived from your account
+  // secret" was too loose: the transaction is sealed by the stealth burn-claim key
+  // s = H(R.p) + p, and the engine rejects a claim signed by the account key alone with
+  // AccessDenied (claim_burn_authorization x02). Getting this wrong would tell a reader that
+  // their ordinary wallet signature is enough, which it is not.
+  assert.match(call.note, /SEALED by the stealth burn-claim key/);
+  assert.match(call.note, /not by the account key itself/);
+  assert.match(call.note, /AccessDenied/);
+  assert.match(call.note, /never sees p or s/);
   // No URL, host or token is implied: this app has no access to a wallet daemon.
   assert.equal(/127\.0\.0\.1|localhost|http/.test(JSON.stringify(call)), false);
 });

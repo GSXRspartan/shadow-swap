@@ -244,7 +244,11 @@ and no CI result exists. Green CI is **not** claimed.
    merge the stacked PR before any live test (`docs/SHADOW_SWAP_P2P_SWAPOFFER_BROWSER.md` §1).
 2. Confirm live Esmeralda: `GET /info` on both v0.48 hosts (version `0.48.x`, network byte 38).
 3. Switch the add-liquidity builder to `add_liquidity_exact` (with `min_lp_out` from the
-   authoritative quote) — required before the v0.48 Pool is published.
+   authoritative quote) **for deposits into a pool that already has reserves only** —
+   required before the v0.48 Pool is published. Pool CREATION must keep `add_liquidity`:
+   `add_liquidity_exact`'s first-deposit branch builds its empty refunds with
+   `Bucket::take(Amount::zero())`, which template_lib always refuses, so switching it
+   wholesale would break creation. Pinned by `pool_engine` `e07e`.
 4. ~~Implement the Sapient `withdrawStealthAndExecute` path~~ — implemented in Phase 2;
    real-wallet confirmation is Windows step §5 / Phase 2 §10 step 7.
 5. Operator-approved publication of the v0.48 templates (four, plus SwapOffer if P2P is wanted)
