@@ -20,7 +20,8 @@ import {
   MAX_BURN_PROOF_CHARS,
   accountOwnerPublicKey,
   marketplaceCurrentEpoch,
-  assertNoSecrets,
+  restoreCrossLayer,
+  serializeCrossLayer,
   claimBurnInstructions,
   confirmClaimReceipt,
   describeCrossLayer,
@@ -41,16 +42,13 @@ import { Badge, Card, CardHeader, DataRow, Notice } from './primitives.js';
 
 const STORE_KEY = 'shadowswap.crosslayer.v1';
 
+// The policy for both directions lives in protocol-client (`restoreCrossLayer` /
+// `serializeCrossLayer`) so it is unit-tested rather than only exercised by rendering: a user
+// who reloads after an irreversible burn depends on it. These wrappers only touch storage,
+// which is unavailable in a private window or with site data blocked.
 function load(network: string, account: string): CrossLayerRecord | undefined {
   try {
-    const raw = window.localStorage.getItem(STORE_KEY);
-    if (raw === null) return undefined;
-    const parsed: unknown = JSON.parse(raw);
-    if (typeof parsed !== 'object' || parsed === null) return undefined;
-    const record = parsed as CrossLayerRecord;
-    if (record.network !== network || record.account !== account) return undefined;
-    assertNoSecrets(record as unknown as Record<string, unknown>);
-    return record;
+    return restoreCrossLayer(window.localStorage.getItem(STORE_KEY), { network, account });
   } catch {
     return undefined;
   }
@@ -58,9 +56,7 @@ function load(network: string, account: string): CrossLayerRecord | undefined {
 
 function save(record: CrossLayerRecord): void {
   try {
-    // Refuses to write anything secret-shaped, whatever reached here.
-    assertNoSecrets(record as unknown as Record<string, unknown>);
-    window.localStorage.setItem(STORE_KEY, JSON.stringify(record));
+    window.localStorage.setItem(STORE_KEY, serializeCrossLayer(record));
   } catch {
     /* a recovery aid only; chain state is the record */
   }

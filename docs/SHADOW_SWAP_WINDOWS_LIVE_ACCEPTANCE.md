@@ -88,8 +88,9 @@ engine rejects custom sections other than `tari_tdef`, and walletd's built-in `w
 Verify the published address and binary as described in
 `docs/SHADOW_SWAP_P2P_SWAPOFFER_BROWSER.md` §8, then record the addresses in
 `apps/web/src/services/protocolDeployment.ts` (`V048_RESET`: `poolTemplates`, marketplace,
-`offerTemplates`). Before publishing the Pool, switch the add-liquidity builder to
-`add_liquidity_exact` (release blocker 3).
+`offerTemplates`). Before publishing the Pool, switch the **existing-pool** add-liquidity builder to
+`add_liquidity_exact` (release blocker 3). Pool creation keeps `add_liquidity` —
+`add_liquidity_exact` cannot serve a first deposit (`pool_engine` `e07e`).
 
 ## 5. Minimal disposable swap
 

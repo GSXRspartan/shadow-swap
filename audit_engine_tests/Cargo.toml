@@ -31,6 +31,20 @@ tari_engine_types = { git = "https://github.com/tari-project/tari-ootle.git", re
 # NOT a floating "0.24": the v0.48.0 workspace pins tari_crypto 0.24.1. tari_engine_types 0.48.0
 # requires tari_crypto ^0.24, so this must match the workspace or the cohort is unresolvable.
 tari_crypto = "0.24.1"
+# Test-only: tests/claim_burn_authorization.rs needs the `ClaimProofVerifier` trait the engine
+# delegates L1 burn-proof authenticity to. The engine does NOT verify a burn proof itself — a
+# validator node supplies the verifier that scans the base layer — so a host test can only
+# prove the AUTHORIZATION model, with the verifier's verdict injected. That distinction is the
+# point of the test, so the trait has to be nameable.
+tari_engine = { git = "https://github.com/tari-project/tari-ootle.git", rev = "6a25dbc524581bfaa0a3c6ef120f8d59cc827572" }
+# Test-only: a second random keypair for "sealed by the wrong key" (claim_burn_authorization).
+# Must be the rand whose `rand_core` tari_crypto 0.24.1 implements its `Rng`/`CryptoRng` bounds
+# against, or `random_keypair` does not accept the thread rng.
+rand = "0.10"
+# Test-only: `BurnOutput`'s script/covenant/metadata_signature/encrypted_data are
+# `bounded_vec::BoundedVec`, so building one by hand needs the crate by name. Same version the
+# cohort's engine_types uses.
+bounded-vec = "0.9"
 # Used only by tests/wire_fixtures_v048.rs to render `Encoded<T>` exactly as the indexer's JSON does
 # (base64). Already in the lockfile through the engine; declared here so the test can name it.
 serde_json = "1"

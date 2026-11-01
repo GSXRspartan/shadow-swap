@@ -130,6 +130,28 @@ test('verify: the connected account, past the epoch, is claimable — with the i
   assert.match(v.warnings.join(' '), /irreversible/);
   assert.match(v.warnings.join(' '), /not an atomic swap/);
   assert.match(v.warnings.join(' '), /no browser wallet exposes a burn claim/);
+  // The fee is revealed OUT OF the claimed amount and a positive remainder is required
+  // (ClaimBurn::prepare -> BurnClaimFeeTooHigh), so a burn worth less than the fee is
+  // permanently unclaimable. That is a precondition no proof check can catch, so it is stated.
+  assert.equal(v.warnings.includes(pc.CLAIM_FEE_RULE), true, 'the fee-out-of-the-claim rule is stated');
+  assert.match(pc.CLAIM_FEE_RULE, /taken out of the claimed amount/);
+  // And the limit of what was actually checked: the engine delegates burn-proof authenticity to
+  // the validator nodes (claim_burn_authorization x01), so this app must never imply it verified
+  // that a burn happened.
+  assert.match(v.warnings.join(' '), /cannot tell you whether this burn really happened|delegates that to the validator nodes/);
+  assert.match(v.warnings.join(' '), /proof's structure and whether it names your account/);
+});
+
+test('verify: no warning or blocker claims that the burn itself was verified', async () => {
+  // The engine asks a ClaimProofVerifier supplied by a validator node; it performs no base-layer
+  // check of its own. So nothing user-facing may say the burn was confirmed, proven or verified
+  // — only that the PROOF's structure was checked.
+  const key = await accountKey();
+  const facts = pc.parseBurnClaimProof(proofFile({ claim: { burn_public_key: key } }));
+  const v = pc.verifyBurnClaim(facts, { accountOwnerPublicKey: key, currentEpoch: '200' });
+  const text = [...v.warnings, ...v.blockers].join(' ');
+  assert.doesNotMatch(text, /burn (is|was) (verified|confirmed|proven)/i);
+  assert.doesNotMatch(text, /we (verified|confirmed)/i);
 });
 
 test('verify: before the burn\'s L1 epoch, and with an unknown epoch, a claim is refused', async () => {
@@ -209,6 +231,88 @@ test('claim instructions: the walletd call is described for the user, never perf
   assert.equal(call.params.account, fixture.account);
   assert.equal(call.params.dry_run, true, 'a dry run first');
   assert.match(call.note, /your own walletd/);
+  // The note must name the key that actually SEALS the claim. "a key derived from your account
+  // secret" was too loose: the transaction is sealed by the stealth burn-claim key
+  // s = H(R.p) + p, and the engine rejects a claim signed by the account key alone with
+  // AccessDenied (claim_burn_authorization x02). Getting this wrong would tell a reader that
+  // their ordinary wallet signature is enough, which it is not.
+  assert.match(call.note, /SEALED by the stealth burn-claim key/);
+  assert.match(call.note, /not by the account key itself/);
+  assert.match(call.note, /AccessDenied/);
+  assert.match(call.note, /never sees p or s/);
   // No URL, host or token is implied: this app has no access to a wallet daemon.
   assert.equal(/127\.0\.0\.1|localhost|http/.test(JSON.stringify(call)), false);
+});
+
+// ---------------------------------------------------------------------------------------------
+// Recovery. A user who reloads AFTER an irreversible burn but BEFORE claiming depends on this,
+// so every rejection path is pinned rather than left to a catch-all.
+// ---------------------------------------------------------------------------------------------
+
+test('recovery: a conversion survives a reload, and the restored record is the one that was saved', async () => {
+  const key = await accountKey();
+  const facts = pc.parseBurnClaimProof(proofFile({ claim: { burn_public_key: key } }));
+  const verdict = pc.verifyBurnClaim(facts, { accountOwnerPublicKey: key, currentEpoch: '200' });
+  const saved = pc.withBurnProof(pc.startCrossLayer('esmeralda', fixture.account, key), verdict, '1000');
+  assert.equal(saved.stage, 'CLAIM_READY');
+
+  const restored = pc.restoreCrossLayer(pc.serializeCrossLayer(saved), { network: 'esmeralda', account: fixture.account });
+  assert.deepEqual(restored, saved);
+  // And the conversion can be carried on from the restored record, not just displayed.
+  assert.equal(pc.reportClaimSubmitted(restored).stage, 'CLAIM_REPORTED_BY_USER');
+  assert.equal(pc.confirmClaimReceipt(restored, '1000').stage, 'CLAIM_READY', 'no balance gain is not a confirmation');
+  assert.equal(
+    pc.confirmClaimReceipt(restored, String(1000n + BigInt(saved.value))).stage,
+    'CLAIMED_CONFIRMED_ON_CHAIN',
+  );
+});
+
+test('recovery: a record is refused unless it belongs to THIS account and network', async () => {
+  const key = await accountKey();
+  const raw = pc.serializeCrossLayer(pc.startCrossLayer('esmeralda', fixture.account, key));
+  // Switching accounts or networks must never resurrect another conversion and show it as this
+  // one: the destination of a burn is an account key, so a mismatched record is misleading in
+  // exactly the place it matters.
+  assert.equal(pc.restoreCrossLayer(raw, { network: 'esmeralda', account: 'component_' + 'ff'.repeat(32) }), undefined);
+  assert.equal(pc.restoreCrossLayer(raw, { network: 'localnet', account: fixture.account }), undefined);
+  assert.notEqual(pc.restoreCrossLayer(raw, { network: 'esmeralda', account: fixture.account }), undefined);
+});
+
+test('recovery: unreadable, tampered and secret-carrying records are dropped, never thrown or trusted', async () => {
+  const key = await accountKey();
+  const good = pc.startCrossLayer('esmeralda', fixture.account, key);
+  const expect = { network: 'esmeralda', account: fixture.account };
+
+  // Storage is attacker-writable in a shared browser, so none of these may throw: a conversion's
+  // truth is on chain, and an unusable aid must degrade to "no record" rather than to an error
+  // the user cannot act on.
+  for (const raw of [null, undefined, '', 'not json', '[]', 'null', '"a string"', '42']) {
+    assert.equal(pc.restoreCrossLayer(raw, expect), undefined, JSON.stringify(raw));
+  }
+  // An unknown stage cannot be rendered honestly.
+  assert.equal(pc.restoreCrossLayer(JSON.stringify({ ...good, stage: 'ALMOST_DONE' }), expect), undefined);
+  assert.equal(pc.restoreCrossLayer(JSON.stringify({ ...good, stage: undefined }), expect), undefined);
+  // A timestamp is what orders the record against a fresh read.
+  assert.equal(pc.restoreCrossLayer(JSON.stringify({ ...good, updatedAtUnixMs: 'recently' }), expect), undefined);
+  // A secret-shaped field written by an older build or by hand: reading it back is the moment
+  // to refuse, not to propagate.
+  for (const field of ['encrypted_data', 'spendKey', 'mask', 'seedPhrase', 'ownership_proof']) {
+    assert.equal(pc.restoreCrossLayer(JSON.stringify({ ...good, [field]: 'x' }), expect), undefined, field);
+  }
+  // Writing one is refused loudly, because that is a programming error in this app.
+  assert.throws(() => pc.serializeCrossLayer({ ...good, viewKey: 'x' }), /may never carry/);
+});
+
+test('recovery: every stage name the state machine can produce is restorable', async () => {
+  // CROSS_LAYER_STAGES is the allow-list `restoreCrossLayer` filters on, so a stage added to
+  // the machine without being added there would silently become unrecoverable.
+  const key = await accountKey();
+  const good = pc.startCrossLayer('esmeralda', fixture.account, key);
+  const expect = { network: 'esmeralda', account: fixture.account };
+  for (const stage of pc.CROSS_LAYER_STAGES) {
+    const restored = pc.restoreCrossLayer(JSON.stringify({ ...good, stage }), expect);
+    assert.equal(restored?.stage, stage, stage);
+    // And each one describes itself, so no restored stage can render blank.
+    assert.ok(pc.describeCrossLayer({ ...good, stage }).length > 0, stage);
+  }
 });

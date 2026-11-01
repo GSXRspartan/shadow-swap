@@ -7,7 +7,8 @@
 ## G1. Outcome
 Branched from `main` @ `838cbb6` (PRs #9, #10 merged). Three stacked PRs:
 #11 (`feat/universal-trading-v048`, 12/12 green), #12 (`feat/cross-layer-v048`, 12/12 green) and
-#13 (`feat/mixed-route-execution-v048`). Nothing published, deployed or merged.
+#13 (`feat/mixed-route-execution-v048`) and #14 (`feat/cross-layer-claim-engine-v048`).
+Nothing published, deployed or merged.
 
 NEW executable capability: `RevealedAssetPool`, a separate AMM for assets whose value is an exact
 revealed integer — created-Stealth (native tTARI included), revealed Confidential, and public
@@ -40,9 +41,18 @@ button can exist for a route that cannot build its transaction.
   vaults, so they are read from chain instead (authoritative, not advisory).
 - No L2→L1 route exists in v0.48. Missing primitives: an L2 exit instruction emitting a
   consensus-attested receipt, and a base-layer verifier for it.
+- The L1 burn claim's blocker is a SIGNATURE, not the instruction (`claim_burn_authorization`):
+  a claim sealed by any key but the stealth claim key `s = H(R·p) + p` is AccessDenied (x02),
+  while a claim CO-SIGNED by `s` with a relayer sealing and paying IS accepted — so the one
+  missing provider capability is "co-sign with the derived burn-claim key". The engine does NOT
+  verify burn-proof authenticity at all; it asks a validator-supplied `ClaimProofVerifier`
+  (x01), so no engine test may be cited as evidence a burn happened. The claim mints a UTXO
+  spendable only by `S` (x03), which is why a destination balance read is the right
+  confirmation. Upstream reveals the fee OUT OF the claimed amount, so a burn worth less than
+  the fee is permanently unclaimable — now stated to the user.
 
 ## G3. Evidence
-Engine 93/93 (16 binaries) · web 560/560 · wallet-adapter 31/31 · protocol-client 268/268 ·
+Engine 96/96 (17 binaries) · web 561/561 · wallet-adapter 31/31 · protocol-client 268/268 ·
 e2e Chromium 91 passed / 4 skipped / 1 sandbox-egress failure that passes in CI ·
 reproducible WASM for 6 templates from two checkout paths.
 Levels: engine-verified and reference-provider verified only. Nothing real-wallet or
@@ -84,7 +94,9 @@ nothing real-wallet or live-Esmeralda verified (indexers unreachable from this e
 
 ## F4. Open
 Operator: publish Pool + SwapOffer via walletd and record addresses; switch to
-`add_liquidity_exact` before publishing the Pool; Windows acceptance (Phase 2 doc §10),
+`add_liquidity_exact` before publishing the Pool (**corrected in G2: for deposits into a pool
+that already has reserves only — creation must keep `add_liquidity`, see `e07e`**);
+Windows acceptance (Phase 2 doc §10),
 including the first real-wallet check of the `withdrawStealthAndExecute` workspace-id convention.
 
 ---
