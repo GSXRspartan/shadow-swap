@@ -8,6 +8,7 @@ revisions below rather than from documentation or memory.
 | Minotari L1 | `tari-project/tari` **6.3.0-pre.2**, `3994846` (2026-10-30) |
 | Ootle L2 | `tari-project/tari-ootle` **v0.48.0**, `6a25dbc` |
 | Sapient | v0.6.17 documented provider surface |
+| Tari Universe | `tari-project/universe` `22366ad` (2026-10-30) |
 
 ## 1. The L1 leg exists, and this is exactly what it is
 
@@ -48,25 +49,70 @@ bytes — so the L2 leg must hash the same 32 bytes with SHA-256, which it does.
 | Choose the hash | — | **No**: the wallet generates it |
 | Choose the timeout | — | **No**: hardcoded 720 blocks |
 | Fund from a Ledger device | — | **No**: refused by design |
-| Any of the above from a browser | — | **No**: see §3 |
+| Any of the above from a browser | — | **No** — including from a Universe Tapplet, whose only L1 send is a plain `sendOneSided`; see §3 |
 
 `applications/minotari_mcp_wallet/src/tools/atomic_swap_tools.rs` wraps the first four as MCP
 tools (`send_sha_atomic_swap`, `claim_sha_atomic_swap`, `claim_htlc_refund`,
 `atomic_swap_status`), all over `WalletGrpcClient`. That is a **local** wallet surface.
 
-## 3. What is missing for a browser-only experience
+## 3. Tari Universe reaches BOTH layers from a web context — but exposes no HTLC on either
 
-Every L1 operation above requires a local wallet gRPC endpoint. There is **no browser-reachable
-L1 signing API** for HTLC funding, claiming or refunding, and Sapient is an L2 provider with no
-L1 surface at all. So:
+**Correction to an earlier claim in this document.** It previously said there is "no
+browser-reachable L1 signing API". That was wrong. Tari Universe hosts **Tapplets** — web
+applications running in the app — and its `TappletSigner` exposes **both** L1 and L2 operations
+to them. Any statement that a web page cannot reach L1 at all is incorrect.
 
-- **A browser alone cannot complete a cross-layer swap.** The L1 leg needs the user's own
-  console wallet or walletd reachable over gRPC.
-- The precise missing capability, if a browser experience is ever wanted: an L1 provider API that
-  signs a `send_sha_atomic_swap` / `claim_sha_atomic_swap` / `claim_htlc_refund` request for a
-  key the wallet holds — i.e. the L1 equivalent of what Sapient does for L2 transaction requests.
-- Until that exists, the L1 leg is driven by a **local-wallet adapter** against gRPC, and the
-  route stays disabled in any browser-only configuration.
+What matters for this protocol is *which* operations. The signer's dispatch is an explicit
+allowlist, with the source comment: *"Dispatch is an explicit allowlist - never a dynamic lookup
+on the prototype - so a tapplet can't reach anything beyond the methods below"*, and *"do not
+widen without a security review"*. The complete set:
+
+| Tapplet method | Layer | What it does |
+|---|---|---|
+| `getAccount`, `getTariBalance`, `getBaseNodeStatus` | L1 | read address, balance, node status |
+| **`sendOneSided{amount,address,paymentId}`** | L1 | **the only L1 send** — a plain one-sided payment |
+| `getOotleAccount`, `getOotleBalance` | L2 | read account and balance |
+| **`sendOotleStealth{amount,address,payRef}`** | L2 | **the only L2 send** — a plain stealth transfer to an address |
+| `waitOotleTransaction` | L2 | poll a transaction this tapplet sent to a final status |
+| `getBridgeEnvs`, `get`/`set`/`removeOngoingBridgeTx`, `getBackendBridgeTxs` | — | bookkeeping for Universe's built-in **wXTM** bridge tapplet |
+| `isConnected`, `getNetwork`, `getAppLanguage` | — | environment |
+
+**There is no HTLC capability on either layer**, and no atomic-swap or HTLC code anywhere in the
+Universe repository. Consequences, both load-bearing:
+
+1. **`sendOneSided` cannot carry a custom TariScript.** An L1 HTLC output *is* a custom script
+   (`HashSha256 … CheckHeightVerify …`), so a Tapplet cannot fund, claim or refund one.
+2. **`sendOotleStealth` is a transfer to an address, not a template call.** So a Tapplet cannot
+   call `CrossLayerHtlc::fund` / `claim` / `refund` either. Universe's L2 surface is **narrower**
+   than Sapient's for this purpose, which is the opposite of what one might assume from it being
+   the richer application.
+
+Universe's own internals go much further than the Tapplet allowlist — `l2_claim_burn`,
+`l2_claimable_burns`, `l2_send_memo`, `l2_validate_address` and more, and it embeds an Ootle
+wallet module. Notably it implements the **native burn/claim** itself. None of that is
+Tapplet-reachable, and its built-in bridge is for **wXTM** (exchange-facing wrapped XTM), not for
+Ootle HTLCs.
+
+### So the best available configuration today
+
+| Leg | Best available signer | Why |
+|---|---|---|
+| **L1 HTLC** (fund / claim / refund) | **local wallet gRPC** (console wallet or walletd) | the only surface that builds the HTLC script at all |
+| **L2 HTLC** (fund / claim / refund) | **Sapient** (browser) | transaction requests can call a template method |
+| Reading either layer, plain payments | **Universe Tapplet** | both layers, but payments only |
+
+### The exact missing capabilities, now sharply named
+
+- **For a Universe-hosted Shadow Swap:** one generic L2 **transaction-request** method in the
+  Tapplet allowlist — the equivalent of what Sapient already does — would let a Tapplet call
+  template methods and therefore drive the whole L2 leg. This is the smaller and more plausible
+  of the two asks, and it alone would make the L2 side browser-complete inside Universe.
+- **For a fully browser-only cross-layer swap:** an L1 method that signs
+  `send_sha_atomic_swap` / `claim_sha_atomic_swap` / `claim_htlc_refund`. Until that exists, the
+  L1 leg needs a local wallet regardless of which browser wallet is used.
+
+Until either lands, the L1 leg is driven by a **local-wallet adapter** against gRPC, and any
+browser-only configuration keeps the route disabled.
 
 ## 4. The timing discrepancy that must not be guessed
 
@@ -117,7 +163,7 @@ and can never be one. That is why a separate one-sided template exists.
 | L1 script shape and gRPC surface | **Source verified** — read at `3994846`; no L1 script has been executed here |
 | L1 funding / claiming / refunding | **Blocked in this environment** — needs a local wallet and a funded L1 account |
 | Composed two-layer exchange | **NOT VERIFIED.** Neither simulated nor live |
-| Browser-only cross-layer trading | **Blocked by upstream** — no L1 browser signing API |
+| Browser-only cross-layer trading | **Blocked by upstream** — Universe Tapplets reach both layers but expose plain payments only; no HTLC on either (§3) |
 
 **The composed exchange is not called atomic anywhere in this repository**, and will not be until
 a real L1 script execution and a reconciled two-layer settlement have both been observed.
