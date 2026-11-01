@@ -1,0 +1,20 @@
+[package]
+name = "cross_layer_htlc"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+# EXPERIMENTAL, UNPUBLISHED. A noncustodial peer-to-peer escrow offer for assets that do not
+# belong in the public AMM (created-Stealth revealed balances, NFT barter, agreed-price trades).
+# Same v0.48.0 cohort as every other template. Not part of templates/WASM_SHA256SUMS until an
+# operator decides to publish it.
+[dependencies]
+tari_template_abi = { git = "https://github.com/tari-project/tari-ootle.git", rev = "6a25dbc524581bfaa0a3c6ef120f8d59cc827572" }
+tari_template_lib = { git = "https://github.com/tari-project/tari-ootle.git", rev = "6a25dbc524581bfaa0a3c6ef120f8d59cc827572" }
+
+[profile.release]
+opt-level = "z"
+lto = true
+panic = "abort"
