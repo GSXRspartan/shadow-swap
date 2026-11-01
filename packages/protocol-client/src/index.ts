@@ -14,6 +14,7 @@ export * from './crossLayer/makerOffer.js';
 export * from './crossLayer/quoteEngine.js';
 export * from './crossLayer/walletCapabilities.js';
 export * from './crossLayer/l1Adapter.js';
+export * from './crossLayer/swapLifecycle.js';
 export * from './execution.js';
 export * from './ootle.js';
 export * from './poolSubstate.js';
