@@ -738,3 +738,58 @@ test('csp: connect-src carries the v0.48 Esmeralda indexers and the pre-reset on
   assert.deepEqual([...networks.ESMERALDA_INDEXER_URLS], ['https://esme-indexer-a.ootle.tari.com', 'https://esme-indexer-b.ootle.tari.com'], 'the v0.48 upstream defaults are the build defaults');
   assert.equal(/127\.0\.0\.1|localhost/.test(built.CONTENT_SECURITY_POLICY), false);
 });
+
+// ---------------------------------------------------------------------------------------------
+// Cross-layer availability: two blockers, kept distinct.
+//
+// One is permanent (the template is a v0.48 build; a pre-reset network cannot run it) and one is
+// an operator step (nothing recorded yet). Collapsing them into "unavailable" would tell an
+// operator to publish a template onto a network that cannot run it.
+// ---------------------------------------------------------------------------------------------
+
+const deployment = require('../build-test/services/protocolDeployment.js');
+
+test('cross-layer: a pre-reset network is INCOMPATIBLE, not merely unrecorded', () => {
+  const pre = deployment.deploymentFor('esmeralda', 'PRE_V048_RESET');
+  assert.deepEqual(pre.crossLayerHtlcTemplates, [], 'permanently empty on the pre-reset generation');
+  const verdict = deployment.crossLayerAvailability(pre);
+  assert.equal(verdict.available, false);
+  assert.equal(verdict.kind, 'INCOMPATIBLE_GENERATION');
+  assert.match(verdict.reason, /built for the v0\.48\.0 cohort/);
+  assert.match(verdict.reason, /not a missing address but an incompatible network/);
+  // And it must say the existing routes are unaffected, so nobody reads this as a regression.
+  assert.match(verdict.reason, /pool and NFT routes are unaffected/);
+});
+
+test('cross-layer: on v0.48 the blocker is a missing recorded address, with the operator step named', () => {
+  const v048 = deployment.deploymentFor('esmeralda', 'V048_RESET');
+  const verdict = deployment.crossLayerAvailability(v048);
+  assert.equal(verdict.available, false);
+  assert.equal(verdict.kind, 'NOT_RECORDED');
+  assert.match(verdict.reason, /must publish it through walletd and record the address/);
+});
+
+test('cross-layer: availability turns on ONLY a recorded address, on a compatible generation', () => {
+  const v048 = deployment.deploymentFor('esmeralda', 'V048_RESET');
+  const recorded = { ...v048, crossLayerHtlcTemplates: ['ab'.repeat(32)] };
+  assert.deepEqual(deployment.crossLayerAvailability(recorded), { available: true });
+  assert.equal(deployment.isTrustedCrossLayerTemplate(recorded, 'ab'.repeat(32)), true);
+  assert.equal(deployment.isTrustedCrossLayerTemplate(recorded, 'template_' + 'ab'.repeat(32)), true, 'prefixed form compares equal');
+  assert.equal(deployment.isTrustedCrossLayerTemplate(recorded, 'cd'.repeat(32)), false);
+
+  // Recording one on the pre-reset generation must STILL be refused: the network cannot run it.
+  const pre = deployment.deploymentFor('esmeralda', 'PRE_V048_RESET');
+  const misrecorded = { ...pre, crossLayerHtlcTemplates: ['ab'.repeat(32)] };
+  assert.equal(deployment.crossLayerAvailability(misrecorded).available, false);
+  assert.equal(deployment.crossLayerAvailability(misrecorded).kind, 'INCOMPATIBLE_GENERATION');
+});
+
+test('cross-layer: the escrow template is never mistaken for a pool template', () => {
+  const v048 = deployment.deploymentFor('esmeralda', 'V048_RESET');
+  const addr = 'ab'.repeat(32);
+  const recorded = { ...v048, crossLayerHtlcTemplates: [addr] };
+  // A cross-layer escrow must never be quoted or traded as a pool of either kind.
+  assert.equal(deployment.poolKindOf(recorded, addr), undefined);
+  assert.equal(deployment.isTrustedPoolTemplate(recorded, addr), false);
+  assert.equal(deployment.isTrustedRevealedPoolTemplate(recorded, addr), false);
+});

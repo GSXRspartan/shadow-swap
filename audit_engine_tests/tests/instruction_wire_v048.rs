@@ -27,6 +27,7 @@
 use std::str::FromStr;
 
 use serde_json::{json, Value};
+use tari_engine_types::virtual_substate::{VirtualSubstate, VirtualSubstateId};
 use tari_ootle_common_types::substate_type::SubstateType;
 use tari_ootle_transaction::{args, Instruction, Network, Transaction};
 use tari_template_lib::types::{
@@ -234,6 +235,7 @@ fn world() -> World {
             "../templates/p2p_offer",
             "../templates/nft_marketplace",
             "../templates/revealed_asset_pool",
+            "../templates/cross_layer_htlc",
             "templates/faucet",
             "templates/nft_faucet",
             "templates/stealth_probe",
@@ -803,6 +805,126 @@ fn scenarios() -> Vec<Value> {
     out.push(json!({
         "name": "revealed_remove_liquidity",
         "params": { "poolComponent": s(rev_pool), "accountAddress": s(bob), "lpResource": s(rev_lp), "rawLpAmount": bob_rev_lp.to_string(), "minA": "1", "minB": "1" },
+        "instructions": json,
+    }));
+
+    // ---------------------------------------------------------------------------------------
+    // Cross-layer HTLC: the L2 leg of an exchange against existing L1 XTM.
+    //
+    // These three scenarios exist so the BROWSER's instruction JSON can be compared byte for
+    // byte against instructions this engine actually executed. An advertised wallet capability
+    // is not evidence that a transaction executes; a matching wire format against a real
+    // execution is.
+    // ---------------------------------------------------------------------------------------
+    let htlc_template = w.t.get_template_address("CrossLayerHtlc");
+    // The hash Minotari commits to is SHA-256 over the 32 preimage bytes. A fixed pair here, so
+    // the fixture is deterministic and the browser can be checked against the same values.
+    let cl_preimage: Vec<u8> = (1u8..=32).collect();
+    let cl_hash = {
+        use sha2::{Digest, Sha256};
+        let d: [u8; 32] = Sha256::digest(&cl_preimage).into();
+        Hash32::from_array(d)
+    };
+    let cl_claimant: RistrettoPublicKeyBytes = {
+        use ootle_byte_type::ToByteType;
+        use tari_crypto::keys::PublicKey as _;
+        tari_crypto::ristretto::RistrettoPublicKey::from_secret_key(&w.bob_key).to_byte_type()
+    };
+    let cl_leg = "ab00000000000000000000000000000000000000000000000000000000000001".to_string();
+    let cl_expiry = 50u64;
+
+    // fund: withdraw -> workspace -> fund(...) . The component is the only output, so there is
+    // nothing to deposit; the escrow holds the asset until a claim or a refund.
+    let ins =
+        w.t.transaction()
+            .call_method(alice, "withdraw", args![x, Amount::from(1_000_000u64)])
+            .put_last_instruction_output_on_workspace("cross_layer_escrow")
+            .call_function(
+                htlc_template,
+                "fund",
+                args![
+                    Workspace("cross_layer_escrow"),
+                    cl_hash,
+                    cl_claimant,
+                    cl_expiry,
+                    cl_leg.clone()
+                ],
+            )
+            .into_instructions();
+    let (json, result) = run(&mut w, Who::Alice, ins);
+    let htlc = created_component(&result, htlc_template);
+    out.push(json!({
+        "name": "cross_layer_fund",
+        "params": {
+            "templateAddress": hex(htlc_template.as_ref()),
+            "accountAddress": s(alice),
+            "resourceAddress": s(x),
+            "rawAmount": "1000000",
+            "hashLockHex": hex(cl_hash.as_ref()),
+            "claimantPublicKeyHex": hex(cl_claimant.as_bytes()),
+            "expiresAtEpoch": cl_expiry,
+            "counterpartyLeg": cl_leg,
+        },
+        "instructions": json,
+    }));
+
+    // claim: the claimant reveals the preimage and deposits the escrowed asset.
+    let ins =
+        w.t.transaction()
+            .call_method(htlc, "claim", args![cl_preimage.clone()])
+            .put_last_instruction_output_on_workspace("cross_layer_claim")
+            .call_method(bob, "deposit", args![Workspace("cross_layer_claim")])
+            .into_instructions();
+    let x_before = balance(&mut w, bob, x);
+    let (json, _) = run(&mut w, Who::Bob, ins);
+    assert!(
+        balance(&mut w, bob, x) > x_before,
+        "the cross-layer claim paid the claimant"
+    );
+    out.push(json!({
+        "name": "cross_layer_claim",
+        "params": {
+            "htlcComponent": s(htlc),
+            "accountAddress": s(bob),
+            "preimageHex": hex(&cl_preimage),
+        },
+        "instructions": json,
+    }));
+
+    // refund: a SECOND escrow, left unclaimed past its expiry, recovered by its funder.
+    let ins =
+        w.t.transaction()
+            .call_method(alice, "withdraw", args![x, Amount::from(250_000u64)])
+            .put_last_instruction_output_on_workspace("cross_layer_escrow")
+            .call_function(
+                htlc_template,
+                "fund",
+                args![
+                    Workspace("cross_layer_escrow"),
+                    cl_hash,
+                    cl_claimant,
+                    cl_expiry,
+                    cl_leg.clone()
+                ],
+            )
+            .into_instructions();
+    let (_json, result) = run(&mut w, Who::Alice, ins);
+    let stale = created_component(&result, htlc_template);
+    // Past the deadline the claim window is closed and only the funder may recover it.
+    w.t.set_virtual_substate(
+        VirtualSubstateId::CurrentEpoch,
+        VirtualSubstate::CurrentEpoch(cl_expiry),
+    );
+    let ins =
+        w.t.transaction()
+            .call_method(stale, "refund", args![])
+            .put_last_instruction_output_on_workspace("cross_layer_refund")
+            .call_method(alice, "deposit", args![Workspace("cross_layer_refund")])
+            .into_instructions();
+    let (json, _) = run(&mut w, Who::Alice, ins);
+    out.push(json!({
+        "name": "cross_layer_refund",
+        "params": { "htlcComponent": s(stale), "accountAddress": s(alice) },
         "instructions": json,
     }));
 

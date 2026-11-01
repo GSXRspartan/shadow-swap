@@ -232,3 +232,122 @@ test('revealed pool: a review names the revealed-pool operation, never the publi
   const diff = review.diffReviewForIntent(r, intent);
   assert.equal(diff.ok, true, diff.mismatches.join('; '));
 });
+
+// ---------------------------------------------------------------------------------------------
+// Cross-layer HTLC: the L2 leg of an exchange against existing L1 XTM.
+//
+// An advertised wallet capability is not evidence that a transaction executes. These compare the
+// browser's instruction JSON byte for byte against instructions the real v0.48 engine ran.
+// ---------------------------------------------------------------------------------------------
+
+test('wire == engine: cross_layer_fund (withdraw -> fund, NO deposit — the escrow is a component)', () => {
+  const { params, instructions } = scenario('cross_layer_fund');
+  const intent = w.buildCrossLayerFundIntent({
+    templateAddress: params.templateAddress,
+    accountAddress: params.accountAddress,
+    resourceAddress: params.resourceAddress,
+    rawAmount: params.rawAmount,
+    hashLockHex: params.hashLockHex,
+    claimantPublicKeyHex: params.claimantPublicKeyHex,
+    expiresAtEpoch: String(params.expiresAtEpoch),
+    counterpartyLeg: params.counterpartyLeg,
+    maxEpoch: '10',
+    operationId: 'op',
+  });
+  assert.deepEqual(wire(intent), instructions);
+  // `fund` returns a Component, so there is nothing to deposit. A deposit_all here would be a
+  // bug that the engine would reject for spending a bucket that does not exist.
+  assert.deepEqual(intent.settlement.outputBuckets, []);
+  assert.equal(intent.instructions.filter((i) => i.kind === 'deposit_all').length, 0);
+  // Every binding the protocol rests on is an explicit argument, so a review card can show it.
+  assert.deepEqual(intent.terms, {
+    resourceAddress: params.resourceAddress,
+    rawAmount: params.rawAmount,
+    hashLockHex: params.hashLockHex.toLowerCase(),
+    claimantPublicKeyHex: params.claimantPublicKeyHex.toLowerCase(),
+    expiresAtEpoch: String(params.expiresAtEpoch),
+    counterpartyLeg: params.counterpartyLeg,
+  });
+});
+
+test('wire == engine: cross_layer_claim (claim -> deposit, the preimage as a Vec<u8>)', () => {
+  const { params, instructions } = scenario('cross_layer_claim');
+  const intent = w.buildCrossLayerClaimIntent({
+    htlcComponent: params.htlcComponent,
+    accountAddress: params.accountAddress,
+    preimageHex: params.preimageHex,
+    maxEpoch: '10',
+    operationId: 'op',
+  });
+  assert.deepEqual(wire(intent), instructions);
+  // The returned bucket MUST be deposited or the engine rejects a dangling output.
+  assert.deepEqual(intent.settlement.outputBuckets, ['cross_layer_claim']);
+});
+
+test('wire == engine: cross_layer_refund (refund -> deposit, no arguments)', () => {
+  const { params, instructions } = scenario('cross_layer_refund');
+  const intent = w.buildCrossLayerRefundIntent({
+    htlcComponent: params.htlcComponent,
+    accountAddress: params.accountAddress,
+    maxEpoch: '10',
+    operationId: 'op',
+  });
+  assert.deepEqual(wire(intent), instructions);
+  assert.deepEqual(intent.settlement.outputBuckets, ['cross_layer_refund']);
+  // `refund()` takes nothing: authority is the signer's key, timing is consensus'.
+  assert.deepEqual(w.CROSS_LAYER_REFUND_ARG_TYPES, []);
+});
+
+test('cross-layer builders refuse terms that cannot settle, before a wallet is asked', () => {
+  const good = {
+    templateAddress: 'ab'.repeat(32),
+    accountAddress: 'component_' + 'cd'.repeat(32),
+    resourceAddress: 'resource_' + 'ef'.repeat(32),
+    rawAmount: '1000',
+    hashLockHex: '11'.repeat(32),
+    claimantPublicKeyHex: '22'.repeat(32),
+    expiresAtEpoch: '50',
+    counterpartyLeg: 'ab'.repeat(32),
+    maxEpoch: '100',
+    operationId: 'op',
+  };
+  assert.ok(w.buildCrossLayerFundIntent(good));
+
+  // An empty escrow could never be claimed.
+  assert.throws(() => w.buildCrossLayerFundIntent({ ...good, rawAmount: '0' }), /must be positive/);
+  // The hash and claimant are 32-byte values; a wrong length means a wrong binding.
+  assert.throws(() => w.buildCrossLayerFundIntent({ ...good, hashLockHex: '11'.repeat(31) }), /64 hex characters/);
+  assert.throws(() => w.buildCrossLayerFundIntent({ ...good, claimantPublicKeyHex: 'zz'.repeat(32) }), /64 hex characters/);
+  // An escrow already past its deadline could be refunded before it could ever be claimed.
+  assert.throws(() => w.buildCrossLayerFundIntent({ ...good, expiresAtEpoch: '50', readEpoch: '50' }), /already expired/);
+  assert.throws(() => w.buildCrossLayerFundIntent({ ...good, expiresAtEpoch: '40', readEpoch: '45' }), /not after the epoch/);
+  assert.throws(() => w.buildCrossLayerFundIntent({ ...good, expiresAtEpoch: '0' }), /positive absolute L2 epoch/);
+  // Without a counterparty leg recorded, a preimage from one trade could be replayed on another.
+  assert.throws(() => w.buildCrossLayerFundIntent({ ...good, counterpartyLeg: '' }), /required/);
+  assert.throws(() => w.buildCrossLayerFundIntent({ ...good, counterpartyLeg: 'z'.repeat(129) }), /at most 128 characters/);
+
+  const claim = { htlcComponent: 'component_' + 'aa'.repeat(32), accountAddress: good.accountAddress, maxEpoch: '100', operationId: 'op' };
+  assert.throws(() => w.buildCrossLayerClaimIntent({ ...claim, preimageHex: '' }), /even-length hex/);
+  assert.throws(() => w.buildCrossLayerClaimIntent({ ...claim, preimageHex: 'abc' }), /even-length hex/);
+  assert.throws(() => w.buildCrossLayerClaimIntent({ ...claim, preimageHex: 'aa'.repeat(65) }), /at most 64 bytes/);
+});
+
+test('a cross-layer escrow is never presented as a same-chain swap', () => {
+  // The disclosure has to say that this funds ONE side, that settlement spans four transactions,
+  // and that a refund is only available AFTER the deadline — none of which is true of an AMM swap.
+  assert.match(w.CROSS_LAYER_DISCLOSURE, /NOT A SWAP IN ONE TRANSACTION/);
+  assert.match(w.CROSS_LAYER_DISCLOSURE, /four transactions across two chains/);
+  assert.match(w.CROSS_LAYER_DISCLOSURE, /only AFTER its deadline/);
+  // And its operations are distinct from every AMM operation, so history and review cannot
+  // conflate them.
+  for (const op of ['cross_layer_fund', 'cross_layer_claim', 'cross_layer_refund']) {
+    const intent = op === 'cross_layer_fund'
+      ? w.buildCrossLayerFundIntent({ templateAddress: 'ab'.repeat(32), accountAddress: 'component_' + 'cd'.repeat(32), resourceAddress: 'resource_' + 'ef'.repeat(32), rawAmount: '1', hashLockHex: '11'.repeat(32), claimantPublicKeyHex: '22'.repeat(32), expiresAtEpoch: '9', counterpartyLeg: 'x', maxEpoch: '10', operationId: 'o' })
+      : op === 'cross_layer_claim'
+        ? w.buildCrossLayerClaimIntent({ htlcComponent: 'component_' + 'aa'.repeat(32), accountAddress: 'component_' + 'cd'.repeat(32), preimageHex: 'aabb', maxEpoch: '10', operationId: 'o' })
+        : w.buildCrossLayerRefundIntent({ htlcComponent: 'component_' + 'aa'.repeat(32), accountAddress: 'component_' + 'cd'.repeat(32), maxEpoch: '10', operationId: 'o' });
+    assert.equal(intent.kind, 'cross_layer_htlc');
+    assert.equal(intent.operation, op);
+    assert.equal(intent.privacyDisclosure, w.CROSS_LAYER_DISCLOSURE);
+  }
+});
