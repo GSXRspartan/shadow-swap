@@ -22,10 +22,13 @@ const EXIT_TERMS = {
   expiresAtEpoch: 100,
 };
 
+const TAKER = 'bb'.repeat(32);
+
 const evidence = (over = {}) => ({
   leg: 'component_' + 'cd'.repeat(32),
   escrowedRaw: '1000000',
   chain: 'L1',
+  boundClaimant: TAKER,
   readAtEpoch: 50,
   ...over,
 });
@@ -45,7 +48,8 @@ test('an unfunded offer is NEVER executable, whatever else is true of it', () =>
   assert.equal(pc.availableRaw(sgn, 50), '0');
   assert.match(sgn.reason, /not that any asset is escrowed/);
   // And the description never implies tradeability.
-  assert.doesNotMatch(pc.describeOffer(sgn, 50), /^Executable/);
+  assert.doesNotMatch(pc.describeOffer(sgn, 50), /^Escrowed and bound/);
+  assert.equal(pc.isOfferableTo(sgn, 50, TAKER), false);
 });
 
 test('FUNDED requires evidence read from chain, on the right chain for the direction', () => {
@@ -57,7 +61,7 @@ test('FUNDED requires evidence read from chain, on the right chain for the direc
   const ok = pc.funded(sgn, evidence());
   assert.equal(ok.state, 'FUNDED');
   assert.equal(pc.isExecutable(ok, 50), true);
-  assert.match(pc.describeOffer(ok, 50), /^Executable/);
+  assert.match(pc.describeOffer(ok, 50), /^Escrowed and bound/);
   assert.match(pc.describeOffer(ok, 50), /read from chain at epoch 50/);
 
   // Each way a maker could be wrong in their own favour:
@@ -77,6 +81,35 @@ test('FUNDED requires evidence read from chain, on the right chain for the direc
   const stale = pc.funded(sgn, evidence({ readAtEpoch: 100 }));
   assert.equal(stale.state, 'SIGNED');
   assert.match(stale.reason, /expired at epoch 100/);
+
+  const unbound = pc.funded(sgn, evidence({ boundClaimant: '' }));
+  assert.equal(unbound.state, 'SIGNED');
+  assert.match(unbound.reason, /claimable by exactly one named key/);
+});
+
+test('a FUNDED escrow is bound to ONE named claimant, so it is open inventory to nobody', () => {
+  // The constraint is the template's, not a policy choice: `CrossLayerHtlc::fund` fixes the
+  // claimant in the component's access rules, and `claim` withdraws the whole vault. The L1
+  // script's claim branch, PushPubKey(destination), is the same shape. So there is no
+  // pre-funded escrow for whoever turns up, and no partial fill of one.
+  //
+  // What makes this worth a test rather than a comment: a taker who is shown someone else's
+  // escrow as available liquidity can fund their OWN leg against it and never be able to claim.
+  // That is worse than being shown an unfunded offer.
+  const f = pc.funded(pc.signed(pc.indicative(EXIT_TERMS), 'sig'), evidence());
+  assert.equal(pc.isExecutable(f, 50), true, 'the escrow is live');
+  assert.equal(pc.isOfferableTo(f, 50, TAKER), true, 'and offerable to the key it names');
+
+  const stranger = 'ee'.repeat(32);
+  assert.equal(pc.isOfferableTo(f, 50, stranger), false, 'but to nobody else');
+  assert.equal(pc.isOfferableTo(f, 50, ''), false);
+  // Case is not identity theatre: a key is the same key however it was typed.
+  assert.equal(pc.isOfferableTo(f, 50, TAKER.toUpperCase()), true);
+  // Liveness still gates it: expiry and settlement beat the binding.
+  assert.equal(pc.isOfferableTo(f, 100, TAKER), false);
+  assert.equal(pc.isOfferableTo(pc.settle(f, 'CLAIMED'), 50, TAKER), false);
+  // And the description says who it is bound to, so a UI cannot omit it by accident.
+  assert.match(pc.describeOffer(f, 50), new RegExp('claimable only by ' + TAKER));
 });
 
 test('an escrow smaller than advertised DEMOTES the inventory rather than being rejected', () => {
