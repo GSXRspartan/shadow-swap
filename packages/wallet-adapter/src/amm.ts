@@ -23,7 +23,19 @@ export const REMOVE_LIQUIDITY_ARG_TYPES: readonly AmmArgType[] = ['Bucket'];
 /** Pool::new(a_addr: ResourceAddress, b_addr: ResourceAddress, fee_bps: u16) -> Component */
 export const POOL_NEW_ARG_TYPES: readonly AmmArgType[] = ['ResourceAddress', 'ResourceAddress', 'u16'];
 
-export type AmmOperation = 'swap' | 'add_liquidity' | 'remove_liquidity' | 'multi_hop_swap' | 'create_pool';
+export type AmmOperation =
+  | 'swap'
+  | 'add_liquidity'
+  | 'remove_liquidity'
+  | 'multi_hop_swap'
+  | 'create_pool'
+  // RevealedAssetPool (templates/revealed_asset_pool): a SEPARATE pool for revealed-value
+  // private-typed assets. Distinct operations so a review, a history record and the UI can
+  // never present one as the other.
+  | 'revealed_swap'
+  | 'revealed_add_liquidity'
+  | 'revealed_remove_liquidity'
+  | 'create_revealed_pool';
 
 interface WorkspaceBucket {
   kind: 'workspace_bucket';
@@ -582,3 +594,298 @@ export function toAmmPreview(intentValue: AmmTransactionIntent): TransactionPrev
   };
 }
 
+
+// ---------------------------------------------------------------------------
+// RevealedAssetPool (templates/revealed_asset_pool): AMM liquidity for assets whose value is
+// an exact REVEALED integer — public fungibles, created-Stealth resources (native tTARI
+// included) and Confidential resources carrying no blinded commitments.
+//
+// Engine-proven in audit_engine_tests/tests/revealed_asset_pool.rs. Its ABI differs from Pool
+// v2's deliberately, so the builders are separate even though the intent type is shared (which
+// keeps review, execution, duplicate-submit refusal and reconciliation unchanged):
+//
+//   add_liquidity(a, b, min_lp_out) -> (lp, refund_a, refund_b)   three outputs to deposit
+//   swap(input, output_resource, min_output) -> Bucket
+//   remove_liquidity(lp, min_a, min_b) -> (a, b)                  in CANONICAL pair order
+//
+// PRIVACY: reserves, amounts and LP positions in such a pool are PUBLIC integers. Trading a
+// privacy-typed resource here reveals the traded amount, its timing and the account. Callers
+// must disclose that; `REVEALED_POOL_DISCLOSURE` is the wording to use.
+// ---------------------------------------------------------------------------
+
+/** RevealedAssetPool::new(a, b, fee_bps) */
+export const REVEALED_POOL_NEW_ARG_TYPES: readonly AmmArgType[] = ['ResourceAddress', 'ResourceAddress', 'u16'];
+/** RevealedAssetPool::add_liquidity(a_bucket, b_bucket, min_lp_out) */
+export const REVEALED_ADD_LIQUIDITY_ARG_TYPES: readonly AmmArgType[] = ['Bucket', 'Bucket', 'Amount'];
+/** RevealedAssetPool::remove_liquidity(lp_bucket, min_a, min_b) */
+export const REVEALED_REMOVE_LIQUIDITY_ARG_TYPES: readonly AmmArgType[] = ['Bucket', 'Amount', 'Amount'];
+
+export const REVEALED_POOL_DISCLOSURE =
+  'TRANSPARENT POOL: this pool holds publicly visible reserves. Trading a Stealth- or Confidential-typed asset here reveals the traded amount, its timing and your account for this trade. The asset keeps its type; nothing is converted.';
+
+export interface RevealedSwapIntentInput {
+  poolComponent: string;
+  accountAddress: string;
+  inputResource: string;
+  outputResource: string;
+  rawInputAmount: string;
+  minOutput: string;
+  maxEpoch: string;
+  operationId: string;
+  quoteEvidence: SwapIntentEvidenceQuote;
+}
+
+/** `withdraw -> swap -> deposit` against a revealed-value pool. */
+export function buildRevealedSwapIntent(input: RevealedSwapIntentInput): AmmTransactionIntent {
+  assertPositiveComponent(input.poolComponent, 'poolComponent');
+  assertPositiveComponent(input.accountAddress, 'accountAddress');
+  if (input.inputResource === input.outputResource) throw new Error('a swap needs two distinct resources');
+  assertPositiveRawAmount(input.rawInputAmount, 'rawInputAmount');
+  assertPositiveRawAmount(input.minOutput, 'minOutput');
+  const inputValue = bucket('revealed_swap_input');
+  const outputValue = bucket('revealed_swap_output');
+  const call: AmmCall = {
+    componentAddress: input.poolComponent,
+    method: 'swap',
+    args: [inputValue, input.outputResource, input.minOutput],
+    argTypes: SWAP_ARG_TYPES,
+    resourcesInvolved: [input.inputResource, input.outputResource],
+    output: outputValue,
+  };
+  return {
+    operation: 'revealed_swap',
+    poolComponent: input.poolComponent,
+    calls: [call],
+    instructions: [
+      { kind: 'withdraw_fungible', accountAddress: input.accountAddress, resourceAddress: input.inputResource, amount: input.rawInputAmount, output: inputValue },
+      { kind: 'call_method', ...call },
+      { kind: 'deposit_all', accountAddress: input.accountAddress, bucket: outputValue },
+    ],
+    requiredReadbacks: ['pool'],
+    privacyDisclosure: 'PUBLIC_AMM_BOUNDARY',
+    settlement: { accountAddress: input.accountAddress, outputBuckets: [outputValue.name] },
+    evidence: {
+      operationId: input.operationId,
+      maxEpoch: input.maxEpoch,
+      poolComponent: input.poolComponent,
+      readEpoch: input.quoteEvidence.readEpoch,
+      quote: {
+        inputResource: input.inputResource,
+        outputResource: input.outputResource,
+        rawInputAmount: input.rawInputAmount,
+        feeBps: input.quoteEvidence.feeBps,
+        quotedOutput: input.quoteEvidence.quotedOutput,
+        minOutput: input.minOutput,
+        slippageBps: input.quoteEvidence.slippageBps,
+        effectiveInput: input.quoteEvidence.effectiveInput,
+      },
+    },
+  };
+}
+
+export interface RevealedAddLiquidityIntentInput {
+  poolComponent: string;
+  accountAddress: string;
+  resourceA: string;
+  resourceB: string;
+  rawAmountA: string;
+  rawAmountB: string;
+  /** On-chain minimum LP, from the authoritative quote. '0' only for a first deposit. */
+  minLpOut: string;
+  maxEpoch: string;
+  operationId: string;
+}
+
+/**
+ * `withdraw a, withdraw b -> add_liquidity -> deposit lp, refund_a, refund_b`.
+ *
+ * All THREE outputs are deposited. The refunds may be empty, which deposits fine; leaving any
+ * of them on the workspace fails the whole transaction (engine: revealed_asset_pool r10).
+ */
+export function buildRevealedAddLiquidityIntent(input: RevealedAddLiquidityIntentInput): AmmTransactionIntent {
+  assertPositiveComponent(input.poolComponent, 'poolComponent');
+  assertPositiveComponent(input.accountAddress, 'accountAddress');
+  if (input.resourceA === input.resourceB) throw new Error('add_liquidity requires two distinct resources');
+  assertPositiveRawAmount(input.rawAmountA, 'rawAmountA');
+  assertPositiveRawAmount(input.rawAmountB, 'rawAmountB');
+  assertRawAmount(input.minLpOut, 'minLpOut');
+  const a = bucket('revealed_add_a');
+  const b = bucket('revealed_add_b');
+  const out = bucket('revealed_add_out');
+  const call: AmmCall = {
+    componentAddress: input.poolComponent,
+    method: 'add_liquidity',
+    args: [a, b, input.minLpOut],
+    argTypes: REVEALED_ADD_LIQUIDITY_ARG_TYPES,
+    resourcesInvolved: [input.resourceA, input.resourceB],
+    output: out,
+  };
+  return {
+    operation: 'revealed_add_liquidity',
+    poolComponent: input.poolComponent,
+    calls: [call],
+    instructions: [
+      { kind: 'withdraw_fungible', accountAddress: input.accountAddress, resourceAddress: input.resourceA, amount: input.rawAmountA, output: a },
+      { kind: 'withdraw_fungible', accountAddress: input.accountAddress, resourceAddress: input.resourceB, amount: input.rawAmountB, output: b },
+      { kind: 'call_method', ...call },
+      { kind: 'deposit_all', accountAddress: input.accountAddress, bucket: { ...out, offset: 0 } },
+      { kind: 'deposit_all', accountAddress: input.accountAddress, bucket: { ...out, offset: 1 } },
+      { kind: 'deposit_all', accountAddress: input.accountAddress, bucket: { ...out, offset: 2 } },
+    ],
+    requiredReadbacks: ['pool'],
+    privacyDisclosure: 'PUBLIC_AMM_BOUNDARY',
+    settlement: { accountAddress: input.accountAddress, outputBuckets: [out.name] },
+    evidence: {
+      operationId: input.operationId,
+      poolComponent: input.poolComponent,
+      maxEpoch: input.maxEpoch,
+      quote: {
+        inputResource: input.resourceA,
+        outputResource: input.resourceB,
+        rawInputAmount: input.rawAmountA,
+        feeBps: '0',
+        quotedOutput: input.rawAmountB,
+        minOutput: input.minLpOut,
+        slippageBps: '0',
+        effectiveInput: input.rawAmountA,
+      },
+    },
+  };
+}
+
+export interface RevealedRemoveLiquidityIntentInput {
+  poolComponent: string;
+  accountAddress: string;
+  lpResource: string;
+  rawLpAmount: string;
+  /** On-chain minimums in CANONICAL pair order, from the authoritative quote. */
+  minA: string;
+  minB: string;
+  maxEpoch: string;
+  operationId: string;
+}
+
+/** `withdraw lp -> remove_liquidity -> deposit both sides`, with on-chain exit minimums. */
+export function buildRevealedRemoveLiquidityIntent(input: RevealedRemoveLiquidityIntentInput): AmmTransactionIntent {
+  assertPositiveComponent(input.poolComponent, 'poolComponent');
+  assertPositiveComponent(input.accountAddress, 'accountAddress');
+  assertPositiveComponent(input.lpResource, 'lpResource');
+  assertPositiveRawAmount(input.rawLpAmount, 'rawLpAmount');
+  assertRawAmount(input.minA, 'minA');
+  assertRawAmount(input.minB, 'minB');
+  const lp = bucket('revealed_remove_lp');
+  const out = bucket('revealed_remove_out');
+  const call: AmmCall = {
+    componentAddress: input.poolComponent,
+    method: 'remove_liquidity',
+    args: [lp, input.minA, input.minB],
+    argTypes: REVEALED_REMOVE_LIQUIDITY_ARG_TYPES,
+    resourcesInvolved: [input.lpResource],
+    output: out,
+  };
+  return {
+    operation: 'revealed_remove_liquidity',
+    poolComponent: input.poolComponent,
+    calls: [call],
+    instructions: [
+      { kind: 'withdraw_fungible', accountAddress: input.accountAddress, resourceAddress: input.lpResource, amount: input.rawLpAmount, output: lp },
+      { kind: 'call_method', ...call },
+      { kind: 'deposit_all', accountAddress: input.accountAddress, bucket: { ...out, offset: 0 } },
+      { kind: 'deposit_all', accountAddress: input.accountAddress, bucket: { ...out, offset: 1 } },
+    ],
+    requiredReadbacks: ['pool'],
+    privacyDisclosure: 'PUBLIC_AMM_BOUNDARY',
+    settlement: { accountAddress: input.accountAddress, outputBuckets: [out.name] },
+    evidence: {
+      operationId: input.operationId,
+      poolComponent: input.poolComponent,
+      maxEpoch: input.maxEpoch,
+      quote: {
+        inputResource: input.lpResource,
+        outputResource: '',
+        rawInputAmount: input.rawLpAmount,
+        feeBps: '0',
+        quotedOutput: input.rawLpAmount,
+        minOutput: input.minA,
+        slippageBps: '0',
+        effectiveInput: input.rawLpAmount,
+      },
+    },
+  };
+}
+
+export interface CreateRevealedPoolIntentInput {
+  /** A RevealedAssetPool template RECORDED for the verified network generation. */
+  poolTemplateAddress: string;
+  accountAddress: string;
+  resourceA: string;
+  resourceB: string;
+  rawAmountA: string;
+  rawAmountB: string;
+  feeBps: number;
+  maxEpoch: string;
+  operationId: string;
+}
+
+/**
+ * The first deposit's shares, and the policy the template enforces.
+ *
+ * shares = floor(sqrt(a*b)); 1_000 are locked forever and the rest go to the creator. The
+ * template refuses a first deposit minting fewer than 100_000 shares, so the permanent lock
+ * stays at or under 1% of the position whatever the resources' divisibility.
+ */
+export const REVEALED_POOL_LOCKED_LIQUIDITY = 1_000n;
+export const REVEALED_POOL_MIN_FIRST_SHARES = 100_000n;
+
+export function revealedInitialLiquidityPreview(rawAmountA: string, rawAmountB: string): { totalShares: string; lockedShares: string; creatorShares: string } {
+  const total = isqrt(BigInt(rawAmountA) * BigInt(rawAmountB));
+  if (total < REVEALED_POOL_MIN_FIRST_SHARES) {
+    throw new Error(`This first deposit would mint only ${total} LP shares; the pool requires at least ${REVEALED_POOL_MIN_FIRST_SHARES} so the permanently locked ${REVEALED_POOL_LOCKED_LIQUIDITY} stay under 1% of your position. Supply more of either side.`);
+  }
+  return { totalShares: String(total), lockedShares: String(REVEALED_POOL_LOCKED_LIQUIDITY), creatorShares: String(total - REVEALED_POOL_LOCKED_LIQUIDITY) };
+}
+
+/**
+ * `new -> workspace -> withdraw both -> add_liquidity on the new component -> deposit all three`.
+ * One transaction: the pool either exists AND is funded, or nothing happened.
+ */
+export function buildCreateRevealedPoolIntent(input: CreateRevealedPoolIntentInput): AmmTransactionIntent {
+  if (!/^(template_)?[0-9a-f]{64}$/.test(input.poolTemplateAddress)) throw new Error('poolTemplateAddress must be a 64-hex template address');
+  assertPositiveComponent(input.accountAddress, 'accountAddress');
+  if (input.resourceA === input.resourceB) throw new Error('a pool needs two distinct resources');
+  if (!Number.isInteger(input.feeBps) || input.feeBps < 1 || input.feeBps > 1000) throw new Error('feeBps must be 1..1000');
+  revealedInitialLiquidityPreview(input.rawAmountA, input.rawAmountB);
+  const template = input.poolTemplateAddress.replace(/^template_/, '');
+  const pool = bucket('new_revealed_pool');
+  const a = bucket('revealed_create_a');
+  const b = bucket('revealed_create_b');
+  const out = bucket('revealed_create_out');
+  const addCall: AmmCall = {
+    componentWorkspace: pool,
+    method: 'add_liquidity',
+    // A first deposit has no ratio to honour and the template's own share policy bounds it,
+    // so the on-chain minimum is 0 here and the preview above is what the user reviewed.
+    args: [a, b, '0'],
+    argTypes: REVEALED_ADD_LIQUIDITY_ARG_TYPES,
+    resourcesInvolved: [input.resourceA, input.resourceB],
+    output: out,
+  };
+  return {
+    operation: 'create_revealed_pool',
+    poolComponent: `template_${template}`,
+    calls: [addCall],
+    instructions: [
+      { kind: 'call_function', templateAddress: `template_${template}`, method: 'new', args: [input.resourceA, input.resourceB, String(input.feeBps)], argTypes: REVEALED_POOL_NEW_ARG_TYPES, output: pool },
+      { kind: 'withdraw_fungible', accountAddress: input.accountAddress, resourceAddress: input.resourceA, amount: input.rawAmountA, output: a },
+      { kind: 'withdraw_fungible', accountAddress: input.accountAddress, resourceAddress: input.resourceB, amount: input.rawAmountB, output: b },
+      { kind: 'call_method', ...addCall },
+      { kind: 'deposit_all', accountAddress: input.accountAddress, bucket: { ...out, offset: 0 } },
+      { kind: 'deposit_all', accountAddress: input.accountAddress, bucket: { ...out, offset: 1 } },
+      { kind: 'deposit_all', accountAddress: input.accountAddress, bucket: { ...out, offset: 2 } },
+    ],
+    requiredReadbacks: [],
+    privacyDisclosure: 'PUBLIC_AMM_BOUNDARY',
+    settlement: { accountAddress: input.accountAddress, outputBuckets: [out.name] },
+    evidence: { operationId: input.operationId, poolComponent: `template_${template}`, maxEpoch: input.maxEpoch, quote: null },
+  };
+}

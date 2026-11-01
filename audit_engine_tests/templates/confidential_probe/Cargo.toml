@@ -9,6 +9,7 @@ edition = "2021"
 # published and is not part of any Shadow Swap deployment.
 
 [dependencies]
+tari_template_abi = { git = "https://github.com/tari-project/tari-ootle.git", rev = "6a25dbc524581bfaa0a3c6ef120f8d59cc827572" }
 tari_template_lib = { git = "https://github.com/tari-project/tari-ootle.git", rev = "6a25dbc524581bfaa0a3c6ef120f8d59cc827572" }
 
 [profile.release]

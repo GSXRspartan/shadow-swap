@@ -13,6 +13,10 @@
 //   p09 expiry: an expired offer cannot be filled; the maker still recovers the escrow
 //   p10 created-Stealth held in the maker's ACCOUNT -> offer -> taker's account (type kept)
 //   c03 revealed Confidential held in the maker's ACCOUNT -> offer -> taker's account
+//   p11 NFT -> public fungible at the maker's price (no marketplace template needed)
+//   p12 public fungible -> ONE named NFT: a different token of the same collection is refused
+//   p13 NFT -> created-Stealth revealed payment
+//   c04 NFT -> revealed Confidential payment
 use ootle_byte_type::ToByteType;
 use tari_crypto::{keys::PublicKey as _, ristretto::RistrettoPublicKey};
 use tari_engine_types::virtual_substate::{VirtualSubstate, VirtualSubstateId};
@@ -513,6 +517,7 @@ fn confidential_world() -> World {
             "../templates/fungible_pool",
             "templates/faucet",
             "templates/confidential_probe",
+            "templates/nft_faucet",
         ],
     );
     t.enable_auto_add_proofs_from_signers();
@@ -702,4 +707,195 @@ fn c03_confidential_revealed_from_the_makers_account_into_an_offer_and_back_out(
     );
     claim(&mut w, offer);
     assert_eq!(balance(&mut w, maker, y), Amount::from(900u64));
+}
+
+// ---------------------------------------------------------------------------------------------
+// Mixed-asset lanes: an NFT on one side and a fungible/private payment on the other. These are
+// the forms the marketplace templates do NOT cover (the marketplace prices an NFT in one public
+// quote resource; SwapOffer prices it in ANY resource, including a private-typed one).
+// ---------------------------------------------------------------------------------------------
+
+/// The maker escrows one NFT and names any wanted resource/amount. Returns the offer.
+fn make_nft_offer(
+    w: &mut World,
+    faucet: ComponentAddress,
+    want: ResourceAddress,
+    want_amount: u64,
+) -> ComponentAddress {
+    let tmpl = w.t.get_template_address("SwapOffer");
+    let tx =
+        w.t.transaction()
+            .call_method(faucet, "take_nft", args![])
+            .put_last_instruction_output_on_workspace("o")
+            .call_function(
+                tmpl,
+                "create",
+                args![
+                    Workspace("o"),
+                    want,
+                    Amount::from(want_amount),
+                    NONE_ID,
+                    NONE_KEY,
+                    NONE_HASH,
+                    0u64
+                ],
+            )
+            .build_and_seal(&w.maker_key.clone());
+    let p = w.maker_proof.clone();
+    w.t.execute_expect_success(tx, vec![p]);
+    offer_address(w)
+}
+
+#[test]
+fn p11_nft_for_public_fungible_at_the_makers_price() {
+    let mut w = world();
+    let (maker, taker) = (w.maker, w.taker);
+    let (fa, na) = nft(&mut w, "art-1", "ARTA");
+    let y = fungible(&mut w, "YYY", taker);
+    let offer = make_nft_offer(&mut w, fa, y, 5_000);
+    let tx = fill_tx(&w, offer, y, 5_000, None, &w.taker_key.clone());
+    let p = w.taker_proof.clone();
+    w.t.execute_expect_success(tx, vec![p]);
+    assert_eq!(
+        balance(&mut w, taker, na),
+        Amount::from(1u64),
+        "the exact NFT reaches the taker's account"
+    );
+    claim(&mut w, offer);
+    assert_eq!(balance(&mut w, maker, y), Amount::from(5_000u64));
+}
+
+#[test]
+fn p12_public_fungible_for_one_specific_nft() {
+    // The mirror of p11: the maker pays fungibles and wants one named NFT, so a holder of that
+    // exact token can accept. A DIFFERENT token of the same collection must not settle it.
+    let mut w = world();
+    let (maker, taker) = (w.maker, w.taker);
+    let x = fungible(&mut w, "XXX", maker);
+    let f: ComponentAddress = w.t.call_function(
+        "TestNftFaucet",
+        "mint_many",
+        args![
+            vec![
+                NonFungibleId::from_string("want-me"),
+                NonFungibleId::from_string("not-me")
+            ],
+            "ARTC".to_string()
+        ],
+        vec![],
+    );
+    let collection =
+        w.t.get_previous_output_address(SubstateType::Resource)
+            .as_resource_address()
+            .unwrap();
+    let tmpl = w.t.get_template_address("SwapOffer");
+    let tx =
+        w.t.transaction()
+            .call_method(maker, "withdraw", args![x, Amount::from(900u64)])
+            .put_last_instruction_output_on_workspace("o")
+            .call_function(
+                tmpl,
+                "create",
+                args![
+                    Workspace("o"),
+                    collection,
+                    Amount::zero(),
+                    Some(NonFungibleId::from_string("want-me")),
+                    NONE_KEY,
+                    NONE_HASH,
+                    0u64
+                ],
+            )
+            .build_and_seal(&w.maker_key.clone());
+    let p = w.maker_proof.clone();
+    w.t.execute_expect_success(tx, vec![p]);
+    let offer = offer_address(&w);
+
+    // The WRONG token of the right collection is refused, and the escrow is untouched.
+    let wrong =
+        w.t.transaction()
+            .call_method(
+                f,
+                "take_nft_by_id",
+                args![NonFungibleId::from_string("not-me")],
+            )
+            .put_last_instruction_output_on_workspace("p")
+            .call_method(offer, "fill", args![Workspace("p"), None::<Vec<u8>>])
+            .put_last_instruction_output_on_workspace("got")
+            .call_method(taker, "deposit", args![Workspace("got")])
+            .build_and_seal(&w.taker_key.clone());
+    let tp = w.taker_proof.clone();
+    let reason = format!("{:?}", w.t.execute_expect_failure(wrong, vec![tp]));
+    assert!(reason.contains("wanted NFT"), "{reason}");
+    assert_eq!(balance(&mut w, taker, x), Amount::zero(), "nothing moved");
+
+    // The named token settles it.
+    let right =
+        w.t.transaction()
+            .call_method(
+                f,
+                "take_nft_by_id",
+                args![NonFungibleId::from_string("want-me")],
+            )
+            .put_last_instruction_output_on_workspace("p")
+            .call_method(offer, "fill", args![Workspace("p"), None::<Vec<u8>>])
+            .put_last_instruction_output_on_workspace("got")
+            .call_method(taker, "deposit", args![Workspace("got")])
+            .build_and_seal(&w.taker_key.clone());
+    let tp = w.taker_proof.clone();
+    w.t.execute_expect_success(right, vec![tp]);
+    assert_eq!(balance(&mut w, taker, x), Amount::from(900u64));
+    claim(&mut w, offer);
+    assert_eq!(
+        balance(&mut w, maker, collection),
+        Amount::from(1u64),
+        "the maker receives exactly the named token"
+    );
+}
+
+#[test]
+fn p13_nft_for_a_created_stealth_revealed_payment() {
+    // An NFT priced in a private-typed asset: no marketplace template can do this (its quote
+    // resource is a public fungible), and the payment keeps its Stealth type throughout.
+    let mut w = world();
+    let (maker, taker) = (w.maker, w.taker);
+    let (fa, na) = nft(&mut w, "art-9", "ARTD");
+    let (probe, pstl) = stealth(&mut w);
+    into_account(&mut w, probe, 1_200, taker);
+    let offer = make_nft_offer(&mut w, fa, pstl, 1_200);
+    let tx = fill_tx(&w, offer, pstl, 1_200, None, &w.taker_key.clone());
+    let p = w.taker_proof.clone();
+    w.t.execute_expect_success(tx, vec![p]);
+    assert_eq!(balance(&mut w, taker, na), Amount::from(1u64));
+    claim(&mut w, offer);
+    assert_eq!(
+        balance(&mut w, maker, pstl),
+        Amount::from(1_200u64),
+        "the maker is paid in the Stealth-typed resource, type unchanged"
+    );
+}
+
+#[test]
+fn c04_nft_for_a_revealed_confidential_payment() {
+    let mut w = confidential_world();
+    let (maker, taker) = (w.maker, w.taker);
+    let f: ComponentAddress = w.t.call_function(
+        "TestNftFaucet",
+        "mint_one",
+        args![NonFungibleId::from_string("art-c"), "ARTE".to_string()],
+        vec![],
+    );
+    let na =
+        w.t.get_previous_output_address(SubstateType::Resource)
+            .as_resource_address()
+            .unwrap();
+    let (probe, conf) = confidential(&mut w);
+    into_account(&mut w, probe, 800, taker);
+    let offer = make_nft_offer(&mut w, f, conf, 800);
+    let tx = fill_tx(&w, offer, conf, 800, None, &w.taker_key.clone());
+    let p = w.taker_proof.clone();
+    w.t.execute_expect_success(tx, vec![p]);
+    assert_eq!(balance(&mut w, taker, na), Amount::from(1u64));
+    claim(&mut w, offer);
+    assert_eq!(balance(&mut w, maker, conf), Amount::from(800u64));
 }

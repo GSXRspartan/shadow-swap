@@ -1097,10 +1097,470 @@
     {
       "instructions": [
         {
+          "CallFunction": {
+            "address": "e796bc4b8085a02b21a0856a4b5e3185dcac556939140222c3c07890feeecf45",
+            "args": [
+              {
+                "Literal": "d8835820bd58a22e65a6f04ea5020e5b304cb328f993149036092d5699ae7de6ede6de64"
+              },
+              {
+                "Literal": "d8835820b27088b955278dbc6093cf52cedcadb0bb4d6f9762064636d2a90e5471bb6dcb"
+              },
+              {
+                "Literal": "181e"
+              }
+            ],
+            "function": "new"
+          }
+        },
+        {
+          "PutLastInstructionOutputOnWorkspace": {
+            "key": 0
+          }
+        },
+        {
           "CallMethod": {
             "args": [
               {
-                "Literal": "d8835820d4c270f6ddaa669573ac16cc5c549486b77528369cb92c555d92b016920f3d48"
+                "Literal": "d8835820bd58a22e65a6f04ea5020e5b304cb328f993149036092d5699ae7de6ede6de64"
+              },
+              {
+                "Literal": "1a05f5e100"
+              }
+            ],
+            "call": {
+              "Address": "component_3230781eb41523d792c58a7f6485e18cef92f71003100b14c347c1bd5d28006a"
+            },
+            "method": "withdraw"
+          }
+        },
+        {
+          "PutLastInstructionOutputOnWorkspace": {
+            "key": 1
+          }
+        },
+        {
+          "CallMethod": {
+            "args": [
+              {
+                "Literal": "d8835820b27088b955278dbc6093cf52cedcadb0bb4d6f9762064636d2a90e5471bb6dcb"
+              },
+              {
+                "Literal": "1a02faf080"
+              }
+            ],
+            "call": {
+              "Address": "component_3230781eb41523d792c58a7f6485e18cef92f71003100b14c347c1bd5d28006a"
+            },
+            "method": "withdraw"
+          }
+        },
+        {
+          "PutLastInstructionOutputOnWorkspace": {
+            "key": 2
+          }
+        },
+        {
+          "CallMethod": {
+            "args": [
+              {
+                "Workspace": {
+                  "id": 1,
+                  "offset": null
+                }
+              },
+              {
+                "Workspace": {
+                  "id": 2,
+                  "offset": null
+                }
+              },
+              {
+                "Literal": "00"
+              }
+            ],
+            "call": {
+              "Workspace": 0
+            },
+            "method": "add_liquidity"
+          }
+        },
+        {
+          "PutLastInstructionOutputOnWorkspace": {
+            "key": 3
+          }
+        },
+        {
+          "CallMethod": {
+            "args": [
+              {
+                "Workspace": {
+                  "id": 3,
+                  "offset": 0
+                }
+              }
+            ],
+            "call": {
+              "Address": "component_3230781eb41523d792c58a7f6485e18cef92f71003100b14c347c1bd5d28006a"
+            },
+            "method": "deposit"
+          }
+        },
+        {
+          "CallMethod": {
+            "args": [
+              {
+                "Workspace": {
+                  "id": 3,
+                  "offset": 1
+                }
+              }
+            ],
+            "call": {
+              "Address": "component_3230781eb41523d792c58a7f6485e18cef92f71003100b14c347c1bd5d28006a"
+            },
+            "method": "deposit"
+          }
+        },
+        {
+          "CallMethod": {
+            "args": [
+              {
+                "Workspace": {
+                  "id": 3,
+                  "offset": 2
+                }
+              }
+            ],
+            "call": {
+              "Address": "component_3230781eb41523d792c58a7f6485e18cef92f71003100b14c347c1bd5d28006a"
+            },
+            "method": "deposit"
+          }
+        }
+      ],
+      "name": "create_revealed_pool",
+      "params": {
+        "accountAddress": "component_3230781eb41523d792c58a7f6485e18cef92f71003100b14c347c1bd5d28006a",
+        "feeBps": 30,
+        "poolTemplateAddress": "e796bc4b8085a02b21a0856a4b5e3185dcac556939140222c3c07890feeecf45",
+        "rawAmountA": "100000000",
+        "rawAmountB": "50000000",
+        "resourceA": "resource_bd58a22e65a6f04ea5020e5b304cb328f993149036092d5699ae7de6ede6de64",
+        "resourceB": "resource_b27088b955278dbc6093cf52cedcadb0bb4d6f9762064636d2a90e5471bb6dcb"
+      }
+    },
+    {
+      "instructions": [
+        {
+          "CallMethod": {
+            "args": [
+              {
+                "Literal": "d8835820bd58a22e65a6f04ea5020e5b304cb328f993149036092d5699ae7de6ede6de64"
+              },
+              {
+                "Literal": "1a000f4240"
+              }
+            ],
+            "call": {
+              "Address": "component_3af8d8c2f59a9b50d2060002382ac631652c931aa134df81ceb3c254164b497c"
+            },
+            "method": "withdraw"
+          }
+        },
+        {
+          "PutLastInstructionOutputOnWorkspace": {
+            "key": 0
+          }
+        },
+        {
+          "CallMethod": {
+            "args": [
+              {
+                "Workspace": {
+                  "id": 0,
+                  "offset": null
+                }
+              },
+              {
+                "Literal": "d8835820b27088b955278dbc6093cf52cedcadb0bb4d6f9762064636d2a90e5471bb6dcb"
+              },
+              {
+                "Literal": "01"
+              }
+            ],
+            "call": {
+              "Address": "component_d3e88f4aca8e5b1c5e3e4710b2a256ca58eeb51829d83eb1e5b3f7268599d30b"
+            },
+            "method": "swap"
+          }
+        },
+        {
+          "PutLastInstructionOutputOnWorkspace": {
+            "key": 1
+          }
+        },
+        {
+          "CallMethod": {
+            "args": [
+              {
+                "Workspace": {
+                  "id": 1,
+                  "offset": null
+                }
+              }
+            ],
+            "call": {
+              "Address": "component_3af8d8c2f59a9b50d2060002382ac631652c931aa134df81ceb3c254164b497c"
+            },
+            "method": "deposit"
+          }
+        }
+      ],
+      "name": "revealed_swap",
+      "params": {
+        "accountAddress": "component_3af8d8c2f59a9b50d2060002382ac631652c931aa134df81ceb3c254164b497c",
+        "inputResource": "resource_bd58a22e65a6f04ea5020e5b304cb328f993149036092d5699ae7de6ede6de64",
+        "minOutput": "1",
+        "outputResource": "resource_b27088b955278dbc6093cf52cedcadb0bb4d6f9762064636d2a90e5471bb6dcb",
+        "poolComponent": "component_d3e88f4aca8e5b1c5e3e4710b2a256ca58eeb51829d83eb1e5b3f7268599d30b",
+        "rawInputAmount": "1000000"
+      }
+    },
+    {
+      "instructions": [
+        {
+          "CallMethod": {
+            "args": [
+              {
+                "Literal": "d8835820bd58a22e65a6f04ea5020e5b304cb328f993149036092d5699ae7de6ede6de64"
+              },
+              {
+                "Literal": "1a00989680"
+              }
+            ],
+            "call": {
+              "Address": "component_3af8d8c2f59a9b50d2060002382ac631652c931aa134df81ceb3c254164b497c"
+            },
+            "method": "withdraw"
+          }
+        },
+        {
+          "PutLastInstructionOutputOnWorkspace": {
+            "key": 0
+          }
+        },
+        {
+          "CallMethod": {
+            "args": [
+              {
+                "Literal": "d8835820b27088b955278dbc6093cf52cedcadb0bb4d6f9762064636d2a90e5471bb6dcb"
+              },
+              {
+                "Literal": "1a00989680"
+              }
+            ],
+            "call": {
+              "Address": "component_3af8d8c2f59a9b50d2060002382ac631652c931aa134df81ceb3c254164b497c"
+            },
+            "method": "withdraw"
+          }
+        },
+        {
+          "PutLastInstructionOutputOnWorkspace": {
+            "key": 1
+          }
+        },
+        {
+          "CallMethod": {
+            "args": [
+              {
+                "Workspace": {
+                  "id": 0,
+                  "offset": null
+                }
+              },
+              {
+                "Workspace": {
+                  "id": 1,
+                  "offset": null
+                }
+              },
+              {
+                "Literal": "01"
+              }
+            ],
+            "call": {
+              "Address": "component_d3e88f4aca8e5b1c5e3e4710b2a256ca58eeb51829d83eb1e5b3f7268599d30b"
+            },
+            "method": "add_liquidity"
+          }
+        },
+        {
+          "PutLastInstructionOutputOnWorkspace": {
+            "key": 2
+          }
+        },
+        {
+          "CallMethod": {
+            "args": [
+              {
+                "Workspace": {
+                  "id": 2,
+                  "offset": 0
+                }
+              }
+            ],
+            "call": {
+              "Address": "component_3af8d8c2f59a9b50d2060002382ac631652c931aa134df81ceb3c254164b497c"
+            },
+            "method": "deposit"
+          }
+        },
+        {
+          "CallMethod": {
+            "args": [
+              {
+                "Workspace": {
+                  "id": 2,
+                  "offset": 1
+                }
+              }
+            ],
+            "call": {
+              "Address": "component_3af8d8c2f59a9b50d2060002382ac631652c931aa134df81ceb3c254164b497c"
+            },
+            "method": "deposit"
+          }
+        },
+        {
+          "CallMethod": {
+            "args": [
+              {
+                "Workspace": {
+                  "id": 2,
+                  "offset": 2
+                }
+              }
+            ],
+            "call": {
+              "Address": "component_3af8d8c2f59a9b50d2060002382ac631652c931aa134df81ceb3c254164b497c"
+            },
+            "method": "deposit"
+          }
+        }
+      ],
+      "name": "revealed_add_liquidity",
+      "params": {
+        "accountAddress": "component_3af8d8c2f59a9b50d2060002382ac631652c931aa134df81ceb3c254164b497c",
+        "minLpOut": "1",
+        "poolComponent": "component_d3e88f4aca8e5b1c5e3e4710b2a256ca58eeb51829d83eb1e5b3f7268599d30b",
+        "rawAmountA": "10000000",
+        "rawAmountB": "10000000",
+        "resourceA": "resource_bd58a22e65a6f04ea5020e5b304cb328f993149036092d5699ae7de6ede6de64",
+        "resourceB": "resource_b27088b955278dbc6093cf52cedcadb0bb4d6f9762064636d2a90e5471bb6dcb"
+      }
+    },
+    {
+      "instructions": [
+        {
+          "CallMethod": {
+            "args": [
+              {
+                "Literal": "d8835820d3ddca75da7714786d20a584ec8b20c917df5152286d2a1909aa50e87b3e2108"
+              },
+              {
+                "Literal": "1a006ad3e1"
+              }
+            ],
+            "call": {
+              "Address": "component_3af8d8c2f59a9b50d2060002382ac631652c931aa134df81ceb3c254164b497c"
+            },
+            "method": "withdraw"
+          }
+        },
+        {
+          "PutLastInstructionOutputOnWorkspace": {
+            "key": 0
+          }
+        },
+        {
+          "CallMethod": {
+            "args": [
+              {
+                "Workspace": {
+                  "id": 0,
+                  "offset": null
+                }
+              },
+              {
+                "Literal": "01"
+              },
+              {
+                "Literal": "01"
+              }
+            ],
+            "call": {
+              "Address": "component_d3e88f4aca8e5b1c5e3e4710b2a256ca58eeb51829d83eb1e5b3f7268599d30b"
+            },
+            "method": "remove_liquidity"
+          }
+        },
+        {
+          "PutLastInstructionOutputOnWorkspace": {
+            "key": 1
+          }
+        },
+        {
+          "CallMethod": {
+            "args": [
+              {
+                "Workspace": {
+                  "id": 1,
+                  "offset": 0
+                }
+              }
+            ],
+            "call": {
+              "Address": "component_3af8d8c2f59a9b50d2060002382ac631652c931aa134df81ceb3c254164b497c"
+            },
+            "method": "deposit"
+          }
+        },
+        {
+          "CallMethod": {
+            "args": [
+              {
+                "Workspace": {
+                  "id": 1,
+                  "offset": 1
+                }
+              }
+            ],
+            "call": {
+              "Address": "component_3af8d8c2f59a9b50d2060002382ac631652c931aa134df81ceb3c254164b497c"
+            },
+            "method": "deposit"
+          }
+        }
+      ],
+      "name": "revealed_remove_liquidity",
+      "params": {
+        "accountAddress": "component_3af8d8c2f59a9b50d2060002382ac631652c931aa134df81ceb3c254164b497c",
+        "lpResource": "resource_d3ddca75da7714786d20a584ec8b20c917df5152286d2a1909aa50e87b3e2108",
+        "minA": "1",
+        "minB": "1",
+        "poolComponent": "component_d3e88f4aca8e5b1c5e3e4710b2a256ca58eeb51829d83eb1e5b3f7268599d30b",
+        "rawLpAmount": "7001057"
+      }
+    },
+    {
+      "instructions": [
+        {
+          "CallMethod": {
+            "args": [
+              {
+                "Literal": "d88358204c66aa3e52cf51816c6eb24cbf803accbe3702bb93d324231f6f537516a3e50d"
               },
               {
                 "Literal": "820181656172742d33"
@@ -1148,7 +1608,7 @@
       "params": {
         "expiryEpoch": "0",
         "nftId": "str_art-3",
-        "nftResource": "resource_d4c270f6ddaa669573ac16cc5c549486b77528369cb92c555d92b016920f3d48",
+        "nftResource": "resource_4c66aa3e52cf51816c6eb24cbf803accbe3702bb93d324231f6f537516a3e50d",
         "price": "5000",
         "quoteResource": "resource_b27088b955278dbc6093cf52cedcadb0bb4d6f9762064636d2a90e5471bb6dcb",
         "sellerAccount": "component_3230781eb41523d792c58a7f6485e18cef92f71003100b14c347c1bd5d28006a",
@@ -1192,7 +1652,7 @@
               }
             ],
             "call": {
-              "Address": "component_4954d048f5222e58000df36bd07689097fff4293b71d2c3c0abc839a5a958389"
+              "Address": "component_aec0fe81bcd37d3feb8d4b8747b7fa099d14455ffd9b3be2677837123bca8091"
             },
             "method": "buy"
           }
@@ -1202,7 +1662,7 @@
       "params": {
         "amount": "5000",
         "buyerAccount": "component_3af8d8c2f59a9b50d2060002382ac631652c931aa134df81ceb3c254164b497c",
-        "listingAddress": "component_4954d048f5222e58000df36bd07689097fff4293b71d2c3c0abc839a5a958389",
+        "listingAddress": "component_aec0fe81bcd37d3feb8d4b8747b7fa099d14455ffd9b3be2677837123bca8091",
         "quoteResource": "resource_b27088b955278dbc6093cf52cedcadb0bb4d6f9762064636d2a90e5471bb6dcb"
       }
     }

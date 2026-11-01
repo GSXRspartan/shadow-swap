@@ -771,3 +771,70 @@ fn e07d_legacy_add_liquidity_donates_an_imbalance_characterised() {
         "the legacy method keeps all 30M of B while minting LP for 10M"
     );
 }
+
+#[test]
+fn e07e_add_liquidity_exact_cannot_serve_a_first_deposit() {
+    // A LATENT DEFECT in Pool v2, found while building the revealed-value pool.
+    //
+    // `add_liquidity_exact`'s first-deposit branch builds its empty refunds with
+    // `a_bucket.take(Amount::zero())`, and `Bucket::take` asserts `amount.is_positive()` in
+    // template_lib itself, so that call always panics. The method therefore works only on a
+    // pool that already has reserves.
+    //
+    // This matters because "switch the add-liquidity builder to add_liquidity_exact" is an
+    // open release blocker (SHADOW_SWAP_V047_RELEASE_READINESS.md): doing it wholesale would
+    // break pool CREATION, which is always a first deposit. The fix is to keep
+    // `add_liquidity` for the first deposit and use `add_liquidity_exact` afterwards, which is
+    // what the browser builder must do. `templates/revealed_asset_pool` avoids the class
+    // entirely by returning the drained input buckets instead of constructing empty ones.
+    let mut pt = setup(30);
+    let (a, b, account, pool) = (pt.a, pt.b, pt.account, pt.pool);
+    assert_eq!(
+        pool_balance(a, &mut pt),
+        Amount::zero(),
+        "the pool starts empty"
+    );
+    let tx =
+        pt.t.transaction()
+            .call_method(account, "withdraw", args![a, Amount::from(10_000_000u64)])
+            .put_last_instruction_output_on_workspace("a")
+            .call_method(account, "withdraw", args![b, Amount::from(10_000_000u64)])
+            .put_last_instruction_output_on_workspace("b")
+            .call_method(
+                pool,
+                "add_liquidity_exact",
+                args![Workspace("a"), Workspace("b"), Amount::from(1u64)],
+            )
+            .put_last_instruction_output_on_workspace("out")
+            .call_method(account, "deposit", args![Workspace("out.0")])
+            .call_method(account, "deposit", args![Workspace("out.1")])
+            .call_method(account, "deposit", args![Workspace("out.2")])
+            .build_and_seal(pt.t.secret_key());
+    let proof = pt.account_proof.clone();
+    let reason = format!("{:?}", pt.t.execute_expect_failure(tx, vec![proof]));
+    assert!(
+        reason.contains("amount.is_positive()"),
+        "the failure is take(0) inside the template, not a test error: {reason}"
+    );
+    assert_eq!(
+        pool_balance(a, &mut pt),
+        Amount::zero(),
+        "nothing was deposited"
+    );
+
+    // The same first deposit through `add_liquidity` succeeds, which is why pool creation must
+    // keep using it.
+    let tx =
+        pt.t.transaction()
+            .call_method(account, "withdraw", args![a, Amount::from(10_000_000u64)])
+            .put_last_instruction_output_on_workspace("a")
+            .call_method(account, "withdraw", args![b, Amount::from(10_000_000u64)])
+            .put_last_instruction_output_on_workspace("b")
+            .call_method(pool, "add_liquidity", args![Workspace("a"), Workspace("b")])
+            .put_last_instruction_output_on_workspace("lp")
+            .call_method(account, "deposit", args![Workspace("lp")])
+            .build_and_seal(pt.t.secret_key());
+    let proof = pt.account_proof.clone();
+    pt.t.execute_expect_success(tx, vec![proof]);
+    assert_eq!(pool_balance(a, &mut pt), Amount::from(10_000_000u64));
+}

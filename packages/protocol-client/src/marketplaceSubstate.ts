@@ -206,6 +206,12 @@ export interface MarketplaceEscrow {
    * privacy representation; a trade must deliver the same kind it escrowed.
    */
   readonly containerKind: 'Fungible' | 'Stealth' | 'Confidential' | 'NonFungible';
+  /**
+   * Blinded commitments held BESIDE `amount` (Confidential containers only). Non-zero means
+   * `amount` is not the whole holding, so any mechanism that accounts in exact integers must
+   * refuse it rather than silently ignore the difference.
+   */
+  readonly confidentialCommitments: number;
 }
 
 const LISTING_STATUSES = ['ACTIVE', 'SOLD', 'CANCELLED', 'EXPIRED'] as const;
@@ -235,39 +241,77 @@ function vaultContainer(vaultSubstate: unknown, what: string): Record<string, un
  * "escrow empty" or "escrow holds X" would be describing a lie.
  */
 export async function readEscrow(reader: MarketplaceRawSubstateReader, vault: string, expectResource: string): Promise<MarketplaceEscrow> {
+  const escrow = await readVault(reader, vault);
+  if (escrow.resourceAddress !== expectResource) {
+    throw new MarketplaceDecodeError(`Escrow vault ${vault} holds ${escrow.resourceAddress}, but the component declares ${expectResource}`);
+  }
+  return escrow;
+}
+
+/**
+ * Decode ONE vault substate: which resource it holds, in which container, and the exact
+ * revealed amount or the canonical ids it carries. The resource is REPORTED, not asserted,
+ * because a holder's own vault is discovered rather than declared; `readEscrow` adds the
+ * identity assertion a component's declared escrow needs.
+ *
+ * `amount` is the container's revealed integer and nothing else. For a Confidential
+ * container that is only the revealed portion, so `confidentialCommitments` states how many
+ * blinded commitments sit beside it; a revealed-value mechanism must refuse to treat such a
+ * holding as if `amount` were all of it.
+ */
+export async function readVault(reader: MarketplaceRawSubstateReader, vault: string): Promise<MarketplaceEscrow> {
   const substate = await reader.read(vault);
   if (substate === undefined || substate === null) {
-    throw new MarketplaceDecodeError(`Escrow vault ${vault} does not exist or could not be read`);
+    throw new MarketplaceDecodeError(`Vault ${vault} does not exist or could not be read`);
   }
+  return decodeVault(substate, vault);
+}
+
+/** `readVault` for an already-fetched substate. */
+export function decodeVault(substate: unknown, vault: string): MarketplaceEscrow {
   const container = vaultContainer(substate, vault);
+  const kinds = Object.keys(container);
+  if (kinds.length !== 1) throw new MarketplaceDecodeError(`Vault ${vault} has ${kinds.length} container kinds; exactly one is expected`);
+  const resourceOf = (inner: Record<string, unknown>): string => {
+    const address = inner.address;
+    if (typeof address !== 'string' || address === '') {
+      throw new MarketplaceDecodeError(`Vault ${vault} carries no resource address; what it holds cannot be proven`);
+    }
+    return address;
+  };
   for (const kind of ['Fungible', 'Stealth', 'Confidential'] as const) {
     const inner = record(container[kind]);
     if (inner === undefined) continue;
-    const address = inner.address;
-    if (typeof address !== 'string' || address === '') {
-      throw new MarketplaceDecodeError(`Escrow vault ${vault} carries no resource address; what it holds cannot be proven`);
-    }
-    if (address !== expectResource) {
-      throw new MarketplaceDecodeError(`Escrow vault ${vault} holds ${address}, but the component declares ${expectResource}`);
-    }
+    const address = resourceOf(inner);
     const amount = intString(inner.amount ?? inner.revealed_amount ?? '0', `${vault}.amount`);
-    return { vaultAddress: vault, resourceAddress: address, amount, tokenIds: [], empty: amount === '0', containerKind: kind };
+    const commitments = Array.isArray(inner.commitments) ? inner.commitments.length : 0;
+    return {
+      vaultAddress: vault,
+      resourceAddress: address,
+      amount,
+      tokenIds: [],
+      empty: amount === '0' && commitments === 0,
+      containerKind: kind,
+      confidentialCommitments: commitments,
+    };
   }
   const nft = record(container.NonFungible);
   if (nft === undefined) {
-    throw new MarketplaceDecodeError(`Escrow vault ${vault} has an unrecognised container kind (${Object.keys(container).join(',')})`);
+    throw new MarketplaceDecodeError(`Vault ${vault} has an unrecognised container kind (${kinds.join(',')})`);
   }
-  const address = nft.address;
-  if (typeof address !== 'string' || address === '') {
-    throw new MarketplaceDecodeError(`Escrow vault ${vault} carries no resource address; what it holds cannot be proven`);
-  }
-  if (address !== expectResource) {
-    throw new MarketplaceDecodeError(`Escrow vault ${vault} holds ${address}, but the component declares ${expectResource}`);
-  }
+  const address = resourceOf(nft);
   const rawIds = nft.token_ids;
-  if (!Array.isArray(rawIds)) throw new MarketplaceDecodeError(`Escrow vault ${vault} carries no token_ids list`);
+  if (!Array.isArray(rawIds)) throw new MarketplaceDecodeError(`Vault ${vault} carries no token_ids list`);
   const tokenIds = rawIds.map((id, index) => nonFungibleId(id, `${vault}.token_ids[${index}]`));
-  return { vaultAddress: vault, resourceAddress: address, amount: '0', tokenIds, empty: tokenIds.length === 0, containerKind: 'NonFungible' };
+  return {
+    vaultAddress: vault,
+    resourceAddress: address,
+    amount: '0',
+    tokenIds,
+    empty: tokenIds.length === 0,
+    containerKind: 'NonFungible',
+    confidentialCommitments: 0,
+  };
 }
 
 /**
