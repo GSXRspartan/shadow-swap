@@ -20,7 +20,7 @@ import { browserPendingRequestStorage } from '../lib/pendingRequests.js';
 import { captureIdentity, type ExecutionIdentity, type ProviderCapabilities } from '../lib/executionIdentity.js';
 import { createPoolDiscovery, descriptorFromAuthoritativeRead, type PoolDescriptor, type PoolDiscoveryResult } from '../services/pools.js';
 import { seededTemplateFor } from '../services/poolRegistry.js';
-import { activeDeployment, isTrustedPoolTemplate, withTrustedPoolTemplates } from '../services/protocolDeployment.js';
+import { activeDeployment, poolKindOf, withTrustedPoolTemplates } from '../services/protocolDeployment.js';
 import { createOotleReadbackProvider } from '@tari-ootle/protocol-client';
 import { MarketDataService, type MarketDataBundle } from '../services/marketData.js';
 import type { WalletLegCapabilities } from '../lib/capabilities.js';
@@ -423,7 +423,11 @@ export function AppProvider({
           // is never sufficient on its own: the catalogue is open, and a third-party
           // template named `Pool` must not become a tradable Shadow Swap pool.
           const deployment = activeDeployment(config.network);
-          if (deployment === undefined || !isTrustedPoolTemplate(deployment, candidate.templateAddress)) continue;
+          if (deployment === undefined) continue;
+          // WHICH pool template this is decides how it may be described. An address that is
+          // neither a recorded Pool nor a recorded RevealedAssetPool is skipped entirely.
+          const kind = poolKindOf(deployment, candidate.templateAddress);
+          if (kind === undefined) continue;
           const template = seededTemplateFor(deployment.registryKey, candidate.componentAddress) ?? candidate.templateAddress;
           const read = await readback.readPool(candidate.componentAddress, { templateAddress: template });
           if (read.status !== 'FOUND') continue;
@@ -438,7 +442,7 @@ export function AppProvider({
             },
             wallet.balances,
           );
-          if (descriptor !== undefined) decoded.push(descriptor);
+          if (descriptor !== undefined) decoded.push({ ...descriptor, kind });
         } catch {
           // A component whose authoritative read fails is simply not described.
           // It stays in `candidates`, where it is shown as an address and no

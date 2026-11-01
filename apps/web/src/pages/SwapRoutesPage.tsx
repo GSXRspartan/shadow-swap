@@ -26,7 +26,7 @@ import { parseDecimalToRaw } from '../lib/amountInput.js';
 import { formatAddress, formatUnits, UNAVAILABLE } from '../lib/format.js';
 import { DEFAULT_SLIPPAGE_BPS } from '../lib/slippage.js';
 import { normalizeError } from '../lib/errorMessage.js';
-import { CANONICAL_TARI, bestAmmQuote, resolvePairRoutes, type AssetKind, type RouteOption } from '../lib/routeResolver.js';
+import { CANONICAL_TARI, bestAmmQuote, resolvePairRoutes, type AssetKind, type Mechanism, type RouteOption } from '../lib/routeResolver.js';
 import { Badge, Card, CardHeader, DataRow, EmptyState, Notice } from '../components/primitives.js';
 import { P2POfferPanel } from '../components/P2POfferPanel.js';
 
@@ -42,6 +42,7 @@ interface AssetChoice {
 export function SwapRoutesPage() {
   const { config, wallet, market, readback, executionWallets, walletBridge, liveExecutionIdentity } = useApp();
   const [edges, setEdges] = useState<PoolEdge[]>([]);
+  const [revealedEdges, setRevealedEdges] = useState<PoolEdge[]>([]);
   const [readError, setReadError] = useState<string | undefined>(undefined);
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
@@ -62,16 +63,23 @@ export function SwapRoutesPage() {
     let cancelled = false;
     void (async () => {
       const out: PoolEdge[] = [];
+      const revealed: PoolEdge[] = [];
       const failures: string[] = [];
       for (const pool of market.pools) {
         const read = await provider.readPool(pool.poolComponent);
         if (read.status === 'FOUND') {
           const v = read.value;
-          out.push({ poolComponent: pool.poolComponent, resourceA: v.resourceA, resourceB: v.resourceB, reserveA: v.reserveA, reserveB: v.reserveB, feeBps: v.feeBps });
+          const edge = { poolComponent: pool.poolComponent, resourceA: v.resourceA, resourceB: v.resourceB, reserveA: v.reserveA, reserveB: v.reserveB, feeBps: v.feeBps };
+          // The two graphs are kept APART: a revealed-value pool holds the privacy-typed
+          // assets Pool v2 refuses, so quoting one as a public pool would misdescribe both
+          // the asset and the privacy of the trade.
+          if (pool.kind === 'REVEALED') revealed.push(edge);
+          else out.push(edge);
         } else failures.push(`${formatAddress(pool.poolComponent)}: ${read.reason}`);
       }
       if (!cancelled) {
         setEdges(out);
+        setRevealedEdges(revealed);
         setReadError(failures.length > 0 ? failures.join(' · ') : undefined);
       }
     })();
@@ -121,10 +129,24 @@ export function SwapRoutesPage() {
       pools: edges,
       poolTemplateRecorded: (deployment?.poolTemplates.length ?? 0) > 0,
       offerTemplateRecorded: (deployment?.offerTemplates.length ?? 0) > 0,
+      revealedPools: revealedEdges,
+      revealedPoolTemplateRecorded: (deployment?.revealedPoolTemplates.length ?? 0) > 0,
     });
-  }, [fromAsset, toAsset, amountRaw, edges, deployment]);
+  }, [fromAsset, toAsset, amountRaw, edges, revealedEdges, deployment]);
 
-  const quotes: RouteQuote[] = useMemo(() => options.filter((o) => o.availability === 'EXECUTABLE').flatMap((o) => o.quotes ?? []).sort((a, b) => (BigInt(b.amountOut) > BigInt(a.amountOut) ? 1 : BigInt(b.amountOut) < BigInt(a.amountOut) ? -1 : a.hops.length - b.hops.length)), [options]);
+  // Only routes this page can SIGN are offered for selection. A revealed-value or mixed
+  // route is quoted and shown, but executing it needs the revealed-pool builders, which the
+  // Liquidity page drives; offering a button here that cannot build its transaction would be
+  // worse than saying so.
+  const signableMechanisms = new Set<Mechanism>(['AMM', 'MULTI_HOP_AMM']);
+  const quotes: RouteQuote[] = useMemo(
+    () =>
+      options
+        .filter((o) => o.availability === 'EXECUTABLE' && signableMechanisms.has(o.mechanism))
+        .flatMap((o) => o.quotes ?? [])
+        .sort((a, b) => (BigInt(b.amountOut) > BigInt(a.amountOut) ? 1 : BigInt(b.amountOut) < BigInt(a.amountOut) ? -1 : a.hops.length - b.hops.length)),
+    [options],
+  );
   const best = bestAmmQuote(options);
   useEffect(() => setChosen(0), [from, to, amountRaw]);
   const selected = quotes[chosen];

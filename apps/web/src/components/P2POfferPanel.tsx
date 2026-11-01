@@ -17,10 +17,16 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   decodeSwapOffer,
   encodeInvitation,
+  ownedNfts,
+  readAccountInventory,
+  revealedBalance,
+  ownsNft,
+  type AccountInventory,
   invitationFromChain,
   marketplaceCurrentEpoch,
   parseInvitation,
   verifyInvitation,
+  INVITATION_MAX_CHARS,
   type InvitationVerdict,
   type SwapOfferInvitation,
   type SwapOfferState,
@@ -97,6 +103,7 @@ export function P2POfferPanel(props: { offeredResource?: string; requestedResour
   const [tab, setTab] = useState<'create' | 'import' | 'mine'>('create');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<Msg | undefined>(undefined);
+  const [inventory, setInventory] = useState<AccountInventory | undefined>(undefined);
   const guard = useRef(false);
 
   const decimalsOf = useCallback((r: string) => wallet.balances.find((b) => b.resourceAddress === r)?.divisibility ?? 0, [wallet.balances]);
@@ -108,6 +115,28 @@ export function P2POfferPanel(props: { offeredResource?: string; requestedResour
     const raw = bridge?.substateReader('EXECUTION').readRaw;
     return raw === undefined ? undefined : { read: (id: string) => raw(id) };
   }, [walletBridge]);
+
+  // What this account actually holds, from its own vaults. The wallet's balance list carries
+  // no NFT ids, so the item picker and the ownership/balance checks read chain state instead.
+  const account = wallet.account;
+  useEffect(() => {
+    const r = reader();
+    if (r === undefined || account === undefined || wallet.status !== 'CONNECTED') {
+      setInventory(undefined);
+      return;
+    }
+    let cancelled = false;
+    void readAccountInventory(r, account)
+      .then((inv) => {
+        if (!cancelled) setInventory(inv);
+      })
+      .catch(() => {
+        if (!cancelled) setInventory(undefined);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [reader, account, wallet.status, wallet.identityEpoch]);
 
   /** Review -> submit-once, shared by every P2P action. */
   const run = useCallback(
@@ -179,7 +208,7 @@ export function P2POfferPanel(props: { offeredResource?: string; requestedResour
           </button>
         ))}
       </div>
-      {tab === 'create' && <CreateForm template={template} busy={busy} describe={describe} defaults={props} onSubmit={(intent) => guarded(async () => {
+      {tab === 'create' && <CreateForm template={template} busy={busy} describe={describe} defaults={props} {...(inventory !== undefined ? { inventory } : {})} onSubmit={(intent) => guarded(async () => {
         const result = await run(intent, 'P2P_OFFER_CREATE', undefined, 'Create a P2P offer');
         if (result.outcome === 'SUBMITTED') {
           saveMine([...loadMine(), { network, generation, transactionId: result.transactionId }]);
@@ -188,7 +217,7 @@ export function P2POfferPanel(props: { offeredResource?: string; requestedResour
         } else if (result.outcome === 'UNKNOWN') setMsg({ tone: 'warn', title: 'Outcome unknown', detail: `${result.transportError} It will not be retried automatically.` });
         else setMsg({ tone: 'danger', title: 'Offer failed', detail: result.reason });
       })} />}
-      {tab === 'import' && <ImportForm template={template} generation={generation} network={network} reader={reader} busy={busy} describe={describe} balances={wallet.balances} onFill={(verdict, preimage) => guarded(async () => {
+      {tab === 'import' && <ImportForm template={template} generation={generation} network={network} reader={reader} busy={busy} describe={describe} balances={wallet.balances} {...(inventory !== undefined ? { inventory } : {})} onFill={(verdict, preimage) => guarded(async () => {
         const s = verdict.chain;
         const payment: OfferAsset = s.requested.nftId !== null ? { kind: 'nft', resource: s.requested.resource, nftId: s.requested.nftId } : { kind: 'fungible', resource: s.requested.resource, amount: s.requested.amount };
         const receive = escrowAsset(s);
@@ -252,35 +281,76 @@ function ImportOnly() {
   );
 }
 
-function AssetFields(props: { prefix: string; value: { kind: 'fungible' | 'nft'; resource: string; amount: string; nftId: string }; onChange: (v: { kind: 'fungible' | 'nft'; resource: string; amount: string; nftId: string }) => void; resources: ReadonlyArray<{ resourceAddress: string; label: string }> }) {
+function AssetFields(props: {
+  prefix: string;
+  value: { kind: 'fungible' | 'nft'; resource: string; amount: string; nftId: string };
+  onChange: (v: { kind: 'fungible' | 'nft'; resource: string; amount: string; nftId: string }) => void;
+  resources: ReadonlyArray<{ resourceAddress: string; label: string }>;
+  /**
+   * NFTs the account provably holds, read from its own vaults on chain. Present for the side
+   * the user PAYS, so an owner picks an item instead of transcribing an engine id. Absent for
+   * the side they want: that item belongs to someone else, so it is named, not picked.
+   */
+  ownNfts?: ReadonlyArray<{ resource: string; nftId: string }>;
+  /** Exact revealed balance of a resource this account holds, for the "you have" hint. */
+  held?: (resource: string) => string;
+}) {
   const v = props.value;
+  const own = props.ownNfts;
+  const label = (r: string) => props.resources.find((x) => x.resourceAddress === r)?.label ?? formatAddress(r);
   return (
     <div className="form-grid">
       <label className="field">
         <span className="field-label">{props.prefix} type</span>
-        <select className="input" value={v.kind} onChange={(e) => props.onChange({ ...v, kind: e.target.value as 'fungible' | 'nft' })} aria-label={`${props.prefix} type`}>
+        <select className="input" value={v.kind} onChange={(e) => props.onChange({ ...v, kind: e.target.value as 'fungible' | 'nft', resource: '', amount: '', nftId: '' })} aria-label={`${props.prefix} type`}>
           <option value="fungible">Amount of a token</option>
           <option value="nft">One specific NFT</option>
         </select>
       </label>
-      <label className="field">
-        <span className="field-label">{props.prefix} resource</span>
-        <input className="input mono" list={`${props.prefix}-resources`} value={v.resource} onChange={(e) => props.onChange({ ...v, resource: e.target.value.trim() })} aria-label={`${props.prefix} resource`} placeholder="resource_…" />
-        <datalist id={`${props.prefix}-resources`}>
-          {props.resources.map((r) => <option key={r.resourceAddress} value={r.resourceAddress}>{r.label}</option>)}
-        </datalist>
-      </label>
-      {v.kind === 'fungible' ? (
-        <label className="field"><span className="field-label">{props.prefix} amount</span><input className="input" inputMode="decimal" value={v.amount} onChange={(e) => props.onChange({ ...v, amount: e.target.value })} aria-label={`${props.prefix} amount`} /></label>
+      {v.kind === 'nft' && own !== undefined ? (
+        <label className="field">
+          <span className="field-label">{props.prefix} item</span>
+          <select
+            className="input"
+            value={v.resource === '' ? '' : `${v.resource}|${v.nftId}`}
+            onChange={(e) => {
+              const [resource, nftId] = e.target.value.split('|');
+              props.onChange({ ...v, resource: resource ?? '', nftId: nftId ?? '' });
+            }}
+            aria-label={`${props.prefix} item`}
+          >
+            <option value="">{own.length === 0 ? 'No NFTs in this account' : 'Select an item you own'}</option>
+            {own.map((n) => (
+              <option key={`${n.resource}|${n.nftId}`} value={`${n.resource}|${n.nftId}`}>{`${n.nftId} — ${label(n.resource)}`}</option>
+            ))}
+          </select>
+          {own.length === 0 && <span className="hint">This account holds no non-fungible tokens, read from its own vaults on chain.</span>}
+        </label>
       ) : (
-        <label className="field"><span className="field-label">{props.prefix} NFT id</span><input className="input mono" value={v.nftId} onChange={(e) => props.onChange({ ...v, nftId: e.target.value.trim() })} aria-label={`${props.prefix} NFT id`} placeholder="str_… / u64_… / uuid_…" /></label>
+        <>
+          <label className="field">
+            <span className="field-label">{props.prefix} resource</span>
+            <input className="input mono" list={`${props.prefix}-resources`} value={v.resource} onChange={(e) => props.onChange({ ...v, resource: e.target.value.trim() })} aria-label={`${props.prefix} resource`} placeholder="resource_…" />
+            <datalist id={`${props.prefix}-resources`}>
+              {props.resources.map((r) => <option key={r.resourceAddress} value={r.resourceAddress}>{r.label}</option>)}
+            </datalist>
+            {props.held !== undefined && v.resource !== '' && <span className="hint">{`You hold ${props.held(v.resource)} (revealed, raw units).`}</span>}
+          </label>
+          {v.kind === 'fungible' ? (
+            <label className="field"><span className="field-label">{props.prefix} amount</span><input className="input" inputMode="decimal" value={v.amount} onChange={(e) => props.onChange({ ...v, amount: e.target.value })} aria-label={`${props.prefix} amount`} /></label>
+          ) : (
+            <label className="field"><span className="field-label">{props.prefix} NFT id</span><input className="input mono" value={v.nftId} onChange={(e) => props.onChange({ ...v, nftId: e.target.value.trim() })} aria-label={`${props.prefix} NFT id`} placeholder="str_… / u64_… / uuid_…" /></label>
+          )}
+        </>
       )}
     </div>
   );
 }
 
-function CreateForm(props: { template: string; busy: boolean; describe: (a: OfferAsset) => string; defaults: { offeredResource?: string; requestedResource?: string }; onSubmit: (intent: SwapOfferTransactionIntent) => void }) {
+function CreateForm(props: { template: string; busy: boolean; describe: (a: OfferAsset) => string; defaults: { offeredResource?: string; requestedResource?: string }; inventory?: AccountInventory; onSubmit: (intent: SwapOfferTransactionIntent) => void }) {
   const { wallet } = useApp();
+  const own = useMemo(() => (props.inventory === undefined ? undefined : ownedNfts(props.inventory)), [props.inventory]);
+  const held = useCallback((r: string) => (props.inventory === undefined ? '0' : revealedBalance(props.inventory, r)), [props.inventory]);
   const resources = useMemo(() => wallet.balances.map((b) => ({ resourceAddress: b.resourceAddress, label: `${b.symbol ?? formatAddress(b.resourceAddress)} (${b.resourceType})` })), [wallet.balances]);
   const [offered, setOffered] = useState({ kind: 'fungible' as 'fungible' | 'nft', resource: props.defaults.offeredResource ?? '', amount: '', nftId: '' });
   const [requested, setRequested] = useState({ kind: 'fungible' as 'fungible' | 'nft', resource: props.defaults.requestedResource ?? '', amount: '', nftId: '' });
@@ -314,6 +384,19 @@ function CreateForm(props: { template: string; busy: boolean; describe: (a: Offe
     const t = typeOf(offered.resource);
     if (offered.kind === 'nft' && t !== undefined && t !== 'non_fungible') throw new Error('The offered resource is not an NFT collection in your wallet.');
     if (offered.kind === 'fungible' && t === 'non_fungible') throw new Error('The offered resource is an NFT collection; choose "One specific NFT".');
+    // Checked against the account's OWN vaults on chain, so an item that was already sold or
+    // transferred cannot be escrowed, and an amount beyond the revealed balance is refused
+    // before the wallet is asked to sign something that must fail.
+    if (props.inventory !== undefined) {
+      if (offered.kind === 'nft' && !ownsNft(props.inventory, offered.resource, offered.nftId)) {
+        throw new Error(`This account does not currently hold ${offered.nftId} of that collection, so it cannot be escrowed.`);
+      }
+      if (offered.kind === 'fungible') {
+        const want = parseDecimalToRaw(offered.amount.trim(), decimals(offered.resource), 'offered amount').raw;
+        const have = revealedBalance(props.inventory, offered.resource);
+        if (BigInt(have) < BigInt(want)) throw new Error(`This account holds ${have} revealed raw units of that resource, which is less than the ${want} you are offering.`);
+      }
+    }
     return buildCreateSwapOfferIntent({
       offerTemplateAddress: props.template,
       accountAddress: wallet.account ?? '',
@@ -336,7 +419,7 @@ function CreateForm(props: { template: string; busy: boolean; describe: (a: Offe
   const offeredType = typeOf(offered.resource);
   return (
     <div>
-      <AssetFields prefix="You offer" value={offered} onChange={setOffered} resources={resources} />
+      <AssetFields prefix="You offer" value={offered} onChange={setOffered} resources={resources} {...(own !== undefined ? { ownNfts: own } : {})} held={held} />
       {(offeredType === 'stealth' || offeredType === 'confidential') && (
         <Notice tone="warn" title="Privacy for this amount is given up">The offered amount is withdrawn from your REVEALED balance and is visible in escrow. The asset keeps its type; the taker receives the same resource.</Notice>
       )}
@@ -382,6 +465,7 @@ function ImportForm(props: {
   busy: boolean;
   describe: (a: OfferAsset) => string;
   balances: ReadonlyArray<{ resourceAddress: string; amount: string; resourceType: string }>;
+  inventory?: AccountInventory;
   onFill: (verdict: InvitationVerdict, preimage: string | null) => void;
 }) {
   const [text, setText] = useState('');
@@ -403,8 +487,17 @@ function ImportForm(props: {
   };
   const s = verdict?.chain;
   const want: OfferAsset | undefined = s === undefined ? undefined : s.requested.nftId !== null ? { kind: 'nft', resource: s.requested.resource, nftId: s.requested.nftId } : { kind: 'fungible', resource: s.requested.resource, amount: s.requested.amount };
-  const have = want === undefined ? undefined : props.balances.find((b) => b.resourceAddress === want.resource);
-  const insufficient = want?.kind === 'fungible' && (have === undefined || !/^\d+$/.test(have.amount) || BigInt(have.amount) < BigInt(want.amount));
+  // The payment check uses the account's own vaults when they have been read (exact, and the
+  // only place an NFT id can be confirmed); the wallet's balance list is the fallback.
+  const insufficient = (() => {
+    if (want === undefined) return false;
+    if (props.inventory !== undefined) {
+      return want.kind === 'nft' ? !ownsNft(props.inventory, want.resource, want.nftId) : BigInt(revealedBalance(props.inventory, want.resource)) < BigInt(want.amount);
+    }
+    if (want.kind !== 'fungible') return false;
+    const have = props.balances.find((b) => b.resourceAddress === want.resource);
+    return have === undefined || !/^\d+$/.test(have.amount) || BigInt(have.amount) < BigInt(want.amount);
+  })();
   const releases = s === undefined ? undefined : escrowAsset(s);
   return (
     <div>
@@ -412,7 +505,33 @@ function ImportForm(props: {
         <span className="field-label">Invitation</span>
         <textarea className="input mono" rows={3} value={text} onChange={(e) => setText(e.target.value)} aria-label="Invitation code" placeholder="shadowswap-offer:v1:…" />
       </label>
-      <button type="button" className="button" disabled={text.trim() === ''} onClick={() => void verify()}>Verify on-chain</button>
+      <div className="button-row">
+        <button type="button" className="button" disabled={text.trim() === ''} onClick={() => void verify()}>Verify on-chain</button>
+        <label className="button">
+          Open a file
+          <input
+            type="file"
+            accept=".txt,.json,text/plain,application/json"
+            style={{ display: 'none' }}
+            aria-label="Invitation file"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              e.target.value = '';
+              if (file === undefined) return;
+              if (file.size > INVITATION_MAX_CHARS * 2) {
+                setError('That file is far larger than any invitation; nothing was read from it.');
+                return;
+              }
+              setError(undefined);
+              setVerdict(undefined);
+              void file
+                .text()
+                .then((t) => setText(t.trim()))
+                .catch(() => setError('That file could not be read as text.'));
+            }}
+          />
+        </label>
+      </div>
       {error !== undefined && <Notice tone="danger" title="Cannot use this invitation">{error}</Notice>}
       {verdict !== undefined && s !== undefined && (
         <>
@@ -427,7 +546,13 @@ function ImportForm(props: {
           {verdict.mismatches.length > 0 && <Notice tone="danger" title="The invitation does not match the chain">{`${verdict.mismatches.join('. ')}. Only the on-chain terms above are real; this invitation cannot be used.`}</Notice>}
           {verdict.blockers.length > 0 && <Notice tone="warn" title="Cannot fill now">{verdict.blockers.join('. ')}</Notice>}
           {verdict.warnings.length > 0 && <Notice tone="info" title="Before you fill">{verdict.warnings.join('. ')}</Notice>}
-          {insufficient && <Notice tone="warn" title="Insufficient balance">Your wallet does not report enough of the requested asset to pay.</Notice>}
+          {insufficient && (
+            <Notice tone="warn" title={want?.kind === 'nft' ? 'You do not hold the requested item' : 'Insufficient balance'}>
+              {want?.kind === 'nft'
+                ? `This offer wants NFT ${want.nftId}, which this account does not currently hold.`
+                : 'This account does not hold enough of the requested asset to pay for this offer.'}
+            </Notice>
+          )}
           {verdict.fillable && (
             <>
               {verdict.requiresPreimage && <label className="field"><span className="field-label">Preimage (from the maker)</span><input className="input mono" value={preimage} onChange={(e) => setPreimage(e.target.value.trim().toLowerCase())} aria-label="Fill preimage" /></label>}
@@ -504,7 +629,25 @@ function MyOffers(props: { template: string; generation: string; network: string
                 <label className="field">
                   <span className="field-label">Invitation (share it with your counterparty)</span>
                   <textarea className="input mono" readOnly rows={3} value={code} aria-label="Offer invitation" />
-                  <button type="button" className="button" onClick={() => void navigator.clipboard?.writeText(code)}>Copy</button>
+                  <div className="button-row">
+                    <button type="button" className="button" onClick={() => void navigator.clipboard?.writeText(code)}>Copy</button>
+                    <button
+                      type="button"
+                      className="button"
+                      onClick={() => {
+                        // A plain text file, so an invitation can be sent the same way as any
+                        // other message. It carries no secret (never the hash-lock preimage).
+                        const url = URL.createObjectURL(new Blob([code], { type: 'text/plain' }));
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `shadow-swap-offer-${entry.component?.slice(-8) ?? 'pending'}.txt`;
+                        a.click();
+                        URL.revokeObjectURL(url);
+                      }}
+                    >
+                      Save as file
+                    </button>
+                  </div>
                 </label>
               )}
               {state.status === 'FILLED' && !state.proceeds.empty && <button type="button" className="button button-primary" disabled={props.busy} onClick={() => props.onAct(state, 'claim')}>Claim proceeds</button>}
