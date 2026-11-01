@@ -36,6 +36,22 @@ export interface PoolState {
   lpResource: string;
   totalLpSupply: string;
   lockedLpSupply: string;
+  /**
+   * The published template this component's OWN header names, as a bare 64-hex object key.
+   *
+   * Two templates expose the same pool shape — the public Pool v2 and the revealed-value
+   * pool — so "which venue is this hop?" is a question only the component itself can
+   * answer. A caller that must disclose the venue (a revealed-value pool is transparent,
+   * and a privacy-typed asset traded there is public for that trade) classifies against
+   * its own recorded registry using THIS value, never using whatever discovery suggested.
+   *
+   * The raw-substate path always carries it: `decodePoolComponent` REQUIRES the header to
+   * name a template. It is absent only on the legacy flat-field envelope path, which has no
+   * template address to report — and a caller that cannot name the venue must refuse the
+   * route rather than assume one, because the assumption it would make is the less
+   * revealing of the two.
+   */
+  templateAddress?: string;
 }
 
 export type PoolReadStatus = 'ACTIVE' | 'STALE' | 'UNAVAILABLE' | 'CONFLICTED';

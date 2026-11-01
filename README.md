@@ -311,7 +311,9 @@ first-class state meaning "not yet known", never "failed" and never "retry".
   `RevealedAssetPool` gives them AMM liquidity with publicly visible reserves
   (`docs/SHADOW_SWAP_PRIVATE_LIQUIDITY_IMPLEMENTATION.md`). It is **transparent**
   liquidity, not confidential: trading a privacy-typed asset there reveals the traded
-  amount, its timing and your account for that trade. Unpublished, so unavailable.
+  amount, its timing and your account for that trade. The Swap page signs these routes
+  directly, including a route that crosses a transparent pool and a public pool in one
+  atomic transaction. Unpublished, so unavailable.
 - **Blinded (non-revealed) confidential amounts cannot be traded anywhere** in this build.
   Spending a commitment needs a wallet-built proof no browser wallet exposes, and the
   revealed-value pool refuses such buckets outright rather than mis-accounting them.

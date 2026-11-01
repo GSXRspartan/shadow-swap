@@ -205,19 +205,54 @@ export function withTrustedPoolTemplates(readback: OotleReadbackProvider, networ
     if (deployment === undefined) {
       return { status: 'UNAVAILABLE', reason: 'The network generation has not been verified in this session, so no pool template is trusted yet.' };
     }
-    if (deployment.poolTemplates.length === 0) {
+    // BOTH venues are read through this one seam, because both templates expose the same
+    // component shape and the same `swap(Bucket, ResourceAddress, Amount)` method. What the
+    // seam must guarantee is that the component's OWN header names a template recorded for
+    // this generation — of EITHER kind — never that it is specifically Pool v2. Classifying
+    // which kind it is belongs to the caller, from the state's `templateAddress`.
+    const trusted = [...deployment.poolTemplates, ...deployment.revealedPoolTemplates];
+    if (trusted.length === 0) {
       return { status: 'UNAVAILABLE', reason: `No Shadow Swap pool template is recorded for this network generation. ${deployment.status}` };
     }
-    if (expect?.templateAddress !== undefined && !isTrustedPoolTemplate(deployment, expect.templateAddress)) {
+    if (expect?.templateAddress !== undefined && poolKindOf(deployment, expect.templateAddress) === undefined) {
       return { status: 'UNAVAILABLE', reason: `Template ${expect.templateAddress} is not a recorded Shadow Swap pool template on this network generation.` };
     }
-    const candidates = expect?.templateAddress !== undefined ? [expect.templateAddress] : deployment.poolTemplates;
+    const candidates = expect?.templateAddress !== undefined ? [expect.templateAddress] : trusted;
     let last: Awaited<ReturnType<OotleReadbackProvider['readPool']>> = { status: 'UNAVAILABLE', reason: 'No trusted template matched.' };
     for (const templateAddress of candidates) {
       last = await readback.readPool(poolComponent, { ...expect, templateAddress });
-      if (last.status === 'FOUND') return last;
+      if (last.status === 'FOUND') {
+        // Belt and braces: the decoder already compares the header against the expectation
+        // we passed, so this can only fire if a transport returned a state whose template is
+        // not the one asked for. Fail closed rather than hand back an unclassifiable venue —
+        // a caller that cannot name the venue cannot disclose it.
+        const reported = last.value.templateAddress;
+        if (reported === undefined || poolKindOf(deployment, reported) === undefined) {
+          return {
+            status: 'UNAVAILABLE',
+            reason:
+              reported === undefined
+                ? `Pool ${poolComponent} did not report its template, so it cannot be established as a recorded Shadow Swap pool.`
+                : `Pool ${poolComponent} reports template ${reported}, which is not a recorded Shadow Swap pool template on this network generation.`,
+          };
+        }
+        return last;
+      }
     }
     return last;
   };
   return pinned;
+}
+
+/**
+ * Which venue a pool component belongs to, from the template address in ITS OWN state.
+ *
+ * The Swap page uses this on every hop of a route it is about to sign: a hop in a
+ * revealed-value pool is transparent, so the disclosure and the builder both depend on the
+ * answer, and the answer must come from the authoritative read rather than from the
+ * discovery snapshot that proposed the route.
+ */
+export function venueOfPoolState(network: FrontendNetworkId, templateAddress: string): 'PUBLIC' | 'REVEALED' | undefined {
+  const deployment = activeDeployment(network);
+  return deployment === undefined ? undefined : poolKindOf(deployment, templateAddress);
 }

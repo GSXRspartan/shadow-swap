@@ -79,7 +79,10 @@ function readbackOver(pools) {
       reads.push(component);
       const p = pools.find((x) => x.poolComponent === component);
       if (p === undefined) return { status: 'UNAVAILABLE', reason: 'not found' };
-      return { status: 'FOUND', value: { poolComponent: component, resourceA: p.resourceA, resourceB: p.resourceB, reserveA: p.reserveA, reserveB: p.reserveB, feeBps: p.feeBps, lpResource: 'resource_lp', totalLpSupply: '1', lockedLpSupply: '1' }, freshness: {} };
+      const base = { poolComponent: component, resourceA: p.resourceA, resourceB: p.resourceB, reserveA: p.reserveA, reserveB: p.reserveB, feeBps: p.feeBps, lpResource: 'resource_lp', totalLpSupply: '1', lockedLpSupply: '1' };
+      // `templateAddress` mirrors the real decoder: it comes from the component's own header.
+      // A pool fixture may omit it to stand for the legacy flat-field transport.
+      return { status: 'FOUND', value: p.templateAddress === null ? base : { ...base, templateAddress: p.templateAddress ?? `template_of_${component}` }, freshness: {} };
     },
   };
 }
@@ -111,4 +114,31 @@ test('resolver: wrong destination, broken path, repeated pool, missing pool and 
   assert.equal((await resolveMultiHopSwap({ ...base, outputResource: B, pools: [P('9')] }, { readback: rb, builder })).status, 'UNAVAILABLE');
   assert.equal((await resolveMultiHopSwap({ ...base, outputResource: C, pools: [P('1'), P('2')] }, { readback: rb, builder, currentEpoch: '100' })).status, 'EXPIRED');
   assert.equal((await resolveMultiHopSwap({ ...base, outputResource: E, pools: [P('1'), P('2'), P('3'), P('5')] }, { readback: rb, builder })).status, 'UNAVAILABLE');
+});
+
+test('resolver: each hop\'s OWN template address is reported, in route order, for venue disclosure', async () => {
+  // Two templates share the pool component shape, so "which venue was this hop?" can only be
+  // answered by the component itself. The resolver reports it and decides nothing: which
+  // templates are acceptable is the application's policy, not this module's.
+  const graph = [
+    { ...GRAPH[0], templateAddress: 'template_revealed' },
+    { ...GRAPH[1], templateAddress: 'template_public' },
+  ];
+  const out = await resolveMultiHopSwap(
+    { inputResource: A, outputResource: C, rawInputAmount: '1000000', pools: [P('1'), P('2')], slippage: SLIPPAGE, maxEpoch: '100' },
+    { readback: readbackOver(graph), builder },
+  );
+  assert.equal(out.status, 'ACTIVE');
+  assert.deepEqual(out.templateAddresses, ['template_revealed', 'template_public']);
+  assert.deepEqual(out.builderIntent.built.templateAddresses, ['template_revealed', 'template_public'], 'the builder sees the same list, in the same order');
+
+  // A transport that cannot report a hop's template yields `undefined` for it rather than a
+  // guess; the builder is then responsible for refusing a route it cannot describe.
+  const silent = [{ ...GRAPH[0], templateAddress: null }, { ...GRAPH[1], templateAddress: 'template_public' }];
+  const partial = await resolveMultiHopSwap(
+    { inputResource: A, outputResource: C, rawInputAmount: '1000000', pools: [P('1'), P('2')], slippage: SLIPPAGE, maxEpoch: '100' },
+    { readback: readbackOver(silent), builder },
+  );
+  assert.equal(partial.status, 'ACTIVE');
+  assert.deepEqual(partial.templateAddresses, [undefined, 'template_public']);
 });
