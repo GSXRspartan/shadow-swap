@@ -212,7 +212,9 @@ pnpm --filter @tari-ootle/web build; pnpm --filter @tari-ootle/web preview -- --
 3. `withdrawStealthAndExecute` path for tTARI-input routes through Sapient local accounts.
 4. Browser `SwapOffer` builders (create/fill/claim/cancel) + an offers view, then enable the
    P2P lanes behind the published template.
-5. Switch existing-pool add-liquidity to `add_liquidity_exact` once the published Pool has it.
+5. Switch add-liquidity **into a pool that already has reserves** to `add_liquidity_exact`
+   once the published Pool has it. Pool CREATION must keep `add_liquidity`:
+   `add_liquidity_exact` cannot serve a first deposit (`pool_engine` `e07e`).
 6. Windows acceptance (§13) and a Cloudflare preview with the verify job green.
 
 ---

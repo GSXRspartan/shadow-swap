@@ -806,6 +806,58 @@ fn scenarios() -> Vec<Value> {
         "instructions": json,
     }));
 
+    // mixed_multi_hop_swap: a created-Stealth asset reaches a purely public one by crossing a
+    // REVEALED-value pool and a public Pool v2 in ONE transaction.
+    //
+    // Both templates expose the same `swap(Bucket, ResourceAddress, Amount)`, so the
+    // instruction list is the ordinary multi-hop shape and the venues are indistinguishable
+    // on the wire — which is exactly why the browser must name each hop's venue from its own
+    // template address and disclose it. Note only the INPUT needs a Stealth-capable
+    // withdrawal: every intermediate stays on the workspace.
+    let ins =
+        w.t.transaction()
+            .call_method(bob, "withdraw", args![pstl, Amount::from(1_000_000u64)])
+            .put_last_instruction_output_on_workspace("route_0")
+            .call_method(
+                rev_pool,
+                "swap",
+                args![Workspace("route_0"), x, Amount::from(1u64)],
+            )
+            .put_last_instruction_output_on_workspace("route_1")
+            .call_method(
+                pool_xy,
+                "swap",
+                args![Workspace("route_1"), y, Amount::from(2u64)],
+            )
+            .put_last_instruction_output_on_workspace("route_2")
+            .call_method(bob, "deposit", args![Workspace("route_2")])
+            .into_instructions();
+    let mixed_y0 = balance(&mut w, bob, y);
+    let mixed_pstl0 = balance(&mut w, bob, pstl);
+    let mixed_x0 = balance(&mut w, bob, x);
+    let (json, _) = run(&mut w, Who::Bob, ins);
+    assert!(
+        balance(&mut w, bob, y) > mixed_y0,
+        "the mixed route paid out in the public resource"
+    );
+    assert_eq!(
+        balance(&mut w, bob, pstl),
+        mixed_pstl0 - 1_000_000,
+        "exactly the routed amount left the Stealth-typed balance"
+    );
+    assert_eq!(
+        balance(&mut w, bob, x),
+        mixed_x0,
+        "the intermediate resource never reached the account"
+    );
+    out.push(json!({
+        "name": "mixed_multi_hop_swap",
+        "params": { "accountAddress": s(bob), "rawInputAmount": "1000000", "minOutput": "2", "hops": [
+            { "poolComponent": s(rev_pool), "inputResource": s(pstl), "outputResource": s(x), "venue": "REVEALED" },
+            { "poolComponent": s(pool_xy), "inputResource": s(x), "outputResource": s(y), "venue": "PUBLIC" } ] },
+        "instructions": json,
+    }));
+
     // 11. Marketplace listing via withdraw_non_fungible (the browser's NFT withdrawal).
     let nc = nft_into(&mut w, "art-3", "ARTC", alice);
     let ins =

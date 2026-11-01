@@ -278,7 +278,9 @@ interface AmmIntentLike {
     | 'revealed_swap'
     | 'revealed_add_liquidity'
     | 'revealed_remove_liquidity'
-    | 'create_revealed_pool';
+    | 'create_revealed_pool'
+    | 'revealed_multi_hop_swap'
+    | 'mixed_multi_hop_swap';
   poolComponent: string;
   instructions: Array<{
     kind: string;
@@ -308,6 +310,11 @@ const AMM_OPERATION: Record<AmmIntentLike['operation'], ReviewOperation> = {
   revealed_add_liquidity: 'REVEALED_POOL_ADD_LIQUIDITY',
   revealed_remove_liquidity: 'REVEALED_POOL_REMOVE_LIQUIDITY',
   create_revealed_pool: 'REVEALED_POOL_ADD_LIQUIDITY',
+  // A route that touches a revealed-value pool at all is reviewed as a revealed-pool swap,
+  // so the transparency wording is the one the signer reads. Rounding a mixed route up to
+  // the more revealing of its two venues is the only safe direction.
+  revealed_multi_hop_swap: 'REVEALED_POOL_SWAP',
+  mixed_multi_hop_swap: 'REVEALED_POOL_SWAP',
 };
 
 /**

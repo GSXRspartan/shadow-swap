@@ -8,6 +8,7 @@ export * from './marketplaceSubstate.js';
 export * from './swapOfferSubstate.js';
 export * from './swapInvitation.js';
 export * from './accountInventory.js';
+export * from './crossLayer/burnClaim.js';
 export * from './execution.js';
 export * from './ootle.js';
 export * from './poolSubstate.js';

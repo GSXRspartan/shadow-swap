@@ -139,3 +139,42 @@ test('mixed multi-hop: a route that stays inside one pool kind is not reported a
   const opts = byMech(resolvePairRoutes({ input: { resource: S, kind: 'stealth' }, output: { resource: C, kind: 'fungible' }, amountIn: '1000000', pools: [], poolTemplateRecorded: false, revealedPools, revealedPoolTemplateRecorded: true }));
   assert.equal(opts.MIXED_MULTI_HOP, undefined, 'both hops are revealed pools, so nothing is mixed');
 });
+
+test('signable set: every mechanism the Swap page offers for selection has a builder behind it', () => {
+  // The page filters its quote list by this set, so an entry here with no builder would put a
+  // button on screen that cannot construct its transaction — the exact failure the resolver
+  // exists to prevent.
+  const { SIGNABLE_MECHANISMS } = require('../build-test/lib/routeResolver.js');
+  const adapter = require('@tari-ootle/wallet-adapter');
+  assert.deepEqual([...SIGNABLE_MECHANISMS].sort(), ['AMM', 'MIXED_MULTI_HOP', 'MULTI_HOP_AMM', 'REVEALED_POOL']);
+  // All four are AMM-shaped and route through ammRouteIntentBuilder, which picks the builder
+  // from each hop's venue.
+  for (const fn of ['ammRouteIntentBuilder', 'buildSwapIntent', 'buildRevealedSwapIntent', 'buildMultiHopSwapIntent']) {
+    assert.equal(typeof adapter[fn], 'function', fn);
+  }
+  // The escrow and marketplace mechanisms are deliberately NOT in the set: they are driven by
+  // their own panels, not by the quote list.
+  for (const excluded of ['NFT_MARKETPLACE', 'P2P_OFFER', 'NFT_BARTER', 'CROSS_LAYER']) {
+    assert.ok(!SIGNABLE_MECHANISMS.includes(excluded), `${excluded} must not be offered as a Swap-page quote`);
+  }
+});
+
+test('signable set: a revealed-value or mixed route is only EXECUTABLE once its template is recorded', () => {
+  // Being signable is not the same as being available: with no RevealedAssetPool recorded,
+  // both new mechanisms must still report BLOCKED with the reason.
+  const revealedPools = [pool('r7', S, A, 500_000_000, 500_000_000)];
+  const unrecorded = byMech(
+    resolvePairRoutes({
+      input: { resource: S, kind: 'stealth' },
+      output: { resource: C, kind: 'fungible' },
+      amountIn: '1000000',
+      pools: POOLS,
+      poolTemplateRecorded: true,
+      revealedPools,
+      revealedPoolTemplateRecorded: false,
+    }),
+  );
+  assert.equal(unrecorded.REVEALED_POOL.availability, 'BLOCKED');
+  assert.match(unrecorded.REVEALED_POOL.reason, /RevealedAssetPool template is recorded/);
+  assert.equal(unrecorded.MIXED_MULTI_HOP, undefined, 'no mixed route is quoted while the revealed template is unrecorded');
+});

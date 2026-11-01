@@ -16,6 +16,7 @@ const NAV_ITEMS = [
   { to: '/swap', label: 'Swap' },
   { to: '/pools', label: 'Pools' },
   { to: '/nfts', label: 'NFTs' },
+  { to: '/cross-layer', label: 'L1 → L2' },
   { to: '/activity', label: 'Activity' },
 ] as const;
 
