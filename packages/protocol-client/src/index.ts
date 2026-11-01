@@ -12,6 +12,7 @@ export * from './crossLayer/burnClaim.js';
 export * from './crossLayer/atomicSwap.js';
 export * from './crossLayer/makerOffer.js';
 export * from './crossLayer/quoteEngine.js';
+export * from './crossLayer/walletCapabilities.js';
 export * from './execution.js';
 export * from './ootle.js';
 export * from './poolSubstate.js';
