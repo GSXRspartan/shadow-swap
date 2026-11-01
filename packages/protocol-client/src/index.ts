@@ -16,6 +16,7 @@ export * from './crossLayer/walletCapabilities.js';
 export * from './crossLayer/l1Adapter.js';
 export * from './crossLayer/swapLifecycle.js';
 export * from './crossLayer/crossLayerInvitation.js';
+export * from './crossLayer/escrowSubstate.js';
 export * from './execution.js';
 export * from './ootle.js';
 export * from './poolSubstate.js';
