@@ -28,13 +28,55 @@ claim needs, from the account's **secret** key:
    value;
 3. a fresh stealth output (mask, nonce, tag) for the claimed funds.
 
-None of that is expressible as an instruction list, so `Instruction::ClaimBurn` cannot be
-assembled from public data, and a dApp cannot hand a wallet a claim to sign. Sapient's
-documented `WalletCapabilities` has **no** burn or claim field at all; `walletd` does expose
-`accounts.claim_burn`.
+### The blocker is a SIGNATURE, and that is narrower than "a dApp cannot build a claim"
+
+`audit_engine_tests/tests/claim_burn_authorization.rs` settles this by executing real
+`ClaimBurn` instructions in the pinned v0.48.0 engine, rather than by reading the wallet source:
+
+| Test | Establishes |
+|---|---|
+| `x01` | **The engine does not verify the burn proof.** It asks a `ClaimProofVerifier` that a validator node supplies (the node scans the base layer). A verifier *fault* aborts with no receipt (retryable); a verifier *rejection* is a receipt rejecting the transaction with `InvalidProof` (final). So neither this suite nor any engine test may be cited as evidence that a burn genuinely happened |
+| `x02` | A claim sealed by **any** key other than `s` — including an ordinary L2 account key, the only thing a browser wallet seals with — is rejected with **`AccessDenied`**. A claim **co-signed** by `s` while an unrelated key seals and pays the fee **is accepted** |
+| `x03` | The claim mints a UTXO whose spend condition names `S`; upstream's wallet spends it onward with a `stealth_transfer` in the same transaction |
+
+`x02`'s second half is the important correction. A third party **can** build and even fund the
+transaction; what it cannot produce is the signature. So the missing primitive is exactly one
+provider capability: *co-sign with a key derived as* `H(R·p) + p`. Sapient's documented
+`WalletCapabilities` has **no** burn or claim field at all, and no other dApp-facing API exposes
+such a signature; `walletd` does, through `accounts.claim_burn`.
+
+### The claim's exact shape
+
+From `crates/wallet/ootle-rs/src/claim_burn/mod.rs::ClaimBurn::prepare`, for anyone implementing
+this against a wallet that gains the capability. The whole claim is in the **fee intent**, with
+an empty main intent:
+
+```text
+fee instructions:
+  claim_burn(claim_proof, ClaimBurnOutputData { encrypted_data })
+  stealth_transfer(TARI_TOKEN, transfer)
+  put_last_instruction_output_on_workspace("fee")
+  pay_fee_from_bucket("fee")
+sealed by: s   (BurnClaimSealer, not the account key)
+```
+
+Before building, the wallet checks that its own derived `S` equals the proof's
+`claim_public_key` (`BurnClaimNotForThisWallet` otherwise), validates the ownership proof, and
+decrypts the output to recover its value.
+
+### A precondition no proof check catches
+
+The fee is **revealed out of the claimed amount** and a positive remainder is required
+(`claimed - max_fee > 0`, else `BurnClaimFeeTooHigh`). **A burn worth less than the fee cannot
+be claimed at all** — permanently, since the burn is already irreversible. The fee depends on
+the network's current rates, so the app states the rule and shows the value (`CLAIM_FEE_RULE`)
+rather than inventing a threshold.
 
 Conclusion: the claim belongs to the user's own wallet. Shadow Swap must not — and cannot —
-reach a local wallet daemon, and the page says so instead of implying otherwise.
+reach a local wallet daemon, and the page says so instead of implying otherwise. Because
+`x03` shows the claimed funds land in an ordinary stealth output owned by the claimant, a
+balance read of the destination is the correct confirmation signal, which is what stage 5 of
+the state machine waits for.
 
 ## 3. What Shadow Swap does implement
 
@@ -130,8 +172,23 @@ construction in any browser-reachable wallet API — the finding in
 
 ## 6. Verification level
 
-**IMPLEMENTED, REQUIRES REAL WALLET AND REAL L1 TEST.** The parsing, destination derivation,
-epoch logic, state machine and receipt confirmation are unit-tested against engine-produced
-account state, but no real burn was performed and no claim was submitted: that spends real
-funds irreversibly and is the operator's decision. `SHADOW_SWAP_WINDOWS_LIVE_TESTS.md` §5 has
-the observation-only procedure.
+Per operation, because the levels genuinely differ:
+
+| Operation | Level |
+|---|---|
+| L2 destination derivation (the account's own `owner_rule` public key, read from chain) | **ENGINE VERIFIED** — the key comes from an engine-produced account component fixture |
+| Burn proof **structural** parsing and bounds, against `CompleteClaimBurnProof` | **IMPLEMENTED, REQUIRES REAL WALLET TEST** — the schema is upstream's, but no authentic proof file has been parsed |
+| Burn proof **authenticity** | **BLOCKED BY UPSTREAM / not an engine property** — delegated to the validator nodes' base-layer scanner (`x01`). Nothing in this project checks it |
+| Destination reconciliation (is this proof made out to the connected account?) | **ENGINE VERIFIED** (against the fixture's real account key) |
+| Epoch gating (`mined_in_epoch` vs the L2 epoch) | **IMPLEMENTED, REQUIRES REAL WALLET TEST** |
+| The claim's **authorization model** (only `s` may claim; `AccessDenied` otherwise; a relayer may seal and pay) | **ENGINE VERIFIED** (`claim_burn_authorization` `x02`) |
+| What the claim **produces** (a UTXO spendable only by `S`) | **ENGINE VERIFIED** (`x03`) |
+| Building or signing a `ClaimBurn` **from the browser** | **BLOCKED BY UPSTREAM** — no dApp-facing API co-signs with `H(R·p) + p`; Sapient advertises no burn/claim capability |
+| Recovery and the persistent state machine | **IMPLEMENTED, REQUIRES REAL WALLET TEST** |
+| Receipt confirmation from an authoritative balance read | **IMPLEMENTED, REQUIRES REAL WALLET TEST**; that a balance read is the RIGHT signal is **ENGINE VERIFIED** (`x03`) |
+| Transaction finality of a submitted claim | **NOT IMPLEMENTED here** — the claim is submitted by the user's wallet, so this app observes only the resulting balance, never the transaction's finalization |
+| **L2 → L1 in any form** | **BLOCKED BY UPSTREAM — no such route exists** (§5) |
+
+No real burn was performed and no claim was submitted: that spends real funds irreversibly and
+is the operator's decision. `SHADOW_SWAP_WINDOWS_LIVE_TESTS.md` §5 has the observation-only
+procedure.

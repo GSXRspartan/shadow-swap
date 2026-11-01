@@ -17,11 +17,37 @@
  *   * decryption of the burn output's `encrypted_data` to recover its mask and value;
  *   * a fresh stealth output (mask, nonce, tag) for the claimed funds.
  *
- * None of that is expressible as an instruction list, so no dApp can construct a claim, and
- * `Instruction::ClaimBurn` cannot be assembled from public data alone. Sapient advertises no
- * burn or claim capability at all (its `WalletCapabilities` has no such field), so the claim
- * is performed BY THE USER'S OWN WALLET — `walletd` exposes `accounts.claim_burn`. Shadow Swap
- * therefore does the parts it honestly can:
+ * THE BLOCKER IS A SIGNATURE, NOT THE INSTRUCTION. This is narrower than it first looks, and
+ * the narrow form is the honest one. `audit_engine_tests/tests/claim_burn_authorization.rs`
+ * executes the cases in the real v0.48 engine:
+ *
+ *   * `x02` a claim transaction sealed by ANY key other than `s` — including an ordinary L2
+ *     account key, which is the only thing a browser wallet will seal with — is rejected with
+ *     `AccessDenied`;
+ *   * `x02` a claim CO-SIGNED by `s` while an unrelated key seals and pays the fee IS accepted,
+ *     so a third party may build and fund the transaction. Only the signature is unavailable;
+ *   * `x01` the engine does not verify the burn proof at all. It asks a `ClaimProofVerifier`
+ *     that a validator node supplies (it scans the base layer), so nothing here — and no engine
+ *     test anywhere — may be cited as evidence that a burn proof is genuine;
+ *   * `x03` the claim mints a UTXO whose spend condition names `S`, and upstream's wallet spends
+ *     it onward with a `stealth_transfer` in the same transaction, which is why an ordinary
+ *     balance read of the destination is the correct confirmation signal (stage 5 below).
+ *
+ * So what is missing is a provider API that will co-sign with a key derived as `H(R·p) + p`.
+ * Sapient advertises no burn or claim capability at all (its `WalletCapabilities` has no such
+ * field), and no other dApp-facing API exposes such a signature, so the claim is performed BY
+ * THE USER'S OWN WALLET — `walletd` exposes `accounts.claim_burn`. If a wallet ever adds that
+ * one capability, the rest of this module already holds.
+ *
+ * THE CLAIM'S SHAPE, for anyone implementing it against a wallet that gains the capability
+ * (`crates/wallet/ootle-rs/src/claim_burn/mod.rs::ClaimBurn::prepare`): the whole claim lives in
+ * the FEE intent, with an empty main intent — `claim_burn(proof, output_data)`,
+ * `stealth_transfer(TARI_TOKEN, transfer)`, `put_last_instruction_output_on_workspace("fee")`,
+ * `pay_fee_from_bucket("fee")`. The fee is REVEALED out of the claimed amount, so a burn whose
+ * value does not exceed the fee cannot be claimed at all (upstream raises
+ * `BurnClaimFeeTooHigh`); see `CLAIM_FEE_RULE`.
+ *
+ * Shadow Swap therefore does the parts it honestly can:
  *
  *   1. state the correct L2 destination for the burn (the connected account's public key, read
  *      from that account's own component header on chain);
@@ -240,6 +266,10 @@ export function verifyBurnClaim(
   }
   warnings.push('The L1 burn is irreversible. Nothing in Shadow Swap can return burned XTM, and this conversion is not an atomic swap.');
   warnings.push('The claim itself is performed by your own wallet: no browser wallet exposes a burn claim. Shadow Swap can only check the proof and confirm the funds once they arrive.');
+  warnings.push(CLAIM_FEE_RULE);
+  warnings.push(
+    'Neither Shadow Swap nor the L2 engine can tell you whether this burn really happened on the base layer. The engine delegates that to the validator nodes, which scan L1 themselves; what is checked here is the proof\'s structure and whether it names your account.',
+  );
   return { claimable: blockers.length === 0, intendedForThisAccount, blockers, warnings, facts };
 }
 
@@ -371,6 +401,19 @@ export function describeCrossLayer(record: CrossLayerRecord): string {
 }
 
 /**
+ * The one precondition a claimant can get wrong that no proof check catches.
+ *
+ * Upstream reveals `max_fee` OUT OF the claimed amount and requires a positive remainder
+ * (`ClaimBurn::prepare`: `claimed - max_fee > 0`, else `BurnClaimFeeTooHigh`). A burn whose
+ * value does not exceed the network fee is therefore unclaimable — permanently, since the burn
+ * is already irreversible. The fee depends on the network's current rates, so this states the
+ * RULE and shows the value rather than inventing a threshold: an invented number here would be
+ * a guess presented as a protocol constant.
+ */
+export const CLAIM_FEE_RULE =
+  'The claim fee is taken out of the claimed amount, and a positive remainder is required. A burn worth less than the fee your wallet quotes cannot be claimed at all, and the burn cannot be undone. Check the quoted fee against the value below before claiming.';
+
+/**
  * The walletd call that actually performs the claim, for the user to run against THEIR OWN
  * wallet. Never sent anywhere by this app: Shadow Swap has no access to a local wallet daemon
  * and must not be given any.
@@ -384,6 +427,7 @@ export function claimBurnInstructions(record: CrossLayerRecord): { readonly meth
       max_fee: '<fee cap in XTR>',
       dry_run: true,
     },
-    note: 'Run this against your own walletd (dry_run first, then false). It needs a token with the account\'s own authority, because the claim is signed by a key derived from your account secret. Shadow Swap never sees it.',
+    note:
+      'Run this against your own walletd (dry_run first, then false). It needs a token with the account\'s own authority because the claim transaction is SEALED by the stealth burn-claim key s = H(R\u00b7p) + p, derived from your account secret p and the burn output\'s sender offset public key R \u2014 not by the account key itself. The engine rejects a claim any other key signed (AccessDenied; audit_engine_tests claim_burn_authorization x02). Shadow Swap never sees p or s.',
   };
 }
