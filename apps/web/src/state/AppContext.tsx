@@ -329,11 +329,49 @@ export function AppProvider({
         );
         return;
       }
+      if (event.kind === 'balancesChanged') {
+        // A re-read owned by THIS bridge, for THIS account, while still
+        // connected. Anything else is stale cross-talk and must not overwrite.
+        setWallet((previous) =>
+          previous.status === 'CONNECTED' && previous.account === event.account
+            ? { ...previous, balances: [...event.balances] }
+            : previous,
+        );
+        return;
+      }
       if (event.kind === 'disconnected') {
         setWallet((previous) => ({ ...INITIAL_WALLET, status: 'DISCONNECTED', identityEpoch: previous.identityEpoch + 1 }));
       }
     });
   }, [walletService]);
+
+  /**
+   * Keep balances current WITHOUT a reconnect.
+   *
+   * The balances snapshot was taken once, at connect; every asset that arrived
+   * afterwards was invisible until a manual reconnect (observed live). When the
+   * session is live, re-read on window focus and on a slow interval. The
+   * refresh is a non-interactive provider read with its own failure boundary —
+   * a background poll that fails must not disturb the session.
+   */
+  useEffect(() => {
+    if (wallet.status !== 'CONNECTED') return undefined;
+    const trigger = () => {
+      const bridge = walletService.bridge();
+      if (bridge === undefined) return;
+      void bridge.refreshBalances().catch(() => {});
+    };
+    const onVisible = () => { if (document.visibilityState === 'visible') trigger(); };
+    document.addEventListener('visibilitychange', onVisible);
+    const interval = window.setInterval(trigger, 60_000);
+    // One immediate refresh at the moment the session becomes live, so assets
+    // that arrived during connect or before it are seen without waiting a minute.
+    trigger();
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible);
+      window.clearInterval(interval);
+    };
+  }, [wallet.status, walletService]);
 
   // ---- pool discovery + health -------------------------------------------
 

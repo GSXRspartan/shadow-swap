@@ -29,8 +29,9 @@ import { parseDecimalToRaw } from '../lib/amountInput.js';
 import { formatAddress, formatUnits, UNAVAILABLE } from '../lib/format.js';
 import { DEFAULT_SLIPPAGE_BPS } from '../lib/slippage.js';
 import { normalizeError } from '../lib/errorMessage.js';
-import { CANONICAL_TARI, SIGNABLE_MECHANISMS, bestAmmQuote, resolvePairRoutes, type AssetKind, type Mechanism, type RouteOption } from '../lib/routeResolver.js';
+import { SIGNABLE_MECHANISMS, bestAmmQuote, resolvePairRoutes, type AssetKind, type Mechanism, type RouteOption } from '../lib/routeResolver.js';
 import { routeImpactGuard } from '../lib/routeImpactGuard.js';
+import { swapAssetCatalog } from '../lib/swapAssetCatalog.js';
 import { Badge, Card, CardHeader, DataRow, EmptyState, Notice } from '../components/primitives.js';
 import { P2POfferPanel } from '../components/P2POfferPanel.js';
 
@@ -110,23 +111,25 @@ export function SwapRoutesPage() {
   }, [market.pools, readback, config.network]);
 
   const assets = useMemo<AssetChoice[]>(() => {
-    const byResource = new Map<string, AssetChoice>();
-    for (const pool of market.pools) {
-      for (const side of [pool.base, pool.quote]) {
-        byResource.set(side.resourceAddress, {
-          resource: side.resourceAddress,
-          label: side.symbol ?? formatAddress(side.resourceAddress),
-          // Pool v2 admits only ordinary fungibles and native tTARI (by exact address).
-          kind: side.resourceAddress === CANONICAL_TARI ? 'stealth' : 'fungible',
-          decimals: Number(side.decimals) || 0,
-        });
-      }
-    }
-    for (const b of wallet.balances) {
-      if (byResource.has(b.resourceAddress)) continue;
-      byResource.set(b.resourceAddress, { resource: b.resourceAddress, label: b.symbol ?? formatAddress(b.resourceAddress), kind: b.resourceType, decimals: b.divisibility ?? 0 });
-    }
-    return [...byResource.values()].sort((a, b) => a.label.localeCompare(b.label));
+    const catalog = swapAssetCatalog({
+      pools: market.pools.map((pool) => ({
+        base: { resourceAddress: pool.base.resourceAddress, symbol: pool.base.symbol, decimals: pool.base.decimals },
+        quote: { resourceAddress: pool.quote.resourceAddress, symbol: pool.quote.symbol, decimals: pool.quote.decimals },
+      })),
+      balances: wallet.balances.map((b) => ({
+        resourceAddress: b.resourceAddress,
+        amount: b.amount,
+        resourceType: b.resourceType,
+        ...(b.divisibility === undefined ? {} : { divisibility: b.divisibility }),
+        ...(b.symbol === undefined ? {} : { symbol: b.symbol }),
+      })),
+    });
+    return catalog.map((a) => ({
+      resource: a.resource,
+      label: a.heldDisplay === undefined ? a.name : `${a.name} — held ${a.heldDisplay}`,
+      kind: a.kind as AssetKind,
+      decimals: a.decimals,
+    }));
   }, [market.pools, wallet.balances]);
 
   const fromAsset = assets.find((a) => a.resource === from);
