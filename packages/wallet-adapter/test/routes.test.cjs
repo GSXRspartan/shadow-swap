@@ -78,3 +78,73 @@ test('create pool: same resource, below-minimum deposits, bad fee and bad templa
   assert.throws(() => w.buildCreatePoolIntent({ ...base, poolTemplateAddress: 'Pool' }), /template/);
   assert.equal(w.isqrt(10n ** 30n), 10n ** 15n);
 });
+
+// ---------------------------------------------------------------------------
+// Venue-aware routing: ammRouteIntentBuilder must pick the builder and the name from the
+// venue each hop's own pool component reported, and refuse a route it cannot describe.
+// ---------------------------------------------------------------------------
+
+const T = (n) => n.repeat(64).slice(0, 64);
+const PUBLIC_TEMPLATE = T('1');
+const REVEALED_TEMPLATE = T('2');
+const classify = (template) => (template === PUBLIC_TEMPLATE ? 'PUBLIC' : template === REVEALED_TEMPLATE ? 'REVEALED' : undefined);
+const quoteHop = (pool, i, o) => ({ poolComponent: P(pool), inputResource: R(i), outputResource: R(o), amountIn: '1000000', amountOut: '990000', feeBps: '30' });
+const routeQuote = (hops) => ({ inputResource: hops[0].inputResource, outputResource: hops.at(-1).outputResource, amountIn: '1000000', amountOut: '980000', hops });
+const buildWith = (classifier, hops, templateAddresses) =>
+  w
+    .ammRouteIntentBuilder(ACCT, () => 'op', classifier)
+    .multiHopSwap({ quote: routeQuote(hops), minOutput: '900000', maxEpoch: '99', slippageBps: '50', templateAddresses });
+const build = (hops, templateAddresses) => buildWith(classify, hops, templateAddresses);
+/** The historical two-argument call: no classifier at all, not `undefined` for one. */
+const buildUnclassified = (hops, templateAddresses) =>
+  w
+    .ammRouteIntentBuilder(ACCT, () => 'op')
+    .multiHopSwap({ quote: routeQuote(hops), minOutput: '900000', maxEpoch: '99', slippageBps: '50', templateAddresses });
+
+test('route builder: a single REVEALED hop builds the revealed-pool swap, a PUBLIC hop the ordinary one', () => {
+  const revealed = build([quoteHop('a', 'x', 'y')], [REVEALED_TEMPLATE]);
+  assert.equal(revealed.operation, 'revealed_swap');
+  const pub = build([quoteHop('a', 'x', 'y')], [PUBLIC_TEMPLATE]);
+  assert.equal(pub.operation, 'swap');
+  // Same venue-independent instruction shape: both templates expose the same `swap`.
+  assert.deepEqual(
+    revealed.instructions.map((i) => i.kind),
+    pub.instructions.map((i) => i.kind),
+  );
+});
+
+test('route builder: a route crossing both venues is named mixed and carries each hop venue', () => {
+  const mixed = build([quoteHop('a', 'x', 'y'), quoteHop('b', 'y', 'z')], [REVEALED_TEMPLATE, PUBLIC_TEMPLATE]);
+  assert.equal(mixed.operation, 'mixed_multi_hop_swap');
+  assert.deepEqual(mixed.route.map((h) => h.venue), ['REVEALED', 'PUBLIC']);
+  assert.deepEqual(mixed.instructions.map((i) => i.kind), ['withdraw_fungible', 'call_method', 'call_method', 'deposit_all']);
+  // Only the INPUT leaves the account; the intermediate stays on the workspace.
+  assert.equal(mixed.instructions[0].resourceAddress, R('x'));
+  assert.equal(mixed.instructions.filter((i) => i.kind === 'withdraw_fungible').length, 1);
+
+  const allRevealed = build([quoteHop('a', 'x', 'y'), quoteHop('b', 'y', 'z')], [REVEALED_TEMPLATE, REVEALED_TEMPLATE]);
+  assert.equal(allRevealed.operation, 'revealed_multi_hop_swap');
+  const allPublic = build([quoteHop('a', 'x', 'y'), quoteHop('b', 'y', 'z')], [PUBLIC_TEMPLATE, PUBLIC_TEMPLATE]);
+  assert.equal(allPublic.operation, 'multi_hop_swap');
+});
+
+test('route builder: a hop whose template is unrecorded or unreported is REFUSED, not assumed public', () => {
+  // Assuming "public" would be the less revealing of the two descriptions, so a signer could
+  // be shown public-pool wording for a trade that was actually transparent-pool. Refuse.
+  assert.throws(() => build([quoteHop('a', 'x', 'y')], [T('9')]), /not a recorded Shadow Swap pool template/);
+  assert.throws(() => build([quoteHop('a', 'x', 'y')], [undefined]), /did not report its template/);
+  assert.throws(
+    () => build([quoteHop('a', 'x', 'y'), quoteHop('b', 'y', 'z')], [REVEALED_TEMPLATE]),
+    /2 hops but 1 template addresses/,
+  );
+});
+
+test('route builder: without a classifier every hop stays unnamed and the public names are kept', () => {
+  // The historical call shape. Callers that omit the classifier quote public pools only, and
+  // nothing silently becomes a revealed-pool trade.
+  const one = buildUnclassified([quoteHop('a', 'x', 'y')], [REVEALED_TEMPLATE]);
+  assert.equal(one.operation, 'swap');
+  const two = buildUnclassified([quoteHop('a', 'x', 'y'), quoteHop('b', 'y', 'z')], [REVEALED_TEMPLATE, PUBLIC_TEMPLATE]);
+  assert.equal(two.operation, 'multi_hop_swap');
+  assert.deepEqual(two.route.map((h) => h.venue), [undefined, undefined]);
+});

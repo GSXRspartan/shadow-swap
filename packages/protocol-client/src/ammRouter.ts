@@ -185,7 +185,25 @@ export interface MultiHopSwapRequest {
 }
 
 export interface MultiHopIntentBuilder<TIntent> {
-  multiHopSwap(input: { quote: RouteQuote; minOutput: string; maxEpoch: string; slippageBps: string }): TIntent;
+  multiHopSwap(input: {
+    quote: RouteQuote;
+    minOutput: string;
+    maxEpoch: string;
+    slippageBps: string;
+    /**
+     * Each hop's published template address, in route order, as named by that component's OWN
+     * header in the authoritative re-read above.
+     *
+     * Two templates share this pool shape — the public pool and the revealed-value pool — so
+     * a caller that must disclose the venue reads it from here. This module stays policy-free:
+     * it reports what each component said and never decides which templates are acceptable.
+     *
+     * An entry is `undefined` only when the transport could not report that hop's template
+     * (the legacy flat-field envelope path). A builder that needs the venue must refuse such
+     * a hop rather than assume one.
+     */
+    templateAddresses: readonly (string | undefined)[];
+  }): TIntent;
 }
 
 export type MultiHopOutcome<TIntent> =
@@ -196,6 +214,8 @@ export type MultiHopOutcome<TIntent> =
       builderIntent: TIntent;
       /** Freshness of each hop's authoritative read, in route order. */
       freshness: readonly Freshness[];
+      /** Each hop's own published template address, in route order (see the builder input). */
+      templateAddresses: readonly (string | undefined)[];
     }
   | { status: 'STALE' | 'UNAVAILABLE' | 'EXPIRED' | 'CONFLICTED'; reason: string };
 
@@ -210,12 +230,14 @@ export async function resolveMultiHopSwap<TIntent>(
   }
   const edges: PoolEdge[] = [];
   const freshness: Freshness[] = [];
+  const templateAddresses: (string | undefined)[] = [];
   for (const pool of request.pools) {
     // EVERY hop is re-read authoritatively; a discovery snapshot never prices a signed route.
     const read = await deps.readback.readPool(pool);
     if (read.status !== 'FOUND') return { status: 'UNAVAILABLE', reason: `Pool ${pool}: ${read.reason}` };
     const v = read.value;
     freshness.push(read.freshness);
+    templateAddresses.push(v.templateAddress);
     edges.push({ poolComponent: pool, resourceA: v.resourceA, resourceB: v.resourceB, reserveA: v.reserveA, reserveB: v.reserveB, feeBps: v.feeBps });
   }
   let quote: RouteQuote;
@@ -239,5 +261,12 @@ export async function resolveMultiHopSwap<TIntent>(
       return { status: 'STALE', reason: `Reserves moved since the quote: the route now pays ${quote.amountOut}, below the ${floor} the shown quote allowed. Re-quote before signing.` };
     }
   }
-  return { status: 'ACTIVE', quote, minOutput, freshness, builderIntent: deps.builder.multiHopSwap({ quote, minOutput, maxEpoch: request.maxEpoch, slippageBps: request.slippage.slippageBps }) };
+  return {
+    status: 'ACTIVE',
+    quote,
+    minOutput,
+    freshness,
+    templateAddresses,
+    builderIntent: deps.builder.multiHopSwap({ quote, minOutput, maxEpoch: request.maxEpoch, slippageBps: request.slippage.slippageBps, templateAddresses }),
+  };
 }

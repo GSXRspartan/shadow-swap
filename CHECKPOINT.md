@@ -5,8 +5,9 @@
 > and Windows-test docs beside it).
 
 ## G1. Outcome
-Branched from `main` @ `838cbb6` (PRs #9, #10 merged). Two PRs: #11 (`feat/universal-trading-v048`,
-all 12 checks green) and #12 (`feat/cross-layer-v048`). Nothing published, deployed or merged.
+Branched from `main` @ `838cbb6` (PRs #9, #10 merged). Three stacked PRs:
+#11 (`feat/universal-trading-v048`, 12/12 green), #12 (`feat/cross-layer-v048`, 12/12 green) and
+#13 (`feat/mixed-route-execution-v048`). Nothing published, deployed or merged.
 
 NEW executable capability: `RevealedAssetPool`, a separate AMM for assets whose value is an exact
 revealed integer — created-Stealth (native tTARI included), revealed Confidential, and public
@@ -15,6 +16,12 @@ guard is untouched and r01 proves the refusal still holds. Plus four new mixed-a
 an own-item NFT picker read from chain, mixed-pool atomic routing, and the L1→L2 conversion
 flow.
 
+The Swap page now SIGNS the revealed-value and mixed routes, not merely quotes them. Each hop's
+venue is read from the pool component's own template address in the authoritative re-read, which
+decides the builder, the operation name and the disclosure; an unrecorded or unreported template
+is refused rather than assumed public. `SIGNABLE_MECHANISMS` is exported and tested, so no
+button can exist for a route that cannot build its transaction.
+
 ## G2. Engine findings
 - A Confidential vault CAN pay out a partial revealed amount (r04) — the open question that
   decided whether Confidential could be an AMM side.
@@ -22,7 +29,10 @@ flow.
   `add_liquidity_exact` CANNOT serve a first deposit (e07e). Pool creation must keep
   `add_liquidity`; this corrects an open release blocker.
 - Both pool templates share one `swap` signature, so a revealed hop and a public hop compose
-  atomically (r11), and only the transaction's INPUT needs a Stealth-capable withdrawal.
+  atomically (r11), and only the transaction's INPUT needs a Stealth-capable withdrawal. The
+  corollary: the venues are indistinguishable ON THE WIRE, so the browser must carry the venue
+  itself, from chain. The `mixed_multi_hop_swap` wire scenario pins that the engine executes
+  the exact instruction list the browser builds across both templates.
 - A Stealth container has no commitment field upstream; a Confidential one does. That asymmetry
   is the whole safety argument, enforced per bucket and proved against a real blinded
   commitment (r09).
@@ -32,7 +42,7 @@ flow.
   consensus-attested receipt, and a base-layer verifier for it.
 
 ## G3. Evidence
-Engine 93/93 (16 binaries) · web 553/553 · wallet-adapter 27/27 · protocol-client 267/267 ·
+Engine 93/93 (16 binaries) · web 560/560 · wallet-adapter 31/31 · protocol-client 268/268 ·
 e2e Chromium 91 passed / 4 skipped / 1 sandbox-egress failure that passes in CI ·
 reproducible WASM for 6 templates from two checkout paths.
 Levels: engine-verified and reference-provider verified only. Nothing real-wallet or
