@@ -9,8 +9,22 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const pc = require('../dist/index.js');
 
-test('Universe reaches BOTH layers — and can sign NEITHER HTLC leg', () => {
-  // The correction worth pinning: the richer application has the narrower surface here.
+test('Universe has TWO surfaces: the embedded dApp provider CAN sign the L2 leg, the Tapplet cannot', () => {
+  // Conflating these is the easy and expensive mistake. A dApp loaded through the ordinary
+  // embedded `window.tari` provider submits transaction requests — instruction lists — so it can
+  // call a template method and drive the whole L2 escrow. The in-app Tapplet signer is a
+  // different channel with a narrow allowlist of plain payments.
+  const connector = pc.WALLET_SURFACES.UNIVERSE_CONNECTOR;
+  for (const op of ['L2_FUND_HTLC', 'L2_CLAIM_HTLC', 'L2_REFUND_HTLC']) {
+    assert.ok(connector.can.includes(op), `the embedded provider can ${op}`);
+  }
+  // But not the L1 leg: a transaction request is an Ootle instruction list, not a TariScript.
+  for (const op of ['L1_FUND_HTLC', 'L1_CLAIM_HTLC', 'L1_REFUND_HTLC']) {
+    assert.ok(!connector.can.includes(op), `the embedded provider cannot ${op}`);
+  }
+  assert.match(connector.limits.join(' '), /cannot build a Minotari L1 HTLC output/);
+  assert.match(connector.limits.join(' '), /Reference-provider verified only/);
+
   const u = pc.WALLET_SURFACES.UNIVERSE_TAPPLET;
   assert.ok(u.can.includes('L1_READ'), 'Universe does reach L1 from a web page');
   assert.ok(u.can.includes('L2_READ'), 'and L2');
@@ -21,7 +35,28 @@ test('Universe reaches BOTH layers — and can sign NEITHER HTLC leg', () => {
   const limits = u.limits.join(' ');
   assert.match(limits, /sendOneSided.*cannot carry a custom TariScript/);
   assert.match(limits, /sendOotleStealth.*rather than a template method call/);
-  assert.match(limits, /ONE generic L2 transaction-request method/, 'names the single upstream change needed');
+  assert.match(limits, /ONE generic L2 transaction-request method in the Tapplet allowlist/);
+  // And it must say that the embedded provider needs no such change, so nobody reads the Tapplet
+  // limitation as a limitation of Universe as a whole.
+  assert.match(limits, /does not need that change and can already submit transaction requests/);
+});
+
+test('a browser-only plan exists for the L2 leg, and the L1 leg still needs a local wallet', () => {
+  // The practical consequence of the two-surface distinction: with Universe's embedded provider
+  // the entire L2 side is browser-signable, and the ONLY local dependency left is L1.
+  const plan = pc.planSigners('L2_TO_L1', ['UNIVERSE_CONNECTOR', 'LOCAL_WALLETD_GRPC']);
+  assert.equal(plan.ok, true);
+  assert.equal(plan.assignment.L2_FUND_HTLC, 'UNIVERSE_CONNECTOR');
+  assert.equal(plan.assignment.L2_REFUND_HTLC, 'UNIVERSE_CONNECTOR');
+  assert.equal(plan.assignment.L1_FUND_HTLC, 'LOCAL_WALLETD_GRPC');
+  assert.equal(plan.needsLocalWallet, true, 'the L1 leg is still local-only');
+
+  // Universe's embedded provider alone covers L2 but cannot finish the trade.
+  const l2Only = pc.planSigners('L2_TO_L1', ['UNIVERSE_CONNECTOR']);
+  assert.equal(l2Only.ok, false);
+  assert.deepEqual([...l2Only.missing].sort(), ['L1_CLAIM_HTLC', 'L1_FUND_HTLC', 'L1_REFUND_HTLC']);
+  // And it reaches L1 for READS, so the gap is signing, not visibility.
+  assert.ok(pc.WALLET_SURFACES.UNIVERSE_CONNECTOR.can.includes('L1_READ'));
 });
 
 test('Sapient is L2-only but CAN drive the L2 HTLC; local gRPC is the only L1 HTLC surface', () => {

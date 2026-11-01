@@ -55,15 +55,30 @@ bytes — so the L2 leg must hash the same 32 bytes with SHA-256, which it does.
 tools (`send_sha_atomic_swap`, `claim_sha_atomic_swap`, `claim_htlc_refund`,
 `atomic_swap_status`), all over `WalletGrpcClient`. That is a **local** wallet surface.
 
-## 3. Tari Universe reaches BOTH layers from a web context — but exposes no HTLC on either
+## 3. Tari Universe has TWO surfaces, and only one of them matters for an HTLC
 
-**Correction to an earlier claim in this document.** It previously said there is "no
-browser-reachable L1 signing API". That was wrong. Tari Universe hosts **Tapplets** — web
-applications running in the app — and its `TappletSigner` exposes **both** L1 and L2 operations
-to them. Any statement that a web page cannot reach L1 at all is incorrect.
+**This section has been corrected twice. Both corrections are kept visible because the mistake is
+easy to repeat.** It first claimed there is "no browser-reachable L1 signing API" (wrong: Universe
+reaches both layers). It then claimed Universe can sign neither HTLC leg (wrong: that is true only
+of its in-app Tapplet signer, not of the ordinary embedded dApp provider).
 
-What matters for this protocol is *which* operations. The signer's dispatch is an explicit
-allowlist, with the source comment: *"Dispatch is an explicit allowlist - never a dynamic lookup
+| Surface | What it is | L2 HTLC | L1 HTLC |
+|---|---|---|---|
+| **Embedded dApp provider** (`window.tari`, `isEmbedded: true`) | the same 13-method dApp API the Sapient extension implements, including `tari_createTransactionRequest` / `tari_submitTransactionRequest` | **Yes** — a transaction request is an instruction list, so it can call a template method | No — an Ootle instruction list cannot express a Minotari TariScript |
+| **In-app Tapplet signer** (`postMessage`) | a deliberately narrow allowlist for Tapplets hosted inside Universe | No — `sendOotleStealth` goes to an address, not a template method | No — `sendOneSided` cannot carry a custom script |
+
+**The embedded provider is the surface Shadow Swap already targets**, and its existing AMM, pool
+and SwapOffer routes run through it. A dApp never detects *which* wallet it has: the provider
+boundary describes surfaces by the methods they answer, never by brand, so Sapient and Universe
+are two capability sets rather than two products. `apps/web/test/tari-provider-conformance.test.cjs`
+models both forms and asserts they issue identical requests.
+
+So the practical position: **the entire L2 leg is browser-signable today**, through either Sapient
+or Universe, and **the only local-wallet dependency is L1**.
+
+### The Tapplet allowlist, for completeness
+
+A Tapplet's signer dispatch is an explicit allowlist, with the source comment: *"Dispatch is an explicit allowlist - never a dynamic lookup
 on the prototype - so a tapplet can't reach anything beyond the methods below"*, and *"do not
 widen without a security review"*. The complete set:
 
@@ -98,15 +113,14 @@ Ootle HTLCs.
 | Leg | Best available signer | Why |
 |---|---|---|
 | **L1 HTLC** (fund / claim / refund) | **local wallet gRPC** (console wallet or walletd) | the only surface that builds the HTLC script at all |
-| **L2 HTLC** (fund / claim / refund) | **Sapient** (browser) | transaction requests can call a template method |
-| Reading either layer, plain payments | **Universe Tapplet** | both layers, but payments only |
+| **L2 HTLC** (fund / claim / refund) | **Sapient OR Universe's embedded provider** (browser) | transaction requests carry an instruction list, so they can call a template method |
+| Reading either layer | any of the three browser surfaces | — |
 
 ### The exact missing capabilities, now sharply named
 
-- **For a Universe-hosted Shadow Swap:** one generic L2 **transaction-request** method in the
-  Tapplet allowlist — the equivalent of what Sapient already does — would let a Tapplet call
-  template methods and therefore drive the whole L2 leg. This is the smaller and more plausible
-  of the two asks, and it alone would make the L2 side browser-complete inside Universe.
+- **For Shadow Swap shipped as a Tapplet specifically:** one generic L2 **transaction-request**
+  method in the Tapplet allowlist. Note this is NOT needed for Shadow Swap as an ordinary web
+  page loaded in Universe — that path already has the full transaction-request surface.
 - **For a fully browser-only cross-layer swap:** an L1 method that signs
   `send_sha_atomic_swap` / `claim_sha_atomic_swap` / `claim_htlc_refund`. Until that exists, the
   L1 leg needs a local wallet regardless of which browser wallet is used.
@@ -163,7 +177,7 @@ and can never be one. That is why a separate one-sided template exists.
 | L1 script shape and gRPC surface | **Source verified** — read at `3994846`; no L1 script has been executed here |
 | L1 funding / claiming / refunding | **Blocked in this environment** — needs a local wallet and a funded L1 account |
 | Composed two-layer exchange | **NOT VERIFIED.** Neither simulated nor live |
-| Browser-only cross-layer trading | **Blocked by upstream** — Universe Tapplets reach both layers but expose plain payments only; no HTLC on either (§3) |
+| Browser-only cross-layer trading | **Blocked for the L1 leg only.** The L2 leg is browser-signable today via Sapient or Universe's embedded provider; L1 needs a local wallet because no browser API expresses a TariScript (§3) |
 
 **The composed exchange is not called atomic anywhere in this repository**, and will not be until
 a real L1 script execution and a reconciled two-layer settlement have both been observed.

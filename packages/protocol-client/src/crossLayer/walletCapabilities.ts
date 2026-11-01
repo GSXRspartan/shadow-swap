@@ -11,17 +11,31 @@
  * `planSigners` refuses a route unless every operation it will need has a signer, and names the
  * first one that does not.
  *
- * WHAT WAS SURPRISING, AND IS THEREFORE PINNED HERE. Tari Universe reaches BOTH layers from a web
- * page (its Tapplet signer exposes L1 and L2), but its only sends are plain payments:
- * `sendOneSided` cannot carry a custom TariScript, and `sendOotleStealth` goes to an ADDRESS
- * rather than calling a template method. So the richer application has the NARROWER surface for
- * this purpose, and Sapient — an L2-only provider — is the one that can drive the L2 HTLC leg.
+ * TARI UNIVERSE HAS TWO DISTINCT SURFACES, AND CONFLATING THEM IS AN EASY AND EXPENSIVE MISTAKE.
+ *
+ *   * `UNIVERSE_CONNECTOR` — the injected `window.tari` provider, in Universe's case the EMBEDDED
+ *     iframe form (it publishes `isEmbedded: true`). It speaks the same 13-method dApp API that
+ *     the Sapient extension implements, including `tari_createTransactionRequest` /
+ *     `tari_submitTransactionRequest`, which carry an instruction list and can therefore call a
+ *     template method. This surface CAN drive the whole L2 HTLC leg, and it is the one Shadow
+ *     Swap's existing AMM, pool and SwapOffer routes already target.
+ *   * `UNIVERSE_TAPPLET` — the in-app `postMessage` signer for Tapplets hosted inside Universe.
+ *     A deliberately narrow allowlist whose only sends are plain payments: `sendOneSided` cannot
+ *     carry a custom TariScript, and `sendOotleStealth` goes to an ADDRESS rather than calling a
+ *     template method. This surface can drive NEITHER HTLC leg.
+ *
+ * A dApp never detects WHICH wallet it has — the provider boundary describes surfaces by the
+ * methods they answer, never by brand — so these are two capability sets, not two products.
  */
 
 import { DIRECTIONS, type SwapDirection } from './atomicSwap.js';
 
 /** A signing surface a user might have available. */
-export type WalletKind = 'LOCAL_WALLETD_GRPC' | 'SAPIENT' | 'UNIVERSE_TAPPLET';
+export type WalletKind =
+  | 'LOCAL_WALLETD_GRPC'
+  | 'SAPIENT'
+  | 'UNIVERSE_CONNECTOR'
+  | 'UNIVERSE_TAPPLET';
 
 /** The operations a cross-layer exchange needs, per leg. */
 export type CrossLayerOperation =
@@ -81,19 +95,35 @@ export const WALLET_SURFACES: Readonly<Record<WalletKind, WalletSurface>> = {
     requiresLocalEndpoint: false,
   },
   /**
-   * Tari Universe, through a Tapplet. Reaches BOTH layers — and that correction matters — but
-   * every send it exposes is a plain payment.
+   * The injected `window.tari` provider in its embedded (iframe) form, which is how Tari Universe
+   * presents itself to a web page. Same dApp API as the Sapient extension: a dApp never detects
+   * which wallet it has, so this entry differs from SAPIENT only in needing no extension.
+   */
+  UNIVERSE_CONNECTOR: {
+    kind: 'UNIVERSE_CONNECTOR',
+    label: 'Tari Universe (embedded dApp provider)',
+    readFrom: 'universe.tari.mw/tari-connector.js read 2026-09-28; integration types at universe.tari.mw/integration/tari-dapp.d.ts',
+    can: ['L2_FUND_HTLC', 'L2_CLAIM_HTLC', 'L2_REFUND_HTLC', 'L2_READ', 'L1_READ'],
+    limits: [
+      'Its transaction requests are Ootle L2 instruction lists, so they cannot build a Minotari L1 HTLC output — that needs a custom TariScript, which this API does not express.',
+      'Reference-provider verified only: the method surface is confirmed against the deployed connector and the published integration types, but no real wallet has answered a cross-layer escrow call.',
+    ],
+    requiresLocalEndpoint: false,
+  },
+  /**
+   * Tari Universe's in-app Tapplet signer — a DIFFERENT channel from the connector above, with a
+   * deliberately narrow allowlist. Kept as its own entry precisely so the two are never conflated.
    */
   UNIVERSE_TAPPLET: {
     kind: 'UNIVERSE_TAPPLET',
-    label: 'Tari Universe (Tapplet, both layers)',
+    label: 'Tari Universe (in-app Tapplet signer)',
     readFrom: 'tari-project/universe 22366ad',
     can: ['L1_READ', 'L2_READ'],
     limits: [
       'Reaches both layers, but its only L1 send is `sendOneSided`, a plain one-sided payment that cannot carry a custom TariScript — and an L1 HTLC output IS a custom script.',
       'Its only L2 send is `sendOotleStealth`, a transfer to an address rather than a template method call, so it cannot call the cross-layer escrow at all.',
       'No atomic-swap or HTLC code exists anywhere in the Universe repository.',
-      'ONE generic L2 transaction-request method in its Tapplet allowlist would make the whole L2 leg signable here; that is the single upstream change this route is waiting on.',
+      'ONE generic L2 transaction-request method in the Tapplet allowlist would make the L2 leg signable from a Tapplet. A dApp loaded through the ordinary embedded provider (UNIVERSE_CONNECTOR) does not need that change and can already submit transaction requests.',
     ],
     requiresLocalEndpoint: false,
   },
