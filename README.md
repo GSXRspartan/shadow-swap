@@ -307,7 +307,14 @@ first-class state meaning "not yet known", never "failed" and never "retry".
   a deployed provider. A wallet that does not recognise it rejects the request, which
   fails closed.
 - **Stealth/Confidential assets are not supported by the public AMM pool** by design
-  (its resource guard), which is distinct from "never supported by Shadow Swap".
+  (its resource guard), which is unchanged. They now have their own venue: a separate
+  `RevealedAssetPool` gives them AMM liquidity with publicly visible reserves
+  (`docs/SHADOW_SWAP_PRIVATE_LIQUIDITY_IMPLEMENTATION.md`). It is **transparent**
+  liquidity, not confidential: trading a privacy-typed asset there reveals the traded
+  amount, its timing and your account for that trade. Unpublished, so unavailable.
+- **Blinded (non-revealed) confidential amounts cannot be traded anywhere** in this build.
+  Spending a commitment needs a wallet-built proof no browser wallet exposes, and the
+  revealed-value pool refuses such buckets outright rather than mis-accounting them.
 - **Ootle v0.48.0 reset Esmeralda.** No Shadow Swap template is published on the reset
   network yet, so discovery there truthfully reports "not deployed".
 - **Stealth-typed inputs (tTARI, created-Stealth) from Sapient seed accounts** go through the
@@ -316,7 +323,16 @@ first-class state meaning "not yet known", never "failed" and never "retry".
 - **P2P offers (SwapOffer)** are built, reviewed and verified in the browser, with shareable
   invitations that are always re-checked against chain state, but the template is not
   published, so they are unavailable until an operator publishes and records it.
-- **Cross-layer routing is not live.**
+- **Minotari L1 → Ootle L2 conversion** is implemented for every step this app can do
+  (destination, proof checks, evidence-based tracking, on-chain receipt), but the claim
+  itself is signed by a key derived from your account secret and is performed by your own
+  wallet: no browser wallet exposes a burn claim. It is a one-way, irreversible
+  conversion, not an atomic swap.
+- **There is no Ootle L2 → Minotari L1 route** in this protocol: v0.48's instruction set
+  has a one-way `ClaimBurn` and nothing that burns or exits on L2, and the base layer has
+  no verifier for an L2 proof. Shadow Swap will not offer an operator-held bridge
+  (`docs/SHADOW_SWAP_L1_L2_ROUTING_IMPLEMENTATION.md`).
+- **Cross-layer atomic swaps are not live** (the L1 HTLC leg has no browser-reachable API).
 - **No mainnet deployment exists.**
 
 ---

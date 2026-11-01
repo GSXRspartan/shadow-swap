@@ -1,3 +1,50 @@
+# END-OF-RUN CHECKPOINT (2026-10-31, Phase 3) — universal trading: revealed-value liquidity, mixed routing, cross-layer
+
+> Supersedes only the facts it contradicts below. Full record:
+> `docs/SHADOW_SWAP_UNIVERSAL_TRADING_MATRIX.md` (+ the private-liquidity, L1/L2, P2P-acceptance
+> and Windows-test docs beside it).
+
+## G1. Outcome
+Branched from `main` @ `838cbb6` (PRs #9, #10 merged). Two PRs: #11 (`feat/universal-trading-v048`,
+all 12 checks green) and #12 (`feat/cross-layer-v048`). Nothing published, deployed or merged.
+
+NEW executable capability: `RevealedAssetPool`, a separate AMM for assets whose value is an exact
+revealed integer — created-Stealth (native tTARI included), revealed Confidential, and public
+fungibles. That class previously had NO AMM liquidity at all, because Pool v2 refuses it; its
+guard is untouched and r01 proves the refusal still holds. Plus four new mixed-asset P2P routes,
+an own-item NFT picker read from chain, mixed-pool atomic routing, and the L1→L2 conversion
+flow.
+
+## G2. Engine findings
+- A Confidential vault CAN pay out a partial revealed amount (r04) — the open question that
+  decided whether Confidential could be an AMM side.
+- `Bucket::take` asserts `amount.is_positive()` in template_lib, so Pool v2's
+  `add_liquidity_exact` CANNOT serve a first deposit (e07e). Pool creation must keep
+  `add_liquidity`; this corrects an open release blocker.
+- Both pool templates share one `swap` signature, so a revealed hop and a public hop compose
+  atomically (r11), and only the transaction's INPUT needs a Stealth-capable withdrawal.
+- A Stealth container has no commitment field upstream; a Confidential one does. That asymmetry
+  is the whole safety argument, enforced per bucket and proved against a real blinded
+  commitment (r09).
+- Sapient's dApp balance API carries no NFT token ids; the ids are public in the account's own
+  vaults, so they are read from chain instead (authoritative, not advisory).
+- No L2→L1 route exists in v0.48. Missing primitives: an L2 exit instruction emitting a
+  consensus-attested receipt, and a base-layer verifier for it.
+
+## G3. Evidence
+Engine 93/93 (16 binaries) · web 553/553 · wallet-adapter 27/27 · protocol-client 267/267 ·
+e2e Chromium 91 passed / 4 skipped / 1 sandbox-egress failure that passes in CI ·
+reproducible WASM for 6 templates from two checkout paths.
+Levels: engine-verified and reference-provider verified only. Nothing real-wallet or
+live-Esmeralda verified (the indexers are unreachable from this environment).
+
+## G4. Open
+Operator: publish Pool + SwapOffer + RevealedAssetPool via walletd and record the addresses;
+keep `add_liquidity` for creation; then the Windows lists
+(`SHADOW_SWAP_WINDOWS_LIVE_TESTS.md`), including the first real-wallet check of the
+`withdrawStealthAndExecute` follow-up workspace ids and the L1→L2 observation cases.
+
+---
 # END-OF-RUN CHECKPOINT (2026-10-31, Phase 2) — browser SwapOffer, Sapient Stealth input, v0.48 wire format
 
 > Supersedes only the facts it contradicts below. Full record: `docs/SHADOW_SWAP_P2P_SWAPOFFER_BROWSER.md`.
