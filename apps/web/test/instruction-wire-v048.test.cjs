@@ -86,6 +86,64 @@ test('wire == engine: multi_hop_swap (intermediate min 1, route min on the last 
   assert.deepEqual(wire(intent), instructions);
 });
 
+test('wire == engine: mixed_multi_hop_swap crosses a revealed pool and a public pool in ONE transaction', () => {
+  // The decisive property: naming the venues changes the OPERATION and the DISCLOSURE but
+  // not a single instruction. The engine executed this exact list across both templates, so
+  // a mixed route is a real atomic transaction rather than two submissions dressed as one.
+  const { params, instructions } = scenario('mixed_multi_hop_swap');
+  const hops = params.hops.map((h) => ({ ...h, quotedOutput: '1000000', feeBps: '30' }));
+  const intent = w.buildMultiHopSwapIntent({
+    accountAddress: params.accountAddress,
+    rawInputAmount: params.rawInputAmount,
+    minOutput: params.minOutput,
+    hops,
+    maxEpoch: '10',
+    operationId: 'op',
+    slippageBps: '50',
+  });
+  assert.deepEqual(wire(intent), instructions);
+  assert.equal(intent.operation, 'mixed_multi_hop_swap');
+  assert.deepEqual(
+    intent.route.map((h) => h.venue),
+    ['REVEALED', 'PUBLIC'],
+    'each hop carries the venue it actually traded at, as evidence',
+  );
+  // The same hops with the venues stripped produce the SAME wire and the public name: proof
+  // that the venue is metadata the browser must supply, never something the wire reveals.
+  const unnamed = w.buildMultiHopSwapIntent({
+    accountAddress: params.accountAddress,
+    rawInputAmount: params.rawInputAmount,
+    minOutput: params.minOutput,
+    hops: hops.map(({ venue: _venue, ...rest }) => rest),
+    maxEpoch: '10',
+    operationId: 'op',
+    slippageBps: '50',
+  });
+  assert.deepEqual(wire(unnamed), instructions);
+  assert.equal(unnamed.operation, 'multi_hop_swap');
+});
+
+test('mixed route naming: a partially classified route is refused, and the disclosure follows the venues', () => {
+  assert.equal(w.multiHopOperationFor([undefined, undefined]), 'multi_hop_swap');
+  assert.equal(w.multiHopOperationFor(['PUBLIC', 'PUBLIC']), 'multi_hop_swap');
+  assert.equal(w.multiHopOperationFor(['REVEALED', 'REVEALED']), 'revealed_multi_hop_swap');
+  assert.equal(w.multiHopOperationFor(['REVEALED', 'PUBLIC']), 'mixed_multi_hop_swap');
+  assert.equal(w.multiHopOperationFor(['PUBLIC', 'REVEALED']), 'mixed_multi_hop_swap');
+  // A route that can only name SOME of its venues cannot be disclosed, so it is refused
+  // rather than described by its less revealing half.
+  assert.throws(() => w.multiHopOperationFor(['REVEALED', undefined]), /every hop must name its venue/);
+  assert.throws(() => w.multiHopOperationFor([undefined, 'PUBLIC']), /every hop must name its venue/);
+
+  // Each disclosure must state that the amounts are revealed, and none may claim privacy.
+  for (const op of ['mixed_multi_hop_swap', 'revealed_multi_hop_swap']) {
+    const text = w.multiHopDisclosureFor(op);
+    assert.match(text, /revealed/i);
+    assert.doesNotMatch(text, /confidential|private|hidden/i);
+  }
+  assert.match(w.multiHopDisclosureFor('mixed_multi_hop_swap'), /transparent/i);
+  assert.match(w.multiHopDisclosureFor('multi_hop_swap'), /PUBLIC AMM BOUNDARY/);
+});
+
 test('wire == engine: remove_liquidity (both tuple elements deposited)', () => {
   const { params, instructions } = scenario('remove_liquidity');
   assert.deepEqual(wire(w.buildRemoveLiquidityIntent({ ...params, maxEpoch: '10', operationId: 'op' })), instructions);

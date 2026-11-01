@@ -1832,3 +1832,66 @@ test('provider liveness: a read that answers in time is unaffected by the deadli
   const view = await tari.fetchNetwork(good);
   assert.equal(view.network, 'esmeralda');
 });
+// --- venue spoofing (can a route be described as less revealing than it was?) -------------
+
+test('venue spoofing: a discovery hint claiming "public" cannot make a transparent-pool hop look public', async () => {
+  // The attack: whatever proposed the route says every hop is an ordinary public pool, so the
+  // signer is shown public-pool wording while the trade actually crosses a revealed-value
+  // pool and publishes the amount. The defence is that the venue is taken from each
+  // component's OWN template address in the authoritative re-read, so the hint is inert.
+  const A = `resource_${'a'.repeat(64)}`;
+  const B = `resource_${'b'.repeat(64)}`;
+  const C = `resource_${'c'.repeat(64)}`;
+  const POOL_1 = `component_${'1'.repeat(64)}`;
+  const POOL_2 = `component_${'2'.repeat(64)}`;
+  const REVEALED_TEMPLATE = 'de'.repeat(32);
+  const PUBLIC_TEMPLATE = 'f47a330eee1bbf91f58d9ff4280b4279c3c4fe91fb59ab5812cd5128442819ab';
+
+  // Hop 1 is REALLY a revealed-value pool; hop 2 is really public.
+  const onChain = {
+    [POOL_1]: { resourceA: A, resourceB: B, templateAddress: REVEALED_TEMPLATE },
+    [POOL_2]: { resourceA: B, resourceB: C, templateAddress: PUBLIC_TEMPLATE },
+  };
+  const readback = {
+    async readPool(component) {
+      const p = onChain[component];
+      return {
+        status: 'FOUND',
+        freshness: {},
+        value: {
+          poolComponent: component,
+          resourceA: p.resourceA,
+          resourceB: p.resourceB,
+          reserveA: '500000000',
+          reserveB: '500000000',
+          feeBps: '30',
+          lpResource: `resource_${'9'.repeat(64)}`,
+          totalLpSupply: '1000',
+          lockedLpSupply: '1',
+          templateAddress: p.templateAddress,
+        },
+      };
+    },
+  };
+  const classify = (t) => (t === PUBLIC_TEMPLATE ? 'PUBLIC' : t === REVEALED_TEMPLATE ? 'REVEALED' : undefined);
+  const outcome = await P.resolveMultiHopSwap(
+    { inputResource: A, outputResource: C, rawInputAmount: '1000000', pools: [POOL_1, POOL_2], slippage: { slippageBps: '50' }, maxEpoch: '100' },
+    { readback, builder: walletAdapter.ammRouteIntentBuilder(`component_${'f'.repeat(64)}`, () => 'op', classify) },
+  );
+  assert.equal(outcome.status, 'ACTIVE');
+  assert.equal(outcome.builderIntent.operation, 'mixed_multi_hop_swap', 'the route is named from chain state, not from the hint');
+  assert.deepEqual(outcome.builderIntent.route.map((h) => h.venue), ['REVEALED', 'PUBLIC']);
+  const disclosure = walletAdapter.multiHopDisclosureFor(outcome.builderIntent.operation);
+  assert.match(disclosure, /revealed/i);
+  assert.doesNotMatch(disclosure, /confidential|hidden/i);
+
+  // And a hop whose template is not recorded at all is refused outright rather than assumed
+  // to be the less revealing venue.
+  await assert.rejects(
+    P.resolveMultiHopSwap(
+      { inputResource: A, outputResource: C, rawInputAmount: '1000000', pools: [POOL_1, POOL_2], slippage: { slippageBps: '50' }, maxEpoch: '100' },
+      { readback, builder: walletAdapter.ammRouteIntentBuilder(`component_${'f'.repeat(64)}`, () => 'op', () => undefined) },
+    ),
+    /not a recorded Shadow Swap pool template/,
+  );
+});

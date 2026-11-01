@@ -65,7 +65,10 @@ Only with a `RevealedAssetPool` recorded.
 | 4.8 | A Confidential balance with blinded commitments | Refused (never silently partially accepted) |
 | 4.9 | tTARI from a **Sapient seed** account into a revealed pool | The approval is a **Stealth withdrawal**, not an instruction list. **This is the first real-wallet check of the follow-up workspace-id derivation** — record the result either way |
 | 4.10 | The same from a **walletd-relayed** account | The plain withdrawal path; record it |
-| 4.11 | A mixed route (transparent hop then public hop) | Quoted on `/swap`; it is shown but not signable from that page in this build — confirm the page says so rather than offering a dead button |
+| 4.11 | A direct transparent-pool swap from `/swap` | Signable from the Swap page. The review card must say **transparent pool** and name the revealed amount — never "confidential" |
+| 4.12 | A mixed route (transparent hop then public hop) from `/swap` | **One** transaction and one approval. The review says "Mixed multi-hop swap (… both venues, one transaction)"; the intermediate asset must never appear in the account afterwards; both hop components appear in the signed call list |
+| 4.13 | A route wholly inside revealed pools | Reviewed as a transparent route, one transaction |
+| 4.14 | Point the app at a pool component whose template is NOT recorded (e.g. a hand-made deep link) | Refused before signing, naming the template. It must not be quoted as either venue |
 
 ## 5. L1 → L2 conversion (observation only until you decide to spend)
 

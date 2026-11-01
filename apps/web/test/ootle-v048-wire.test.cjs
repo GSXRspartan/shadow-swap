@@ -400,15 +400,21 @@ test('deployment: a session never mixes generations', () => {
   assert.match(second.reason, /never mixed/);
 });
 
-test('deployment: execution-time pool rereads are refused unless the template is recorded for the verified generation', async () => {
-  const calls = [];
-  const inner = {
+const POOL_V2_TEMPLATE = 'f47a330eee1bbf91f58d9ff4280b4279c3c4fe91fb59ab5812cd5128442819ab';
+
+/** A transport stub that behaves like the real one: the state reports its own template. */
+function echoingReadback(calls, override) {
+  return {
     readPool: async (component, expect) => {
       calls.push(expect);
-      return { status: 'FOUND', value: { poolComponent: component } };
+      return { status: 'FOUND', value: { poolComponent: component, templateAddress: override ?? expect?.templateAddress } };
     },
   };
-  const pinned = deployment.withTrustedPoolTemplates(inner, 'esmeralda');
+}
+
+test('deployment: execution-time pool rereads are refused unless the template is recorded for the verified generation', async () => {
+  const calls = [];
+  const pinned = deployment.withTrustedPoolTemplates(echoingReadback(calls), 'esmeralda');
   assert.equal((await pinned.readPool('component_x')).status, 'UNAVAILABLE', 'no generation verified yet');
   deployment.recordVerifiedGeneration('esmeralda', 'V048_RESET');
   assert.equal((await pinned.readPool('component_x')).status, 'UNAVAILABLE', 'nothing recorded on the reset network');
@@ -417,5 +423,39 @@ test('deployment: execution-time pool rereads are refused unless the template is
   assert.equal((await pinned.readPool('component_x', { templateAddress: 'ab'.repeat(32) })).status, 'UNAVAILABLE', 'a caller cannot pin an unrecorded template');
   const ok = await pinned.readPool('component_x');
   assert.equal(ok.status, 'FOUND');
-  assert.equal(calls.at(-1).templateAddress, 'f47a330eee1bbf91f58d9ff4280b4279c3c4fe91fb59ab5812cd5128442819ab', 'the reread is pinned to the recorded template');
+  assert.equal(calls.at(-1).templateAddress, POOL_V2_TEMPLATE, 'the reread is pinned to the recorded template');
+});
+
+test('deployment: a reread whose state reports an unrecorded template is refused even when the transport says FOUND', async () => {
+  // The decoder already compares the header against the pin we pass, so this only fires if a
+  // transport hands back a state for a different template. An unclassifiable venue cannot be
+  // disclosed, so it must never reach a builder.
+  deployment.resetVerifiedGenerations();
+  deployment.recordVerifiedGeneration('esmeralda', 'PRE_V048_RESET');
+  const impostor = deployment.withTrustedPoolTemplates(echoingReadback([], 'cd'.repeat(32)), 'esmeralda');
+  const read = await impostor.readPool('component_x');
+  assert.equal(read.status, 'UNAVAILABLE');
+  assert.match(read.reason, /not a recorded Shadow Swap pool template/);
+
+  const silent = deployment.withTrustedPoolTemplates(
+    { readPool: async (component) => ({ status: 'FOUND', value: { poolComponent: component } }) },
+    'esmeralda',
+  );
+  const quiet = await silent.readPool('component_x');
+  assert.equal(quiet.status, 'UNAVAILABLE');
+  assert.match(quiet.reason, /did not report its template/);
+});
+
+test('deployment: a RECORDED revealed-value pool template is readable through the same execution seam', () => {
+  // Both venues go through one seam because both templates expose the same component shape
+  // and the same `swap` method. What the seam guarantees is that the template is RECORDED;
+  // naming the venue is the caller's job, from the state's own template address.
+  const generation = deployment.deploymentFor('esmeralda', 'PRE_V048_RESET');
+  const revealed = 'ef'.repeat(32);
+  const withRevealed = { ...generation, revealedPoolTemplates: [revealed] };
+  assert.equal(deployment.poolKindOf(withRevealed, POOL_V2_TEMPLATE), 'PUBLIC');
+  assert.equal(deployment.poolKindOf(withRevealed, revealed), 'REVEALED');
+  assert.equal(deployment.poolKindOf(withRevealed, 'ab'.repeat(32)), undefined);
+  // A template recorded as BOTH is a recording error, so it is reported as neither.
+  assert.equal(deployment.poolKindOf({ ...withRevealed, poolTemplates: [revealed] }, revealed), undefined);
 });

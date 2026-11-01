@@ -90,6 +90,10 @@ test('decodePoolState assembles the exact LIVE-VERIFIED Pool v2 state from real 
     lpResource: LP,
     totalLpSupply: '600000',
     lockedLpSupply: '1000',
+    // Surfaced from the component's OWN header. Two templates share this component shape
+    // (the public pool and the revealed-value pool), so a caller that must disclose which
+    // venue a hop traded at reads it from here rather than from discovery.
+    templateAddress: 'f47a330eee1bbf91f58d9ff4280b4279c3c4fe91fb59ab5812cd5128442819ab',
   });
 });
 

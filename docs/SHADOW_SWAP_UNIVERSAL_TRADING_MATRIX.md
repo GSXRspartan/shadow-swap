@@ -1,7 +1,8 @@
 # Shadow Swap — universal trading matrix (Phase 3)
 
 Cohort: tari-ootle **v0.48.0** (`6a25dbc`), still the latest upstream tag on 2026-10-31.
-Branches: `feat/universal-trading-v048` (PR #11), `feat/cross-layer-v048` (PR #12).
+Branches: `feat/universal-trading-v048` (PR #11), `feat/cross-layer-v048` (PR #12),
+`feat/mixed-route-execution-v048` (PR #13).
 Start commit: `838cbb6` (`main`, with PRs #9 and #10 merged).
 
 ## Verification levels
@@ -37,12 +38,13 @@ Live verification was impossible in this environment: `esme-indexer-a/b.ootle.ta
 | NFT ↔ NFT barter | ENGINE VERIFIED, browser-built | unchanged; the offered item is now **picked from chain-read holdings** |
 | created-Stealth ↔ anything (P2P) | ENGINE VERIFIED, browser-built | unchanged |
 | revealed Confidential ↔ anything (P2P) | ENGINE VERIFIED, browser-built | unchanged |
-| **created-Stealth ↔ public fungible (AMM)** | BLOCKED (Pool v2 refuses the type) | **ENGINE VERIFIED** (`r02`), browser-built, EXPERIMENTAL / DISABLED until published |
-| **created-Stealth ↔ created-Stealth (AMM)** | NOT IMPLEMENTED | **ENGINE VERIFIED** (`r03`), browser-built, gated |
-| **revealed Confidential ↔ public fungible (AMM)** | NOT IMPLEMENTED | **ENGINE VERIFIED** (`r04`), browser-built, gated |
-| **Native tTARI ↔ public fungible (revealed pool)** | NOT IMPLEMENTED | **ENGINE VERIFIED** (`r05`), browser-built, gated |
+| **created-Stealth ↔ public fungible (AMM)** | BLOCKED (Pool v2 refuses the type) | **ENGINE VERIFIED** (`r02`), **signable from `/swap`**, EXPERIMENTAL / DISABLED until published |
+| **created-Stealth ↔ created-Stealth (AMM)** | NOT IMPLEMENTED | **ENGINE VERIFIED** (`r03`), signable from `/swap`, gated |
+| **revealed Confidential ↔ public fungible (AMM)** | NOT IMPLEMENTED | **ENGINE VERIFIED** (`r04`), signable from `/swap`, gated |
+| **Native tTARI ↔ public fungible (revealed pool)** | NOT IMPLEMENTED | **ENGINE VERIFIED** (`r05`), signable from `/swap`, gated |
 | **Revealed-pool liquidity (create / add / withdraw)** | NOT IMPLEMENTED | **ENGINE VERIFIED** (`r06`–`r08`), browser-built, gated |
-| **Mixed multi-hop: revealed pool → public pool, atomic** | NOT IMPLEMENTED | **ENGINE VERIFIED** (`r11`), quoted in the browser |
+| **Mixed multi-hop: revealed pool → public pool, atomic** | NOT IMPLEMENTED | **ENGINE VERIFIED** (`r11`) and **wire-verified** (`mixed_multi_hop_swap`), **signable from `/swap`**, gated |
+| **Multi-hop wholly inside revealed pools, atomic** | NOT IMPLEMENTED | **ENGINE VERIFIED** (same shape as `r11`), signable from `/swap`, gated |
 | Blinded (non-revealed) Confidential trading | BLOCKED BY UPSTREAM | unchanged, and now **refused in the engine** (`r09`) rather than merely avoided |
 | **Minotari L1 → Ootle L2 conversion** | NOT IMPLEMENTED | **IMPLEMENTED for every step this app can do**; the claim is BLOCKED BY UPSTREAM for browser wallets and is performed by the user's own wallet |
 | **Ootle L2 → Minotari L1** | not investigated | **BLOCKED BY UPSTREAM — no such route exists** (see §4) |
@@ -68,7 +70,11 @@ are still refused by Pool v2, so this is an addition and never a bypass.
    must keep `add_liquidity`.
 3. **Both pool templates share one `swap` signature**, so a route may cross a revealed pool and
    a Pool v2 in one atomic transaction (`r11`), and only the transaction's **input** needs a
-   Stealth-capable withdrawal; intermediates stay on the workspace.
+   Stealth-capable withdrawal; intermediates stay on the workspace. The corollary matters for
+   honesty: because the venues are indistinguishable on the wire, nothing in the transaction
+   tells a signer that a hop was a transparent pool. The browser must carry that itself, from
+   each component's own template address — which is why the venue is a required, chain-read
+   input to the builder rather than a label the route graph attaches.
 4. **An account's NFT ids are not available from the wallet** (Sapient's documented
    `DappTokenBalance` has no token-id field), but they are public chain data in the account's
    own vaults. `readAccountInventory` reads them, which is authoritative rather than advisory.
@@ -80,8 +86,26 @@ are still refused by Pool v2, so this is an addition and never a bypass.
 ## 3. Route selection
 
 `apps/web/src/lib/routeResolver.ts` reports every mechanism for a pair with its availability,
-its exact blocker, its privacy disclosure and its required wallet capabilities. Properties the
-tests pin:
+its exact blocker, its privacy disclosure and its required wallet capabilities.
+
+**Which of them the Swap page can SIGN** is the exported `SIGNABLE_MECHANISMS`: `AMM`,
+`MULTI_HOP_AMM`, `REVEALED_POOL` and `MIXED_MULTI_HOP`. All four are AMM-shaped, because both
+pool templates expose the same `swap(Bucket, ResourceAddress, Amount)` — so one hop or
+several, in one venue or across both, is one atomic transaction of the same instruction shape.
+A test asserts every mechanism in that set has a builder behind it, so no button can exist
+that cannot construct its transaction.
+
+**The venue of each hop is read from chain, never from discovery.** `PoolState.templateAddress`
+carries the template the component's own header names; `resolveMultiHopSwap` reports each hop's
+in route order; `ammRouteIntentBuilder` classifies them against the recorded registry and
+picks the builder, the operation name (`revealed_swap`, `revealed_multi_hop_swap`,
+`mixed_multi_hop_swap`) and the disclosure from the result. A hop whose template is unrecorded,
+or which reports none, is **refused** rather than assumed public — assuming public would be
+the less revealing of the two descriptions, which is exactly the wrong direction to guess in.
+`hostile-frontend` pins that a discovery hint claiming "public" cannot make a transparent-pool
+hop read as public.
+
+Properties the tests pin:
 
 - a privacy-typed asset is **never** offered to Pool v2;
 - an NFT is **never** offered a revealed-value pool (a token id has no divisible amount);
@@ -116,9 +140,9 @@ page says so.
 | Suite | Result |
 |---|---|
 | Real v0.48 engine (`audit_engine_tests`) | **93/93** across 16 binaries |
-| web | **553/553** |
-| wallet-adapter | 27/27 |
-| protocol-client | 267/267 |
+| web | **560/560** |
+| wallet-adapter | 31/31 |
+| protocol-client | 268/268 |
 | Browser e2e (Chromium desktop) | 91 passed, 4 skipped, 1 failed only on the sandbox's blocked connector host (passes in CI) |
 | Reproducible WASM | 6 templates, hashes verified from two different checkout paths |
 

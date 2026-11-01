@@ -2,8 +2,11 @@
  * Swap: pick any two assets; see every settlement mechanism, which ones can execute, and the
  * executable quotes compared by output.
  *
- * - Reserves come ONLY from the wallet's authoritative reads (pinned to recorded Pool
- *   templates), never from discovery.
+ * - Reserves come ONLY from the wallet's authoritative reads (pinned to pool templates
+ *   recorded for the verified generation, of either venue), never from discovery.
+ * - A hop's VENUE — public pool or revealed-value (transparent) pool — is likewise read from
+ *   the component's own template address, which decides the builder, the operation name and
+ *   the disclosure the signer sees. An unrecorded template is refused, never assumed public.
  * - The chosen route is re-resolved immediately before review (`resolveMultiHopSwap`
  *   re-reads every hop), so a stale quote is refused rather than signed.
  * - Execution reuses the existing review -> submit-once pipeline (`executeSwap`), so
@@ -16,9 +19,9 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { resolveMultiHopSwap, type PoolEdge, type RouteQuote } from '@tari-ootle/protocol-client';
-import { ammRouteIntentBuilder, toAmmPreview, type AmmTransactionIntent } from '@tari-ootle/wallet-adapter';
+import { REVEALED_POOL_DISCLOSURE, ammRouteIntentBuilder, multiHopDisclosureFor, toAmmPreview, type AmmTransactionIntent } from '@tari-ootle/wallet-adapter';
 import { useApp } from '../state/AppContext.js';
-import { activeDeployment } from '../services/protocolDeployment.js';
+import { activeDeployment, venueOfPoolState } from '../services/protocolDeployment.js';
 import { executeSwap, newOperationId, type ExecutionWallets } from '../services/execution.js';
 import { reviewFromAmmIntent } from '../lib/review.js';
 import { stealthInputFor } from '../services/stealthWithdraw.js';
@@ -26,11 +29,19 @@ import { parseDecimalToRaw } from '../lib/amountInput.js';
 import { formatAddress, formatUnits, UNAVAILABLE } from '../lib/format.js';
 import { DEFAULT_SLIPPAGE_BPS } from '../lib/slippage.js';
 import { normalizeError } from '../lib/errorMessage.js';
-import { CANONICAL_TARI, bestAmmQuote, resolvePairRoutes, type AssetKind, type Mechanism, type RouteOption } from '../lib/routeResolver.js';
+import { CANONICAL_TARI, SIGNABLE_MECHANISMS, bestAmmQuote, resolvePairRoutes, type AssetKind, type Mechanism, type RouteOption } from '../lib/routeResolver.js';
 import { Badge, Card, CardHeader, DataRow, EmptyState, Notice } from '../components/primitives.js';
 import { P2POfferPanel } from '../components/P2POfferPanel.js';
 
 const MAX_EPOCH = '18446744073709551615';
+
+/** What the review card calls the operation, from the venues actually read. */
+function operationLabel(operation: AmmTransactionIntent['operation'], hops: number): string {
+  if (operation === 'revealed_swap') return 'Transparent-pool swap (revealed-value)';
+  if (operation === 'revealed_multi_hop_swap') return `Multi-hop transparent-pool swap (${hops} revealed-value pools, one transaction)`;
+  if (operation === 'mixed_multi_hop_swap') return `Mixed multi-hop swap (${hops} pools across both venues, one transaction)`;
+  return hops === 1 ? 'AMM swap' : `Multi-hop AMM swap (${hops} pools, one transaction)`;
+}
 
 interface AssetChoice {
   resource: string;
@@ -73,8 +84,15 @@ export function SwapRoutesPage() {
           // The two graphs are kept APART: a revealed-value pool holds the privacy-typed
           // assets Pool v2 refuses, so quoting one as a public pool would misdescribe both
           // the asset and the privacy of the trade.
-          if (pool.kind === 'REVEALED') revealed.push(edge);
-          else out.push(edge);
+          //
+          // Which graph a pool belongs to comes from the template address in its OWN
+          // authoritative read, falling back to the discovery hint only when the transport
+          // could not report one. A pool that reports a template this session has not
+          // recorded is dropped with its reason rather than quoted as either kind.
+          const venue = v.templateAddress === undefined ? pool.kind : venueOfPoolState(config.network, v.templateAddress);
+          if (venue === 'REVEALED') revealed.push(edge);
+          else if (venue === 'PUBLIC') out.push(edge);
+          else failures.push(`${formatAddress(pool.poolComponent)}: reports template ${v.templateAddress === undefined ? '(none)' : formatAddress(v.templateAddress)}, which is not a recorded Shadow Swap pool template`);
         } else failures.push(`${formatAddress(pool.poolComponent)}: ${read.reason}`);
       }
       if (!cancelled) {
@@ -86,7 +104,7 @@ export function SwapRoutesPage() {
     return () => {
       cancelled = true;
     };
-  }, [market.pools, readback]);
+  }, [market.pools, readback, config.network]);
 
   const assets = useMemo<AssetChoice[]>(() => {
     const byResource = new Map<string, AssetChoice>();
@@ -134,11 +152,9 @@ export function SwapRoutesPage() {
     });
   }, [fromAsset, toAsset, amountRaw, edges, revealedEdges, deployment]);
 
-  // Only routes this page can SIGN are offered for selection. A revealed-value or mixed
-  // route is quoted and shown, but executing it needs the revealed-pool builders, which the
-  // Liquidity page drives; offering a button here that cannot build its transaction would be
-  // worse than saying so.
-  const signableMechanisms = new Set<Mechanism>(['AMM', 'MULTI_HOP_AMM']);
+  // The mechanisms this page signs (see SIGNABLE_MECHANISMS for why these and not the rest).
+  // Everything else is still listed, with its exact reason and no action.
+  const signableMechanisms = new Set<Mechanism>(SIGNABLE_MECHANISMS);
   const quotes: RouteQuote[] = useMemo(
     () =>
       options
@@ -180,7 +196,14 @@ export function SwapRoutesPage() {
           maxEpoch: MAX_EPOCH,
           expectedOutput: selected.amountOut,
         },
-        { readback: provider, builder: ammRouteIntentBuilder(account, () => newOperationId('route')) },
+        {
+          readback: provider,
+          // Each hop's venue is classified from the template address in its OWN authoritative
+          // read, so the builder and the disclosure follow what the chain says rather than the
+          // discovery snapshot that proposed the route. An unrecorded template throws here and
+          // the route is refused.
+          builder: ammRouteIntentBuilder(account, () => newOperationId('route'), (template) => venueOfPoolState(config.network, template)),
+        },
       );
       if (outcome.status !== 'ACTIVE') {
         setMessage({ tone: 'warn', title: `Route ${outcome.status.toLowerCase()}`, detail: outcome.reason });
@@ -204,10 +227,15 @@ export function SwapRoutesPage() {
         toPreview: toAmmPreview,
         context: {
           assets: [selected.inputResource, selected.outputResource],
-          operation: selected.hops.length === 1 ? 'AMM swap' : `Multi-hop AMM swap (${selected.hops.length} pools, one transaction)`,
+          operation: operationLabel(outcome.builderIntent.operation, selected.hops.length),
           network: wallet.networkId ?? 'unknown',
           poolOrDestination: selected.hops.map((h) => h.poolComponent).join(' -> '),
-          privacyDisclosure: 'Pool reserves and amounts are revealed at every AMM hop.',
+          // Derived from the venues just read, so a route that touched a transparent pool says
+          // so to the signer. A single-hop public swap keeps its original wording.
+          privacyDisclosure:
+            outcome.builderIntent.operation === 'revealed_swap'
+              ? REVEALED_POOL_DISCLOSURE
+              : multiHopDisclosureFor(outcome.builderIntent.operation),
         },
         identity,
         liveIdentity: await bridge.liveIdentity(identity.nonce),
@@ -222,7 +250,7 @@ export function SwapRoutesPage() {
       guard.current = false;
       setBusy(false);
     }
-  }, [selected, readback, executionWallets, walletBridge, liveExecutionIdentity, wallet]);
+  }, [selected, readback, executionWallets, walletBridge, liveExecutionIdentity, wallet, config.network]);
 
   return (
     <div className="page-stack">
