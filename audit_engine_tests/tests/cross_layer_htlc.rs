@@ -45,12 +45,12 @@ use tari_engine_types::substate::SubstateId;
 use tari_engine_types::virtual_substate::{VirtualSubstate, VirtualSubstateId};
 use tari_ootle_common_types::substate_type::SubstateType;
 use tari_ootle_transaction::args;
-use tari_template_test_tooling::support::confidential::generate_confidential_output_statement;
-use tari_template_test_tooling::support::value_proof::value_proofs_for_commitment;
 use tari_template_lib::types::{
     crypto::RistrettoPublicKeyBytes, Amount, ComponentAddress, Hash32, NonFungibleAddress,
     ResourceAddress,
 };
+use tari_template_test_tooling::support::confidential::generate_confidential_output_statement;
+use tari_template_test_tooling::support::value_proof::value_proofs_for_commitment;
 use tari_template_test_tooling::TemplateTest;
 
 const CRATE_PATH: &str = env!("CARGO_MANIFEST_DIR");
@@ -676,12 +676,11 @@ fn h10_a_bucket_carrying_blinded_commitments_cannot_fund_an_escrow() {
         vec![],
     );
     let tmpl_probe = w.t.get_template_address("ConfidentialProbe");
-    let probe: ComponentAddress = w
-        .t
-        .read_only_state_store()
-        .get_first_component_of(tmpl_probe)
-        .unwrap()
-        .unwrap();
+    let probe: ComponentAddress =
+        w.t.read_only_state_store()
+            .get_first_component_of(tmpl_probe)
+            .unwrap()
+            .unwrap();
 
     let (_preimage, hash) = l1_preimage_and_hash();
     // A statement with a REAL blinded output, built by the engine's own test crypto, with the
@@ -695,23 +694,22 @@ fn h10_a_bucket_carrying_blinded_commitments_cannot_fund_an_escrow() {
     let value_proofs = value_proofs_for_commitment(Amount::from(1_000u64), &mask);
     let tmpl = w.t.get_template_address("CrossLayerHtlc");
     let key = w.funder_key.clone();
-    let tx = w
-        .t
-        .transaction()
-        .call_method(probe, "mint_blinded", args![statement, value_proofs])
-        .put_last_instruction_output_on_workspace("blinded")
-        .call_function(
-            tmpl,
-            "fund",
-            args![
-                Workspace("blinded"),
-                hash,
-                claimant_pk,
-                20u64,
-                L1_LEG.to_string()
-            ],
-        )
-        .build_and_seal(&key);
+    let tx =
+        w.t.transaction()
+            .call_method(probe, "mint_blinded", args![statement, value_proofs])
+            .put_last_instruction_output_on_workspace("blinded")
+            .call_function(
+                tmpl,
+                "fund",
+                args![
+                    Workspace("blinded"),
+                    hash,
+                    claimant_pk,
+                    20u64,
+                    L1_LEG.to_string()
+                ],
+            )
+            .build_and_seal(&key);
     let proof = w.funder_proof.clone();
     let reason = format!("{:?}", w.t.execute_expect_failure(tx, vec![proof]));
     assert!(
