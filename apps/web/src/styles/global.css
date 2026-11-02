@@ -513,17 +513,46 @@ textarea {
 
 /* --- Header navigation ------------------------------------------------------
  * The primary nav is the only navigation this app has: there is no drawer and no
- * overflow menu to fall back on, so all three routes must stay reachable at every
+ * overflow menu to fall back on, so every route must stay reachable at every
  * supported width. Below 420px the labels are tightened rather than collapsed,
  * because a hidden route is a route that does not exist.
  *
  * The `min-width: 0` on the flex child is what lets the row shrink instead of
  * pushing the wallet control past the viewport edge: without it, `flex: 1` refuses
  * to go below its content's intrinsic width and the controls overlap the nav.
+ *
+ * THE NAV SCROLLS WITHIN ITSELF, and that is load-bearing rather than cosmetic.
+ * Tightening the labels buys a fixed amount of room, so it works until one more
+ * route is added and then silently stops: the buttons hit their intrinsic text
+ * width, the row refuses to shrink further, and the DOCUMENT overflows instead —
+ * which is what happened at 360px and 390px when the cross-layer routes brought
+ * the nav to six items (74px of horizontal page overflow, caught by the
+ * responsive suite).
+ *
+ * `overflow-x: auto` contains that growth: the nav's own box scrolls, the page
+ * never does, and no route is hidden — it is a swipe away rather than behind a
+ * menu that does not exist. `flex: none` on the children stops them being
+ * squeezed to illegibility first, which is the failure mode this replaces.
  */
 .ss-headernav {
   min-width: 0;
   flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  /* Momentum scrolling on touch, and no scroll chaining to the page behind. */
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  /* The scrollbar would add a row of chrome to a 40px-tall header for no gain;
+     the overflowing content is its own affordance. */
+  scrollbar-width: none;
+}
+
+.ss-headernav::-webkit-scrollbar {
+  display: none;
+}
+
+.ss-headernav .btn {
+  flex: none;
 }
 
 @media (max-width: 420px) {
