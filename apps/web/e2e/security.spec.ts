@@ -152,12 +152,16 @@ test('a mainnet provider is refused and the page never reads as mainnet', async 
   await page.goto('/pools');
   await page.evaluate(() => window.__tariHost!.switchNetwork('mainnet'));
   await page.getByRole('button', { name: 'Connect wallet', exact: true }).click();
-  // A network outside the allowlist, or a mismatch against the pinned network,
-  // is a hard failure. No session may be established, and the refusal must be
-  // visible in the page rather than hidden behind the wallet-details dialog.
+  // A network outside the allowlist, or a mismatch against the pinned network, is a hard
+  // failure. No session may be established, and the refusal must be visible in the page
+  // rather than hidden behind the wallet-details dialog.
+  //
+  // The WORDING changed when mainnet became a known-but-unauthorized network rather than an
+  // unrepresentable one; the SUBSTANCE asserted here did not, and is what matters: a visible
+  // refusal, no session, and a page that still reads as the testnet it is pinned to.
   const refusal = page.getByRole('alert').filter({ hasText: 'Wallet connection refused' });
   await expect(refusal).toBeVisible({ timeout: 10_000 });
-  await expect(refusal).toContainText(/Mainnet is disabled|not allowed|pinned to|does not match/i);
+  await expect(refusal).toContainText(/not been authorized|not allowed|pinned to|does not match|disabled/i);
   await expect(connected(page)).toHaveCount(0);
   await expect(badge(page, 'Esmeralda Testnet')).toBeVisible();
 });

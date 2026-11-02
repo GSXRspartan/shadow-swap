@@ -491,14 +491,22 @@ test('matrix 6: a wrong-network provider is refused distinctly from an absent on
   await page.getByRole('button', { name: 'Connect wallet', exact: true }).click();
   const refusal = page.getByRole('alert').filter({ hasText: /refused/i });
   await expect(refusal).toBeVisible({ timeout: 10_000 });
-  await expect(refusal).toContainText(/not allowed|disabled|pinned to|does not match/i);
+  await expect(refusal).toContainText(/not been authorized|not allowed|disabled|pinned to|does not match/i);
   // No session may be established, and the page must never read as mainnet.
-  // The one permitted mention of "mainnet" is the refusal text that says it is
-  // disabled, so the assertion is that the count stays at that single mention.
   await expect(connected(page)).toHaveCount(0);
   await expect(visibleText(page, 'Esmeralda Testnet')).toBeVisible();
+
+  // The old form of this assertion counted occurrences of "mainnet" and allowed up to two,
+  // on the reasoning that the refusal text is the one permitted mention. That broke when the
+  // refusal grew to name the authorization constant — and it was the wrong shape anyway: a
+  // count says nothing about WHERE the word appears.
+  //
+  // This asserts the actual property instead, and more strictly: outside the refusal alert,
+  // the page does not mention mainnet at all.
+  const refusalText = await refusal.innerText();
   const body = await page.locator('body').innerText();
-  expect(body.split(/mainnet/i).length - 1, 'mainnet may only appear in the refusal text').toBeLessThanOrEqual(2);
+  const outsideRefusal = body.split(refusalText).join(' ');
+  expect(outsideRefusal, 'outside the refusal, the page must not mention mainnet').not.toMatch(/mainnet/i);
   expect(body).not.toMatch(/Mainnet Testnet|connected to mainnet/i);
   // It is a NETWORK state, distinct from an absent wallet: the shell still
   // renders and the connect control is offered again.
