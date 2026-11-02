@@ -21,9 +21,11 @@ single-page app, discovery is a paste-in invitation, and every authoritative rea
 user's own wallet. Deployment of the frontend is therefore the existing procedure in
 `SHADOW_SWAP_EXISTING_INFRASTRUCTURE_DEPLOYMENT.md` with nothing added.
 
-**Ghost Gate is untouched.** Nothing in this subsystem changes DNS, services, databases,
-certificates, tunnels or deployment configuration for the operator's existing infrastructure, and
-nothing here requires a backend.
+**The operator's existing infrastructure is untouched.** Nothing in this subsystem changes DNS,
+services, databases, certificates, tunnels or deployment configuration for anything the operator
+already runs, and nothing here requires a backend. (Shadow Swap's public identity is deliberately
+separate from the operator's other projects, so this document names none of them —
+`tools/release-hygiene.mjs` enforces that on every tracked file.)
 
 ## 2. The one thing that must be recorded: the template address
 
@@ -181,4 +183,4 @@ and the taker may already have funded their own leg against it.
 | L1 companion transport | **BLOCKED** — not built |
 | Discovery service | **Not built**, by design |
 | Any deployment of this subsystem | **Not performed** |
-| Ghost Gate | **Untouched** |
+| The operator's existing infrastructure | **Untouched** |
