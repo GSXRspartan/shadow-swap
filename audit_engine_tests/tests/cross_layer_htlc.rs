@@ -25,11 +25,16 @@
 //   h06 no double fulfilment: claim twice, refund twice, refund-after-claim, claim-after-refund
 //   h07 funding is validated: zero amount, a past/equal expiry, an empty counterparty leg, and
 //       funder == claimant all refused
-//   h08 the L1 preimage shape round-trips: a 32-byte CompressedPublicKey hashed with SHA-256,
-//       which is what Minotari actually generates
+//   h08 the hash RECORDED in L2 state is byte-for-byte the SHA-256 an L1 output would carry,
+//       and the round trip holds at both ends of the template's 1..=64-byte bound
 //   h09 asset identity: whatever is escrowed is exactly what is delivered, type preserved
 //       (public fungible AND created-Stealth, the asset an exiting L2 holder actually has)
-//   h10 a blinded Confidential bucket cannot fund an escrow, and a locked portion cannot either
+//   h10 a blinded Confidential bucket cannot fund an escrow
+//
+// The template also asserts `locked_amount().is_zero()`, and that one is NOT tested here: the
+// test tooling has no way to hand a template a bucket with a locked portion, so there is no way
+// to drive the branch. It is a defensive assert with no coverage, and saying so is better than
+// listing it as proven. (`revealed_asset_pool` carries the same untested assert.)
 use ootle_byte_type::ToByteType;
 use sha2::{Digest, Sha256};
 use tari_crypto::{
@@ -40,6 +45,8 @@ use tari_engine_types::substate::SubstateId;
 use tari_engine_types::virtual_substate::{VirtualSubstate, VirtualSubstateId};
 use tari_ootle_common_types::substate_type::SubstateType;
 use tari_ootle_transaction::args;
+use tari_template_test_tooling::support::confidential::generate_confidential_output_statement;
+use tari_template_test_tooling::support::value_proof::value_proofs_for_commitment;
 use tari_template_lib::types::{
     crypto::RistrettoPublicKeyBytes, Amount, ComponentAddress, Hash32, NonFungibleAddress,
     ResourceAddress,
@@ -583,4 +590,132 @@ fn h09_whatever_is_escrowed_is_exactly_what_is_delivered() {
             .unwrap()
     );
     let _ = acct;
+}
+
+#[test]
+fn h08_the_recorded_hash_is_exactly_the_sha256_an_l1_output_carries() {
+    // Why this is a test of its own rather than a corollary of h01. h01 proves a claim SUCCEEDS
+    // against a hash computed here with `sha2`, which proves the engine's `hash_sha256`
+    // intrinsic agrees over raw bytes. It does not prove what a COUNTERPARTY sees: the whole
+    // cross-layer binding depends on the 32 bytes in L2 component state being the same 32 bytes
+    // the L1 script commits to, because that is what `decodeCrossLayerEscrow` reads and compares
+    // against the L1 output. If the template stored a re-encoded or re-hashed form, every check
+    // in the client stack would compare the wrong thing against the wrong thing.
+    let mut w = world();
+    let claimant_pk = pk(&w.claimant_key);
+    let funder_acct = w.funder;
+    let x = fungible(&mut w, "TARI", funder_acct);
+
+    let (preimage, hash) = l1_preimage_and_hash();
+    let htlc = fund(&mut w, x, 100_000, hash, claimant_pk, 20, L1_LEG);
+
+    // The hash in state, as an indexer would read it, equals the independently computed digest.
+    let digest: [u8; 32] = Sha256::digest(&preimage).into();
+    // The component body is CBOR, and a Hash32 field renders as `Bytes([..])` with decimal
+    // bytes — which is exactly the 32 bytes an indexer hands `decodeCrossLayerEscrow`.
+    let state = terms_debug(&mut w, htlc);
+    let bytes: String = digest
+        .iter()
+        .map(|b| b.to_string())
+        .collect::<Vec<_>>()
+        .join(", ");
+    assert!(
+        state.contains(&format!("Bytes([{bytes}])")),
+        "the recorded hash lock must be the SHA-256 digest, byte for byte"
+    );
+    assert_eq!(
+        hash,
+        Hash32::from_array(digest),
+        "the hash funded is the digest of the 32-byte L1 preimage"
+    );
+
+    // And the round trip holds at BOTH ends of the template's 1..=64-byte bound. h02 proves the
+    // refusals just outside it (0 and 65); these are the admitted extremes, which is where a
+    // length-sensitive encoding bug would show up.
+    for len in [1usize, 64usize] {
+        let mut w2 = world();
+        let claimant_pk2 = pk(&w2.claimant_key);
+        let funder2 = w2.funder;
+        let y = fungible(&mut w2, "TARI", funder2);
+        let pre = vec![0xa5u8; len];
+        let d: [u8; 32] = Sha256::digest(&pre).into();
+        let h = fund(
+            &mut w2,
+            y,
+            50_000,
+            Hash32::from_array(d),
+            claimant_pk2,
+            20,
+            L1_LEG,
+        );
+        let tx = claim_tx(&w2, h, &pre);
+        let proof = w2.claimant_proof.clone();
+        w2.t.execute_expect_success(tx, vec![proof]);
+        let revealed: Option<Vec<u8>> = w2.t.call_method(h, "revealed_preimage", args![], vec![]);
+        assert_eq!(
+            revealed.as_deref(),
+            Some(pre.as_slice()),
+            "a {len}-byte preimage must round-trip unchanged"
+        );
+    }
+}
+
+#[test]
+fn h10_a_bucket_carrying_blinded_commitments_cannot_fund_an_escrow() {
+    // `bucket.amount()` reports only the REVEALED part of a Confidential bucket. An escrow
+    // records `amount` at fund time and pays out `withdraw_all()` on claim, so a bucket with a
+    // blinded portion would escrow value that the recorded amount does not describe — a
+    // counterparty verifying "the escrow holds what was advertised" would be comparing against
+    // a number that was never the whole truth.
+    let mut w = world();
+    let claimant_pk = pk(&w.claimant_key);
+    let _probe: ComponentAddress = w.t.call_function(
+        "ConfidentialProbe",
+        "new",
+        args![Amount::from(1_000_000_000u64)],
+        vec![],
+    );
+    let tmpl_probe = w.t.get_template_address("ConfidentialProbe");
+    let probe: ComponentAddress = w
+        .t
+        .read_only_state_store()
+        .get_first_component_of(tmpl_probe)
+        .unwrap()
+        .unwrap();
+
+    let (_preimage, hash) = l1_preimage_and_hash();
+    // A statement with a REAL blinded output, built by the engine's own test crypto, with the
+    // value proofs the engine requires because the resource tracks total supply.
+    let (mut statement, mask, _change) = generate_confidential_output_statement(1_000, None);
+    // A POSITIVE revealed amount beside the blinded commitment, which is the case that actually
+    // exercises the confidential guard. Without it, `bucket.amount()` is zero (all 1,000 is
+    // blinded) and the positive-amount assert fires first — a correct refusal, but of the wrong
+    // thing, and it would leave the guard under test uncovered.
+    statement.output_revealed_amount = Amount::from(500u64);
+    let value_proofs = value_proofs_for_commitment(Amount::from(1_000u64), &mask);
+    let tmpl = w.t.get_template_address("CrossLayerHtlc");
+    let key = w.funder_key.clone();
+    let tx = w
+        .t
+        .transaction()
+        .call_method(probe, "mint_blinded", args![statement, value_proofs])
+        .put_last_instruction_output_on_workspace("blinded")
+        .call_function(
+            tmpl,
+            "fund",
+            args![
+                Workspace("blinded"),
+                hash,
+                claimant_pk,
+                20u64,
+                L1_LEG.to_string()
+            ],
+        )
+        .build_and_seal(&key);
+    let proof = w.funder_proof.clone();
+    let reason = format!("{:?}", w.t.execute_expect_failure(tx, vec![proof]));
+    assert!(
+        reason.contains("no confidential commitments"),
+        "a blinded bucket must be refused before anything is escrowed: {reason}"
+    );
 }
