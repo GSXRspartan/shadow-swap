@@ -29,6 +29,9 @@ const ROUTES = [
   { path: '/pools', label: 'Pools' },
   { path: '/nfts', label: 'NFT market' },
   { path: '/activity', label: 'Activity' },
+  // The support page renders a QR code and a 91-character address, both of which are exactly the
+  // kind of fixed-minimum-width content that overflows a 360px viewport if it is not constrained.
+  { path: '/support', label: 'Support development' },
 ];
 
 async function overflow(page) {
