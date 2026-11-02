@@ -14,7 +14,9 @@
 //      application/wasm with the exact pinned size, so CBOR chain values can be decoded;
 //   4. the favicon, PWA manifest and social card load;
 //   5. the document contains no development-provider marker and no loopback endpoint;
-//   6. (unless --skip-indexer) each default indexer answers GET /info as esmeralda / byte 38
+//   6. (unless --skip-indexer) each indexer for the chosen network answers GET /info with that
+//      network's name and discriminant byte. Pass --network=<name> to check another network;
+//      the expected byte comes from the shared table rather than being written in twice.
 //      on a version this build supports. This reads the PUBLIC indexer, never a wallet.
 //
 // Exit code is non-zero on any failure, so it can gate a deployment.
@@ -27,9 +29,21 @@ if (!/^https:\/\//.test(base) && !(flags.has('--allow-http') && /^http:\/\/(127\
   process.exit(2);
 }
 
-const ROUTES = ['/', '/pools', '/pools/component_' + '0'.repeat(64), '/nfts', '/nfts/resource_' + '0'.repeat(64), '/activity', '/a-route-that-does-not-exist'];
+const ROUTES = ['/', '/pools', '/pools/component_' + '0'.repeat(64), '/nfts', '/nfts/resource_' + '0'.repeat(64), '/activity', '/support', '/a-route-that-does-not-exist'];
 const DECODER_WASM_BYTES = 473_351; // @tari-project/ootle-wasm-bor@0.48.0
-const INDEXERS = ['https://esme-indexer-a.ootle.tari.com', 'https://esme-indexer-b.ootle.tari.com'];
+// Which network to smoke-test, and its endpoints and expected byte — all from one place, so a
+// network added to the app does not need this script edited to match. An unknown network, or one
+// with no published endpoint, is a refusal rather than a check against the wrong chain.
+const NETWORK = (args.find((a) => a.startsWith('--network='))?.split('=')[1] ?? 'esmeralda').toLowerCase();
+const NETWORK_BYTES = { mainnet: 0x00, stagenet: 0x01, nextnet: 0x02, localnet: 0x10, igor: 0x24, esmeralda: 0x26 };
+const NETWORK_INDEXERS = {
+  esmeralda: ['https://esme-indexer-a.ootle.tari.com', 'https://esme-indexer-b.ootle.tari.com'],
+  // Ootle mainnet has not launched and publishes no indexer; see apps/web/src/lib/networks.ts.
+  mainnet: [],
+  localnet: ['http://127.0.0.1:9113'],
+};
+const EXPECTED_BYTE = NETWORK_BYTES[NETWORK];
+const INDEXERS = NETWORK_INDEXERS[NETWORK] ?? [];
 const results = [];
 const check = (name, ok, detail = '') => results.push({ name, ok, detail });
 
@@ -98,12 +112,21 @@ check('document carries no loopback endpoint', !/127\.0\.0\.1|localhost:/.test(d
 check('document carries no http:// subresource', !/(?:src|href)="http:\/\//.test(documentHtml));
 
 if (!flags.has('--skip-indexer')) {
+  if (EXPECTED_BYTE === undefined) {
+    check(`network ${NETWORK} is known`, false, `no discriminant byte recorded for "${NETWORK}"`);
+  } else if (INDEXERS.length === 0) {
+    check(`network ${NETWORK} has a published indexer`, false, `no indexer endpoint is published for ${NETWORK}; nothing can be read from it`);
+  }
   for (const origin of INDEXERS) {
     try {
       const response = await get(`${origin}/info`);
       const info = await response.json();
       const minor = Number(String(info.version ?? '').replace(/^v/, '').split('.')[1]);
-      check(`indexer ${origin}/info is esmeralda / byte 38 / supported version`, response.ok && info.network === 'esmeralda' && info.network_byte === 38 && minor >= 41 && minor <= 48, `${info.version} ${info.network} ${info.network_byte} epoch ${info.current_epoch}`);
+      check(
+        `indexer ${origin}/info is ${NETWORK} / byte ${EXPECTED_BYTE} / supported version`,
+        response.ok && info.network === NETWORK && info.network_byte === EXPECTED_BYTE && minor >= 41 && minor <= 48,
+        `${info.version} ${info.network} ${info.network_byte} epoch ${info.current_epoch}`,
+      );
       const acao = response.headers.get('access-control-allow-origin');
       check(`indexer ${origin} allows browser reads (CORS)`, acao === '*' || acao === new URL(base).origin, `access-control-allow-origin: ${acao}`);
     } catch (error) {

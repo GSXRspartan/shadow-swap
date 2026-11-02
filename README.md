@@ -190,8 +190,53 @@ reconciled readback.
 
 ### ❌ Not claimed
 
-No mainnet readiness. No audit certification. No published TVL or trading volume —
-those would be numbers this repository cannot honestly produce at testnet scale.
+No audit certification. No published TVL or trading volume — those would be numbers this
+repository cannot honestly produce at testnet scale.
+
+**Not mainnet-ready, and the biggest reason is not ours:** Ootle L2 mainnet has not launched.
+Upstream's own SDK has no mainnet indexer URL
+(`unimplemented!("MainNet indexer URL is not set")`) and upstream's exchange-integration guide
+says so in prose. A launch date of 2026-11-11 has been announced publicly.
+
+What *is* built is the ability to be ready: mainnet is a known network with a full identity, a
+deployment registry row of its own, and real-money execution gated behind one reviewed constant.
+See [`docs/MAINNET_READINESS_CHECKLIST.md`](docs/MAINNET_READINESS_CHECKLIST.md) for what remains.
+
+---
+
+## Networks
+
+Shadow Swap is built mainnet-first and ships with mainnet execution **held**.
+
+| Network | Identity known | Readable | Executes | Why |
+|---|---|---|---|---|
+| Ootle Esmeralda (L2) | Yes | Yes | Yes | The development and acceptance network. Assets have no value. |
+| Ootle Localnet (L2) | Yes | Development builds only | Yes | A network you run yourself. |
+| Ootle Mainnet (L2) | Yes | **No** | **No** | Not launched; no indexer is published, and this build will not guess one. |
+| Minotari Mainnet (L1) | Yes | Local wallet only | Never spent by this app | Live. Where the XTM donation address receives. |
+
+Two things worth being precise about, because conflating them is expensive:
+
+* **The two layers are different networks with different assets, addresses and wallets.** XTM is
+  Minotari base-layer currency; TARI is Ootle's native token. They are not the same asset, and
+  neither address format parses as the other. The app refuses a cross-layer substitution by name.
+* **Mainnet is configurable but not executable.** `VITE_TARI_NETWORK=mainnet` resolves so the app
+  can know and display mainnet; every wallet connection and transaction on it is refused until
+  `MAINNET_EXECUTION_AUTHORIZED` is set in `apps/web/src/lib/networks.ts` in a reviewed commit.
+  It is not an environment variable on purpose.
+
+---
+
+## Supporting development
+
+There is a **Support Shadow Swap development** link in the footer. It is a receive-only page: it
+shows the project's public XTM donation address with a copy control and a QR code, and nothing
+else. It prepares no transaction, needs no wallet connection, and adds nothing to any trade.
+
+Donations are optional and are not required to trade, provide liquidity, or withdraw funds.
+Liquidity provider fees go entirely to liquidity providers, and nothing about a donation changes
+that. An Ootle L2 donation address is not configured yet, and that section shows an unavailable
+state with its reason rather than a placeholder or another network's address.
 
 ---
 

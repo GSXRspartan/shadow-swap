@@ -166,16 +166,26 @@ test('activity page: all five operation states are defined, including UNKNOWN', 
   assert.match(html, /No operations recorded/);
 });
 
-test('shell: testnet is always visible and mainnet is never selectable', () => {
+test('shell: the configured network is always visible, and mainnet is never offered as a choice', () => {
   const html = renderShell(h('div', null, 'content'), { pools: [SAFE_POOL] });
   assert.match(html, /Esmeralda Testnet/);
   assert.match(html, />TESTNET</);
-  // Mainnet may only appear in the sentence that says it is disabled — never as
-  // a network that can be chosen.
-  assert.match(html, /Mainnet is not selectable/);
+  // Mainnet is now a KNOWN network rather than an absent one, so the guard that matters is no
+  // longer "the word must not appear" — it is that nothing lets a user pick it, and that a
+  // testnet build never renders a mainnet chip.
   assert.equal(/<option[^>]*mainnet/i.test(html), false, 'no network selector offers mainnet');
-  const { FRONTEND_NETWORKS } = require('../build-test/lib/networks.js');
-  assert.deepEqual(Object.keys(FRONTEND_NETWORKS).sort(), ['esmeralda', 'localnet']);
+  assert.equal(/>MAINNET</.test(html), false, 'a testnet build never shows a mainnet badge');
+  const networks = require('../build-test/lib/networks.js');
+  assert.deepEqual(Object.keys(networks.FRONTEND_NETWORKS).sort(), ['esmeralda', 'localnet', 'mainnet']);
+  // The badge is network-aware rather than hardcoded, and the testnet case says assets are
+  // worthless rather than that mainnet is impossible.
+  assert.match(html, /A test network\. Assets here have no value\./);
+  // And execution on mainnet is unauthorized in the shipped build.
+  assert.equal(networks.MAINNET_EXECUTION_AUTHORIZED, false);
+  // The donation link is in the footer, not in the primary trading nav.
+  assert.match(html, /Support Shadow Swap development/);
+  assert.match(html, /never required\s+to trade, provide liquidity, or withdraw funds/);
+  assert.equal(/<nav aria-label="Primary"[^>]*>(?:(?!<\/nav>)[\s\S])*Support/.test(html), false, 'the donation link is not in the primary nav');
   // TradingView attribution is present and links out.
   assert.match(html, /TradingView Lightweight Charts/);
   assert.match(html, /https:\/\/www\.tradingview\.com\//);
