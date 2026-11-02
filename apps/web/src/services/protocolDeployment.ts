@@ -61,6 +61,16 @@ export interface ProtocolDeployment {
    * the ones Pool v2 refuses.
    */
   readonly revealedPoolTemplates: readonly string[];
+  /**
+   * `CrossLayerHtlc` addresses recorded for this generation. Empty means the cross-layer market
+   * is unavailable and every route reports BLOCKED with its reason.
+   *
+   * GENERATION-GATED FOR A REAL REASON: the template is built for the v0.48.0 cohort. The local
+   * testing team has observed that public Esmeralda may still be running its PRE-RESET v0.47
+   * generation, on which this WASM is not valid. `PRE_V048_RESET` therefore keeps an empty list
+   * permanently rather than merely "not yet recorded" — see `crossLayerAvailability`.
+   */
+  readonly crossLayerHtlcTemplates: readonly string[];
   /** One line for the UI and the docs. */
   readonly status: string;
 }
@@ -79,6 +89,10 @@ const ESMERALDA_PRE_V048: ProtocolDeployment = {
   // SwapOffer and RevealedAssetPool were never published before the reset.
   offerTemplates: [],
   revealedPoolTemplates: [],
+  // Permanently empty on the pre-reset generation: cross_layer_htlc is a v0.48 build and is not
+  // valid on this network. `crossLayerAvailability` reports that as INCOMPATIBLE_GENERATION
+  // rather than as a missing address, so nobody is told to publish it here.
+  crossLayerHtlcTemplates: [],
   status: 'Pool v2 and the three marketplace templates were published and live-verified on this generation (2026-10-13 to 2026-10-16).',
 };
 
@@ -91,6 +105,7 @@ const ESMERALDA_V048: ProtocolDeployment = {
   marketplaceTemplates: undefined,
   offerTemplates: [],
   revealedPoolTemplates: [],
+  crossLayerHtlcTemplates: [],
   status:
     'Shadow Swap templates have not been published on the v0.48 reset network. The v0.48 builds exist and are tested, but publishing them is an operator decision outside this release candidate.',
 };
@@ -103,6 +118,7 @@ const LOCALNET: ProtocolDeployment = {
   marketplaceTemplates: undefined,
   offerTemplates: [],
   revealedPoolTemplates: [],
+  crossLayerHtlcTemplates: [],
   status: 'Localnet has no recorded deployment. Record a locally published template address here to use it.',
 };
 
@@ -136,6 +152,40 @@ export function poolKindOf(deployment: ProtocolDeployment, templateAddress: stri
   if (isPublic) return 'PUBLIC';
   if (isRevealed) return 'REVEALED';
   return undefined;
+}
+
+/** Whether this address is a recorded `CrossLayerHtlc`. Never conflated with any pool template. */
+export function isTrustedCrossLayerTemplate(deployment: ProtocolDeployment, templateAddress: string): boolean {
+  return deployment.crossLayerHtlcTemplates.includes(bare(templateAddress));
+}
+
+/**
+ * Whether the cross-layer market can be offered at all, and if not, exactly why.
+ *
+ * Two distinct blockers, kept distinct because one is permanent and the other is an operator
+ * step. Collapsing them into "unavailable" would tell an operator to publish a template onto a
+ * network that cannot run it.
+ */
+export function crossLayerAvailability(
+  deployment: ProtocolDeployment,
+): { readonly available: true } | { readonly available: false; readonly reason: string; readonly kind: 'INCOMPATIBLE_GENERATION' | 'NOT_RECORDED' } {
+  if (deployment.generation !== 'V048_RESET') {
+    return {
+      available: false,
+      kind: 'INCOMPATIBLE_GENERATION',
+      reason:
+        'The cross-layer escrow template is built for the v0.48.0 cohort, and this network is running its pre-reset generation. It cannot be published or used here — this is not a missing address but an incompatible network. The existing pool and NFT routes are unaffected.',
+    };
+  }
+  if (deployment.crossLayerHtlcTemplates.length === 0) {
+    return {
+      available: false,
+      kind: 'NOT_RECORDED',
+      reason:
+        'No CrossLayerHtlc template is recorded for this network generation, so there is no escrow to fund. An operator must publish it through walletd and record the address before any cross-layer trade can be built.',
+    };
+  }
+  return { available: true };
 }
 
 export function marketplaceTemplateNameFor(deployment: ProtocolDeployment, templateAddress: string): MarketplaceTemplateName | undefined {
