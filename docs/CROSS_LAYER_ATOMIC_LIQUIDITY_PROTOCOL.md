@@ -58,9 +58,21 @@ can be left short, provided the margin in §3 holds.
 
 ## 3. Timeout ordering, formally justified
 
-The L1 deadline **cannot be set**: it is `tip + 720` blocks, fixed in the wallet. So the only
-adjustable deadline is L2's, and it must come **earlier** — by enough that the second claimant can
-observe the preimage, broadcast their claim, and have it confirm past a shallow reorg.
+The L1 deadline **cannot be set**: it is fixed in the wallet at **the funding wallet's own last
+scanned height + 720 blocks** — not the chain tip. So the only adjustable deadline is L2's, and it
+must come **earlier** — by enough that the second claimant can observe the preimage, broadcast
+their claim, and have it confirm past a shallow reorg.
+
+**Correction to an earlier reading of this, because it changes the arithmetic.** This document
+previously said `tip + 720`. The wallet uses its own scanned height, so a wallet that is *n*
+blocks behind the tip produces an output whose refund branch opens *n* blocks **earlier** than a
+tip-derived estimate — shortening the claimant's window by exactly the sync gap. Nothing in the
+wallet reports this as a problem, and the funder is not the party who loses, so
+`l1Companion.assessSync` makes it a gate: a wallet more than `MAX_SYNC_GAP_BLOCKS` (10) behind is
+refused, and `verifyFundedOutput` re-checks the refund height the output **actually** carries
+rather than the one that was intended. An observed height *lower* than expected is reported as a
+mismatch in the dangerous direction; higher is reported too, because it means the deadlines were
+derived from a different output.
 
 `CLAIM_MARGIN_FRACTION = 0.5`: half the L1 window is reserved as margin. The asymmetry justifies
 the generosity — too much margin only shortens the claimant's window, while too little loses the
@@ -102,15 +114,49 @@ escrowed asset is delivered unchanged, including created-Stealth (`h09`).
 
 `OwnerRule::None`, no admin method, no fee, no discretionary withdrawal.
 
+## 4a. One escrow, one named claimant, one trade — and what follows for a market
+
+This is the single most consequential property of both legs, and it was not stated plainly in the
+first version of this document.
+
+`CrossLayerHtlc::fund` writes the claimant's public key into the component's access rules
+(`.method("claim", rule!(public_key(claimant)))`) and `claim` does `escrow.withdraw_all()`. The L1
+script's claim branch is the same shape: `PushPubKey(destination)`. So **an escrow is claimable by
+exactly one named key, exactly once, in full.**
+
+Three things follow, and they are not design choices:
+
+1. **There is no pre-funded escrow waiting for whoever turns up.** An escrow must name its
+   claimant when it is funded, so it can only exist after a specific counterparty is known.
+2. **There is no partial fill of an escrow.** A claim takes the whole vault or output. A maker who
+   wants to offer a size *range* must fund one escrow per matched trade, not one escrow per offer.
+3. **The second leg cannot exist before the first.** The L1 wallet generates the secret, so the L2
+   escrow can only be bound to a hash that an already-funded L1 output carries.
+
+Therefore a maker's published offer is an **advertisement** — `INDICATIVE` or `SIGNED`, never
+`FUNDED` in any open-market sense. `FUNDED` means "escrowed and already bound to one
+counterparty", and the taker it names is the only taker it is executable for: `isOfferableTo` is
+the predicate a UI must ask, not `isExecutable` alone. A taker shown somebody else's escrow as
+available liquidity can fund their own leg against something they can never claim, which is worse
+than being shown an unfunded offer.
+
+What has to be accounted for instead is the maker's own **unescrowed** balance, which they can
+spend at any moment and which no settlement can claw back. That is `makerBook.ts`, and it is also
+what stops two matched takers being promised the same coins — see
+`CROSS_LAYER_MARKET_MAKER_ECONOMICS.md`.
+
 ## 5. What is **not** yet proven
 
 | Claim | Status |
 |---|---|
-| L2 escrow behaviour | **Local engine verified** |
-| Timeout arithmetic, direction mapping, counterparty-proposal checking | **Local engine verified** (unit) |
+| L2 escrow behaviour | **ENGINE VERIFIED** |
+| Timeout arithmetic, direction mapping, counterparty-proposal checking | **ENGINE VERIFIED** (unit) |
+| L2 instruction wire format for `fund` / `claim` / `refund` | **BROWSER BUILDER VERIFIED** — the builders emit the shape the real v0.48 engine executed (`instruction_wire_v048.rs`) |
+| Maker inventory accounting and the double-promise guard | **ENGINE VERIFIED** (unit) |
 | L1 script shape and gRPC surface | **Source verified** at `3994846`; no L1 script executed here |
-| L1 funding / claiming / refunding | **Blocked in this environment** — needs a local wallet and a funded L1 account |
-| **The composed two-layer exchange** | **NOT VERIFIED** — neither simulated nor live |
+| L1 funding / claiming / refunding | **BLOCKED** — needs a local wallet and a funded L1 account |
+| **The composed two-layer exchange, simulated** | **ENGINE VERIFIED** — 23 scenarios in `cross_layer_acceptance.test.cjs` against rule-enforcing simulations of both chains. **The chains are simulated; this is not evidence of on-chain behaviour.** |
+| **The composed two-layer exchange, live** | **BLOCKED** — no L1 script has executed, no preimage has been observed crossing layers, no pair of balances has been reconciled |
 | Browser-only cross-layer trading | **Blocked for the L1 leg only.** The L2 leg is browser-signable today through Sapient or Tari Universe's embedded dApp provider (transaction requests carry an instruction list, so they can call a template method). L1 needs a local wallet because no browser API expresses a TariScript. See the capability matrix §3 |
 
 **Signer assignment, from the capability matrix §3:** the L1 leg needs a local wallet over gRPC —
@@ -129,9 +175,31 @@ characterised; the composition is not verified. Per the campaign's own rule, tha
 a real L1 script execution, shared preimage revelation observed across both layers, and reconciled
 balances for both participants.
 
-## 6. Not yet built
+## 6. What is built, and what remains
 
-The liquidity marketplace (maker inventory, funded-offer states, quote engine, incentives), the
-browser and local-wallet integration, and staging deployment are **not started**. The protocol
-above is the foundation they require, and is deliberately the part that was built first because
-everything else is unsafe to design around until the chains' real constraints are known.
+**Built and covered by tests** (all offline; see §5 for what that does and does not prove):
+
+| Piece | Where |
+|---|---|
+| L2 HTLC template | `templates/cross_layer_htlc` |
+| L2 browser builders (`fund` / `claim` / `refund`) | `packages/wallet-adapter/src/crossLayerHtlc.ts` |
+| Timeouts, directions, counterparty-proposal checks | `crossLayer/atomicSwap.ts` |
+| Offer evidence states and the claimant binding | `crossLayer/makerOffer.ts` |
+| Maker inventory ledger and the double-promise guard | `crossLayer/makerBook.ts` |
+| Integer quoting, limits and the exit bonus | `crossLayer/quoteEngine.ts` |
+| Trade lifecycle, recovery and UNKNOWN handling | `crossLayer/swapLifecycle.ts` |
+| Direct-invitation discovery, verified against chain | `crossLayer/crossLayerInvitation.ts` |
+| Escrow decoder | `crossLayer/escrowSubstate.ts` |
+| Wallet capability planning | `crossLayer/walletCapabilities.ts` |
+| L1 gRPC contract | `crossLayer/l1Adapter.ts` |
+| L1 companion: sync gate, script inspection, output verification, UNKNOWN classification | `crossLayer/l1Companion.ts` |
+| Two-chain scenario harness (simulated) | `crossLayer/acceptanceHarness.ts` |
+| Taker and maker surfaces | `apps/web/src/components/CrossLayerMarketPanel.tsx`, `MakerInventoryPanel.tsx` |
+
+**Not built.** The companion's **transport**: `l1Adapter` and `l1Companion` are pure, and nothing
+in this repository opens a gRPC socket to a Minotari wallet. Also not built: a discovery service
+(offers are exchanged as direct invitations), and any staging deployment of this subsystem.
+
+**Not started, and deliberately out of scope here:** anything that would need an operator-held
+key, a backend signer or an unattended wallet. The campaign's constraint stands — all L1 signing
+remains under user-controlled wallet authorization, and the companion refuses mainnet outright.

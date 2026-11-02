@@ -16,7 +16,11 @@ const NAV_ITEMS = [
   { to: '/swap', label: 'Swap' },
   { to: '/pools', label: 'Pools' },
   { to: '/nfts', label: 'NFTs' },
-  { to: '/cross-layer', label: 'L1 → L2' },
+  // The cross-layer MARKET (a liquidity-backed exchange) and the official one-way
+  // burn-and-claim conversion are separate entries on purpose: they are different operations
+  // with different risks, and conflating them would invite a burn where a trade was meant.
+  { to: '/market', label: 'TARI ⇄ XTM' },
+  { to: '/cross-layer', label: 'Burn → claim' },
   { to: '/activity', label: 'Activity' },
 ] as const;
 
