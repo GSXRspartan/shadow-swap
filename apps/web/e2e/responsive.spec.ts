@@ -29,6 +29,10 @@ const ROUTES = [
   { path: '/pools', label: 'Pools' },
   { path: '/nfts', label: 'NFT market' },
   { path: '/activity', label: 'Activity' },
+  // Added with the cross-layer market, because the route that overflowed was not the one with the
+  // widest content — it was the header nav, which every route shares, and which grew when this
+  // page was added to it. A new route belongs in this list for the same reason.
+  { path: '/market', label: 'Cross-layer market' },
 ];
 
 async function overflow(page) {

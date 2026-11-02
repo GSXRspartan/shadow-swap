@@ -16,8 +16,26 @@
  *   4. `RESERVED`       funded, and allocated to one taker for a bounded window.
  *   5. `SETTLED`        claimed or refunded. Terminal.
  *
- * Only `FUNDED` and `RESERVED` are executable, and only `FUNDED` is offerable to a new taker.
- * `isExecutable` is the single predicate a UI may use to say "you can trade this now".
+ * A FUNDED OFFER IS NOT OPEN INVENTORY. This corrects the shape this module shipped with, which
+ * said "only `FUNDED` is offerable to a new taker". It cannot be. `CrossLayerHtlc::fund` fixes
+ * the claimant's key at fund time (`.method("claim", rule!(public_key(claimant)))`) and `claim`
+ * does `escrow.withdraw_all()`; the L1 script's claim branch is the same shape,
+ * `PushPubKey(destination)`. So an escrow is claimable by exactly ONE named key, exactly ONCE,
+ * in full. A pre-funded escrow waiting for whoever turns up does not exist on either chain, and
+ * neither does a partial fill of one.
+ *
+ * Two things follow, and they shape the whole maker side:
+ *
+ *   * `FUNDED` means "escrowed and already bound to one counterparty". The taker it names is the
+ *     only taker it is executable for, which is what `isOfferableTo` asks.
+ *   * What a maker publishes to an open market is therefore INDICATIVE or SIGNED, always. The
+ *     escrow comes into existence only after a specific taker is matched, so the maker's
+ *     unescrowed inventory is the thing that has to be accounted for. That is `makerBook.ts`,
+ *     which is also what stops two matched takers being promised the same coins.
+ *
+ * `isExecutable` remains the liveness predicate (escrowed, unexpired, still covering a minimum
+ * fill). `isOfferableTo` adds the binding, and is the single predicate a UI may use to say "you
+ * can trade this now".
  *
  * WHAT THIS MODULE DELIBERATELY DOES NOT DO
  *
@@ -72,6 +90,12 @@ export interface FundingEvidence {
   readonly escrowedRaw: string;
   /** Which chain the maker's own escrow sits on, derived from the direction — not supplied. */
   readonly chain: 'L1' | 'L2';
+  /**
+   * The key the escrow NAMES as its claimant, read from the escrow itself. Required: neither
+   * chain can produce an escrow without one, and an offer whose binding is unknown must never
+   * be shown as tradeable to anybody.
+   */
+  readonly boundClaimant: string;
   /** The read's own identity, so a stale read cannot masquerade as current. */
   readonly readAtEpoch: number;
 }
@@ -162,6 +186,14 @@ export function funded(
   if (evidence.leg.length === 0) {
     return { ...offer, state: 'SIGNED', reason: 'The funding evidence names no escrow. Not executable.' };
   }
+  if (evidence.boundClaimant.length === 0) {
+    return {
+      ...offer,
+      state: 'SIGNED',
+      reason:
+        'The funding evidence does not say which key the escrow names as its claimant. An escrow is claimable by exactly one named key, so until that is read from chain this offer is tradeable by nobody.',
+    };
+  }
   const escrowed = assertRaw(evidence.escrowedRaw, 'escrowedRaw');
   const min = BigInt(offer.terms.minFillRaw);
   if (escrowed < min) {
@@ -244,6 +276,23 @@ export function isExecutable(offer: MakerOffer, currentEpoch: number): boolean {
   return BigInt(offer.terms.inventoryRaw) >= BigInt(offer.terms.minFillRaw);
 }
 
+/**
+ * The ONE predicate a UI may use to tell a PARTICULAR user they can trade now.
+ *
+ * `isExecutable` says the escrow is live; this adds the part that decides whether this user can
+ * take it. Both legs name their claimant at fund time, so an escrow bound to somebody else is
+ * worth exactly nothing to this user — and showing it as available liquidity would be the same
+ * lie as showing an unfunded offer, with the added sting that the user could fund their own leg
+ * against an escrow they can never claim.
+ */
+export function isOfferableTo(offer: MakerOffer, currentEpoch: number, takerL2PublicKey: string): boolean {
+  if (!isExecutable(offer, currentEpoch)) return false;
+  const bound = offer.funding?.boundClaimant;
+  if (bound === undefined || bound.length === 0) return false;
+  if (takerL2PublicKey.length === 0) return false;
+  return bound.toLowerCase() === takerL2PublicKey.toLowerCase();
+}
+
 /** What a taker may still take right now, raw. Zero when nothing is takeable. */
 export function availableRaw(offer: MakerOffer, currentEpoch: number): string {
   if (!isExecutable(offer, currentEpoch)) return '0';
@@ -265,5 +314,5 @@ export function describeOffer(offer: MakerOffer, currentEpoch: number): string {
   }
   const chain = makerEscrowChain(offer.terms.direction);
   const where = chain === 'L1' ? 'an L1 output' : 'an L2 escrow component';
-  return `Executable: ${availableRaw(offer, currentEpoch)} is held in ${where} (${offer.funding?.leg}), read from chain at epoch ${offer.funding?.readAtEpoch}, and the offer runs to epoch ${offer.terms.expiresAtEpoch}.`;
+  return `Escrowed and bound: ${availableRaw(offer, currentEpoch)} is held in ${where} (${offer.funding?.leg}), read from chain at epoch ${offer.funding?.readAtEpoch}, claimable only by ${offer.funding?.boundClaimant}, and the offer runs to epoch ${offer.terms.expiresAtEpoch}.`;
 }
