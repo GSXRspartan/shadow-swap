@@ -44,6 +44,8 @@ export interface ExecutionIdentity {
   readonly account: string;
   /** Sorted capability fingerprint, or 'none' when nothing was advertised. */
   readonly capabilityFingerprint: string;
+  /** The capability keys the fingerprint was computed over, so verification compares the same scope. */
+  readonly capabilityBasis?: ReadonlyArray<string>;
   /** A per-session nonce issued at connect. */
   readonly nonce: string;
   readonly capturedAtUnixMs: number;
@@ -101,13 +103,31 @@ export function providerFingerprint(provider: unknown): string {
 }
 
 /** Sorted, stable fingerprint of a capability advertisement. */
-export function capabilityFingerprint(capabilities: ProviderCapabilities | undefined): string {
+export function capabilityFingerprint(capabilities: ProviderCapabilities | undefined, keys?: readonly string[]): string {
   if (capabilities === undefined) return 'none';
-  const entries = Object.keys(capabilities)
-    .sort()
+  const source = keys === undefined
+    ? Object.keys(capabilities)
+    // Only the keys an operation actually depends on are compared. A wallet may
+    // legitimately flip non-signing keys (private scan/view state) between the
+    // review being created and its approval; those flips say nothing about the
+    // transaction the user reviewed and must not invalidate it. A REQUIRED key
+    // disappearing from the advertisement still registers as 0.
+    : [...keys];
+  const entries = [...source].sort()
     .map((key) => `${key}=${capabilities[key] === true ? '1' : '0'}`);
   return entries.length === 0 ? 'empty' : hash(entries.join('|'));
 }
+
+/**
+ * The capability keys an execution actually depends on.
+ *
+ * `transactionRequests` — every wallet-approval flow reviewed here is submitted
+ * through the create/approve/submit trio. `stealthWithdraw` — Stealth-typed
+ * inputs (native tTARI included) from seed accounts go through the wallet's
+ * native `withdrawStealthAndExecute`. If a review contains neither, the subset
+ * is simply stable across both moments anyway.
+ */
+export const ACTION_CAPABILITY_KEYS: ReadonlyArray<string> = ['stealthWithdraw', 'transactionRequests'];
 
 let nonceCounter = 0;
 
@@ -123,6 +143,7 @@ export interface CaptureIdentityInput {
   providerNetwork: string;
   account: string;
   capabilities?: ProviderCapabilities;
+  capabilityKeys?: readonly string[];
   nonce?: string;
 }
 
@@ -133,7 +154,8 @@ export function captureIdentity(input: CaptureIdentityInput): ExecutionIdentity 
     expectedNetwork: input.expectedNetwork,
     providerNetwork: input.providerNetwork,
     account: input.account,
-    capabilityFingerprint: capabilityFingerprint(input.capabilities),
+    capabilityFingerprint: capabilityFingerprint(input.capabilities, input.capabilityKeys ?? ACTION_CAPABILITY_KEYS),
+    ...(input.capabilityKeys !== undefined ? { capabilityBasis: Object.freeze([...input.capabilityKeys]) } : { capabilityBasis: ACTION_CAPABILITY_KEYS }),
     nonce: input.nonce ?? issueNonce(),
     capturedAtUnixMs: Date.now(),
   };
@@ -152,6 +174,12 @@ export interface LiveIdentityInput {
 /**
  * Re-derive and compare. Every field is checked; the first mismatch is
  * reported with the field name so the UI can say precisely what changed.
+ *
+ * Capability comparison is scoped to the keys the review's operation depends on
+ * (`identity.capabilityKeys`): a wallet that flips non-signing keys — private
+ * scan/view state, for instance — between the review and the approval has not
+ * changed the transaction the user reviewed, and must not void it. A REQUIRED
+ * key vanishing (a `stealthWithdraw` downgrade, say) still fails closed.
  */
 export function verifyIdentity(expected: ExecutionIdentity, live: LiveIdentityInput): IdentityCheck {
   if (expected.nonce !== live.nonce) {
@@ -174,8 +202,8 @@ export function verifyIdentity(expected: ExecutionIdentity, live: LiveIdentityIn
   if (expected.account !== live.account) {
     return { ok: false, changed: 'account', reason: `The active account changed from ${expected.account} to ${live.account}.` };
   }
-  if (expected.capabilityFingerprint !== capabilityFingerprint(live.capabilities)) {
-    return { ok: false, changed: 'capabilities', reason: 'The wallet changed the capabilities it advertises after this review was created.' };
+  if (expected.capabilityFingerprint !== capabilityFingerprint(live.capabilities, expected.capabilityBasis ?? ACTION_CAPABILITY_KEYS)) {
+    return { ok: false, changed: 'capabilities', reason: 'The wallet changed the capabilities it advertises for this operation (a required key was downgraded or removed) after this review was created.' };
   }
   return { ok: true };
 }
