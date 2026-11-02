@@ -161,17 +161,39 @@ test('boundary: the frontend does not reimplement AMM or route math', () => {
   assert.equal(/function toDisplayPrice/.test(chartData), false, 'display conversion is not reimplemented locally');
 });
 
-test('policy: mainnet is not configurable anywhere in the app', () => {
+test('policy: mainnet execution is authorized in exactly one reviewed place, and named nowhere else', () => {
+  // The policy changed from "mainnet cannot be represented" to "mainnet cannot be EXECUTED", and
+  // this test got stronger rather than weaker: it now pins the authorization constant itself, and
+  // keeps the set of files allowed to name the network as small as it was before.
+  // Four files, each for a stated reason: the network table, the configuration that reads it,
+  // the shell that labels it, and the deployment registry — which must name mainnet so that
+  // `deploymentFor` has a mainnet row to return instead of falling through to a testnet's.
+  const ALLOWED = ['lib/networks.ts', 'services/config.ts', 'components/AppShell.tsx', 'services/protocolDeployment.ts'];
   for (const file of sourceFiles) {
     const text = fs.readFileSync(file, 'utf8');
-    const relative = path.relative(appRoot, file);
-    // `looksLikeMainnet` / `BROWSER_PROVIDER_BLOCKER` are refusals, not options.
-    if (relative.includes('networks.ts') || relative.includes('config.ts') || relative.includes('AppShell.tsx')) continue;
+    const relative = path.relative(appRoot, file).split(path.sep).join('/');
+    if (ALLOWED.some((allowed) => relative.endsWith(allowed))) continue;
     const hit = text.split('\n').find((line) => /['"]mainnet['"]/.test(line));
     assert.equal(hit, undefined, `${relative} must not name mainnet as a value: ${hit ?? ''}`);
   }
   const config = fs.readFileSync(path.join(srcRoot, 'services', 'config.ts'), 'utf8');
   assert.equal(/VITE_[A-Z_]*MAINNET/.test(config), false, 'there is no mainnet env var');
+
+  // The authorization is a source constant, shipped false, and NOT readable from the environment:
+  // a VITE_* value is public and set by whoever runs the build, which would make "is mainnet live"
+  // a property of a CI configuration rather than of a reviewed commit.
+  const networksSource = fs.readFileSync(path.join(srcRoot, 'lib', 'networks.ts'), 'utf8');
+  assert.match(networksSource, /export const MAINNET_EXECUTION_AUTHORIZED = false;/);
+  const authorizingLines = networksSource
+    .split('\n')
+    .filter((line) => /MAINNET_EXECUTION_AUTHORIZED/.test(line) && !line.trim().startsWith('*') && !line.trim().startsWith('//'));
+  for (const line of authorizingLines) {
+    assert.equal(/env|import\.meta|process\./.test(line), false, `the mainnet gate must not read the environment: ${line.trim()}`);
+  }
+  const { MAINNET_EXECUTION_AUTHORIZED, isExecutionNetwork, checkNetwork } = require('../build-test/lib/networks.js');
+  assert.equal(MAINNET_EXECUTION_AUTHORIZED, false);
+  assert.equal(isExecutionNetwork('mainnet'), false);
+  assert.equal(checkNetwork('mainnet').ok, false);
 });
 
 test('policy: the development fixtures cannot be enabled by a shipped flag', () => {
@@ -187,7 +209,15 @@ test('policy: the development fixtures cannot be enabled by a shipped flag', () 
 test('policy: the real cross-chain submit gate is mirrored, never bypassed', () => {
   const config = fs.readFileSync(path.join(srcRoot, 'services', 'config.ts'), 'utf8');
   assert.match(config, /TARI_LIQUIDITY_ENABLE_REAL_CROSSCHAIN_SUBMIT/);
-  assert.match(config, /Only test networks are permitted/);
+  // Mainnet is refused here INDEPENDENTLY of the L2 execution gate, and stays refused even if
+  // that gate is later opened: real cross-chain submission spends base-layer XTM, so it is a
+  // separate authorization and is not implied by enabling L2 trading.
+  assert.match(config, /network === 'mainnet'/);
+  assert.match(config, /authorized separately from L2 execution/);
+  const { realSubmitGate } = require('../build-test/services/config.js');
+  assert.equal(realSubmitGate({ TARI_LIQUIDITY_ENABLE_REAL_CROSSCHAIN_SUBMIT: '1' }, 'mainnet').enabled, false);
+  assert.equal(realSubmitGate({}, 'esmeralda').enabled, false, 'the env gate still has to be set');
+  assert.equal(realSubmitGate({ TARI_LIQUIDITY_ENABLE_REAL_CROSSCHAIN_SUBMIT: '1' }, 'esmeralda').enabled, true);
   // The app must not construct a cross-chain transaction itself.
   for (const file of sourceFiles) {
     const text = fs.readFileSync(file, 'utf8');
