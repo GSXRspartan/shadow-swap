@@ -14,6 +14,7 @@ import { HomePage } from './pages/HomePage.js';
 import { PoolPage } from './pages/PoolPage.js';
 import { NftMarketplacePage } from './pages/NftMarketplacePage.js';
 import { CollectionRoutePage } from './pages/NftMarketplacePage.js';
+import { SupportPage } from './pages/SupportPage.js';
 import { ActivityPage } from './pages/ActivityPage.js';
 import { CrossLayerPage } from './pages/CrossLayerPage.js';
 import { Card, EmptyState } from './components/primitives.js';
@@ -35,6 +36,7 @@ export default function App() {
             <Route path="/nfts/:collectionResource" element={<CollectionRoutePage />} />
             <Route path="/cross-layer" element={<CrossLayerPage />} />
             <Route path="/activity" element={<ActivityPage />} />
+            <Route path="/support" element={<SupportPage />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AppShell>

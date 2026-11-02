@@ -13,7 +13,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { resolveAddLiquidity, resolveRemoveLiquidity } from '@tari-ootle/protocol-client';
+import { lpPosition, resolveAddLiquidity, resolveRemoveLiquidity, type LpPosition } from '@tari-ootle/protocol-client';
 import { ammLiquidityIntentBuilder, toAmmPreview, type AmmTransactionIntent } from '@tari-ootle/wallet-adapter';
 import { useApp } from '../state/AppContext.js';
 import type { PoolDescriptor } from '../services/pools.js';
@@ -48,6 +48,17 @@ export function LiquidityPanel({ pool }: { pool: PoolDescriptor }) {
     | { kind: 'remove'; expectedA: string; expectedB: string }
     | undefined
   >(undefined);
+  /**
+   * The connected account's position, computed from the SAME authoritative read that produced
+   * the removal preview.
+   *
+   * Deliberately not fetched on its own: this app does authoritative reads at the moment they
+   * are acted on, so that a displayed number is never a stale figure presented as a fact. The
+   * removal path already reads the pool, so a position shown here is as fresh as the preview
+   * beside it — and when there is no preview there is no position, rather than an old one.
+   */
+  const [position, setPosition] = useState<LpPosition | undefined>(undefined);
+  const [positionProblem, setPositionProblem] = useState<string | undefined>(undefined);
   const [busy, setBusy] = useState(false);
   /**
    * Synchronous submission guard. `busy` is React state, so it is still `false`
@@ -113,11 +124,29 @@ export function LiquidityPanel({ pool }: { pool: PoolDescriptor }) {
     if (outcome.status === 'ACTIVE') {
       setPreview({ kind: 'remove', expectedA: outcome.resolved.expectedA, expectedB: outcome.resolved.expectedB });
       setMessage(undefined);
+      // The whole position, from the read that just happened. A disagreement between the two
+      // reads (an LP balance above the pool's total supply, say) is reported rather than
+      // rendered: a position shown with one field wrong is worse than none, because a provider
+      // acts on it.
+      if (lpBalance === undefined) {
+        setPosition(undefined);
+        setPositionProblem(undefined);
+      } else {
+        try {
+          setPosition(lpPosition({ lpBalanceRaw: lpBalance, pool: outcome.resolved.pool }));
+          setPositionProblem(undefined);
+        } catch (error) {
+          setPosition(undefined);
+          setPositionProblem(normalizeError({ error }).message);
+        }
+      }
     } else {
+      setPosition(undefined);
+      setPositionProblem(undefined);
       setPreview(undefined);
       setMessage({ tone: outcome.status === 'UNAVAILABLE' ? 'warn' : 'danger', title: `Remove liquidity ${outcome.status.toLowerCase()}`, detail: outcome.reason });
     }
-  }, [readback, pool.poolComponent, lpAmount]);
+  }, [readback, pool.poolComponent, lpAmount, lpBalance]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -330,12 +359,51 @@ export function LiquidityPanel({ pool }: { pool: PoolDescriptor }) {
       <hr className="divider" />
       <div className="stack" style={{ gap: 'var(--s-2)' }}>
         <span className="label">Position</span>
+        {position !== undefined ? (
+          <>
+            <DataRow label="LP tokens held" value={formatUnits(position.lpBalanceRaw, '0', { maxFractionDigits: 6 })} />
+            <DataRow
+              label="Share of the pool"
+              value={`${position.ownershipPercent}%`}
+              title="Your LP balance as a share of total supply, from the same read as the preview above. Floored."
+            />
+            <DataRow
+              label={`Your ${pool.base.symbol} at these reserves`}
+              value={formatUnits(position.claimARaw, pool.base.decimals, { maxFractionDigits: 6 })}
+              title="What this position redeems for at the reserves as read, floored exactly as the on-chain redemption floors."
+            />
+            <DataRow
+              label={`Your ${pool.quote.symbol} at these reserves`}
+              value={formatUnits(position.claimBRaw, pool.quote.decimals, { maxFractionDigits: 6 })}
+            />
+            {position.lockedBps > 0 && (
+              <DataRow
+                label="Permanently locked supply"
+                value={`${(position.lockedBps / 100).toFixed(2)}%`}
+                tone="warn"
+                title="Locked in the pool for ever so it can never be fully drained. Nobody can redeem it, so it dilutes every provider equally."
+              />
+            )}
+            {position.notes.map((note) => (
+              <p className="hint" key={note}>
+                {note}
+              </p>
+            ))}
+          </>
+        ) : (
+          <p className="hint">
+            Your share of the pool and what it would redeem for are shown with the removal preview
+            above, because both come from one authoritative pool read. Enter an LP amount to
+            compute them; nothing is shown from a stale read.
+          </p>
+        )}
+        {positionProblem !== undefined && (
+          <Notice tone="warn" title="Your position could not be measured">
+            {positionProblem}
+          </Notice>
+        )}
         <p className="hint">
           <Badge>No APR shown</Badge> <Badge>No APY shown</Badge> <Badge>No impermanent-loss figure shown</Badge>
-        </p>
-        <p className="hint">
-          Fee earnings are not projected here. Nothing in the protocol derives a defensible yield figure, so none is displayed. Your actual position is
-          whatever the pool pays out at the time you redeem.
         </p>
       </div>
     </Card>
