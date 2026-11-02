@@ -65,6 +65,7 @@ import { awaitingApproval } from '@tari-ootle/protocol-client';
 export type WalletEvent =
   | { kind: 'accountsChanged' }
   | { kind: 'networkChanged'; network: string }
+  | { kind: 'balancesChanged'; account: string; balances: Balance[] }
   | { kind: 'capabilitiesChanged' }
   | { kind: 'disconnected' };
 
@@ -92,6 +93,8 @@ export interface WalletBridge extends WalletAdapter {
   on(listener: WalletEventListener): () => void;
   /** The provider object, for reference-identity pinning. */
   providerObject(): object;
+  /** Re-read the connected account's balances and emit `balancesChanged`. No-op when not connected. */
+  refreshBalances(): Promise<Balance[]>;
   /** A live identity snapshot, for TOCTOU verification before authorization. */
   liveIdentity(sessionNonce: string): Promise<LiveIdentityInput>;
   /**
@@ -342,6 +345,25 @@ class TariBridgeWalletAdapter implements WalletBridge {
 
   async getBalances(): Promise<Balance[]> {
     return this.readBalances();
+  }
+
+  /**
+   * Re-read the connected account's balances and announce the result.
+   *
+   * Unsolicited inbound transfers (an airdrop, an L1 claim, a trading peer)
+   * never re-connect the wallet, so the balances snapshot taken at connect goes
+   * stale silently: an asset that arrived after the last connect was invisible
+   * in every picker (observed live with a created-Stealth airdrop). Re-reading
+   * is a bounded, non-interactive read: it never spends anything and never
+   * prompts. When there is no connected session it is a no-op, so a stray
+   * background poll can never manufacture balances.
+   */
+  async refreshBalances(): Promise<Balance[]> {
+    if (this.session === undefined) return [];
+    const balances = await this.readBalances();
+    const account = this.session.account.address;
+    this.listeners.forEach((listener) => listener({ kind: 'balancesChanged', account, balances: [...balances] }));
+    return balances;
   }
 
   async getResources(): Promise<ResourceInfo[]> {

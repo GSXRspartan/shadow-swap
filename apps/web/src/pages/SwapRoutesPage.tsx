@@ -29,7 +29,9 @@ import { parseDecimalToRaw } from '../lib/amountInput.js';
 import { formatAddress, formatUnits, UNAVAILABLE } from '../lib/format.js';
 import { DEFAULT_SLIPPAGE_BPS } from '../lib/slippage.js';
 import { normalizeError } from '../lib/errorMessage.js';
-import { CANONICAL_TARI, SIGNABLE_MECHANISMS, bestAmmQuote, resolvePairRoutes, type AssetKind, type Mechanism, type RouteOption } from '../lib/routeResolver.js';
+import { SIGNABLE_MECHANISMS, bestAmmQuote, resolvePairRoutes, type AssetKind, type Mechanism, type RouteOption } from '../lib/routeResolver.js';
+import { routeImpactGuard } from '../lib/routeImpactGuard.js';
+import { swapAssetCatalog } from '../lib/swapAssetCatalog.js';
 import { Badge, Card, CardHeader, DataRow, EmptyState, Notice } from '../components/primitives.js';
 import { P2POfferPanel } from '../components/P2POfferPanel.js';
 
@@ -61,6 +63,8 @@ export function SwapRoutesPage() {
   const [chosen, setChosen] = useState<number>(0);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ tone: 'info' | 'warn' | 'danger'; title: string; detail: string } | undefined>(undefined);
+  /** Explicit user decision to proceed past the excessive-impact guard (see routeImpactGuard). */
+  const [impactOverride, setImpactOverride] = useState(false);
   const guard = useRef(false);
 
   // Authoritative reserves for every verified pool (pinned readback; display purpose is fine
@@ -107,23 +111,25 @@ export function SwapRoutesPage() {
   }, [market.pools, readback, config.network]);
 
   const assets = useMemo<AssetChoice[]>(() => {
-    const byResource = new Map<string, AssetChoice>();
-    for (const pool of market.pools) {
-      for (const side of [pool.base, pool.quote]) {
-        byResource.set(side.resourceAddress, {
-          resource: side.resourceAddress,
-          label: side.symbol ?? formatAddress(side.resourceAddress),
-          // Pool v2 admits only ordinary fungibles and native tTARI (by exact address).
-          kind: side.resourceAddress === CANONICAL_TARI ? 'stealth' : 'fungible',
-          decimals: Number(side.decimals) || 0,
-        });
-      }
-    }
-    for (const b of wallet.balances) {
-      if (byResource.has(b.resourceAddress)) continue;
-      byResource.set(b.resourceAddress, { resource: b.resourceAddress, label: b.symbol ?? formatAddress(b.resourceAddress), kind: b.resourceType, decimals: b.divisibility ?? 0 });
-    }
-    return [...byResource.values()].sort((a, b) => a.label.localeCompare(b.label));
+    const catalog = swapAssetCatalog({
+      pools: market.pools.map((pool) => ({
+        base: { resourceAddress: pool.base.resourceAddress, symbol: pool.base.symbol, decimals: pool.base.decimals },
+        quote: { resourceAddress: pool.quote.resourceAddress, symbol: pool.quote.symbol, decimals: pool.quote.decimals },
+      })),
+      balances: wallet.balances.map((b) => ({
+        resourceAddress: b.resourceAddress,
+        amount: b.amount,
+        resourceType: b.resourceType,
+        ...(b.divisibility === undefined ? {} : { divisibility: b.divisibility }),
+        ...(b.symbol === undefined ? {} : { symbol: b.symbol }),
+      })),
+    });
+    return catalog.map((a) => ({
+      resource: a.resource,
+      label: a.heldDisplay === undefined ? a.name : `${a.name} — held ${a.heldDisplay}`,
+      kind: a.kind as AssetKind,
+      decimals: a.decimals,
+    }));
   }, [market.pools, wallet.balances]);
 
   const fromAsset = assets.find((a) => a.resource === from);
@@ -165,6 +171,8 @@ export function SwapRoutesPage() {
   );
   const best = bestAmmQuote(options);
   useEffect(() => setChosen(0), [from, to, amountRaw]);
+  // A new quote basis is a new decision: the impact-guard override never carries over.
+  useEffect(() => setImpactOverride(false), [from, to, amountRaw, chosen]);
   const selected = quotes[chosen];
 
   const symbolOf = (resource: string) => assets.find((a) => a.resource === resource)?.label ?? formatAddress(resource);
@@ -245,6 +253,14 @@ export function SwapRoutesPage() {
       else if (result.outcome === 'FAILED') setMessage({ tone: 'danger', title: 'Swap failed', detail: result.reason });
       else setMessage({ tone: 'info', title: 'Swap submitted', detail: `Transaction ${result.transactionId} submitted. Confirmation and balances update on the Activity page.` });
     } catch (error) {
+      // LIVE-ACCEPTANCE diagnostic (no console logging): the exact refusal is
+      // recorded on the window for the acceptance driver to read. Temporary.
+      (globalThis as { __ssLastError?: unknown }).__ssLastError = {
+        name: error instanceof Error ? error.name : typeof error,
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack?.slice(0, 1200) : undefined,
+        at: new Date().toISOString(),
+      };
       setMessage({ tone: 'danger', title: 'Not submitted', detail: normalizeError({ error }).message });
     } finally {
       guard.current = false;
@@ -318,15 +334,39 @@ export function SwapRoutesPage() {
               </li>
             ))}
           </ol>
-          {selected !== undefined && (
-            <>
-              <DataRow label="Minimum received (0.50% slippage, enforced on-chain by the final hop)" value={formatUnits(String((BigInt(selected.amountOut) * 9950n) / 10000n), decimalsOf(selected.outputResource))} />
-              <p className="muted">The route is re-read from your wallet immediately before review. Every hop settles in one transaction or none does.</p>
-              <button type="button" className="button button-primary" disabled={busy || wallet.status !== 'CONNECTED'} onClick={() => void submit()}>
-                {busy ? 'Waiting for wallet…' : 'Review and swap'}
-              </button>
-            </>
-          )}
+          {selected !== undefined && (() => {
+            const impact = routeImpactGuard({ totalCostBps: selected.totalCostBps, overrideConfirmed: impactOverride });
+            const submitEnabled = !busy && wallet.status === 'CONNECTED' && impact.allowed;
+            return (
+              <>
+                <DataRow label="Minimum received (0.50% slippage, enforced on-chain by the final hop)" value={formatUnits(String((BigInt(selected.amountOut) * 9950n) / 10000n), decimalsOf(selected.outputResource))} />
+                {impact.kind === 'WARN' && <Notice tone="warn" title={impact.title!}>{impact.detail}</Notice>}
+                {impact.kind === 'BLOCK' && (
+                  <Notice tone="danger" title={impact.title!}>{impact.detail}</Notice>
+                )}
+                {impact.kind === 'BLOCK' && !impact.allowed && (
+                  <label className="field">
+                    <input
+                      type="checkbox"
+                      checked={impactOverride}
+                      onChange={(e) => setImpactOverride(e.target.checked)}
+                    />{' '}
+                    I understand the cost: override the price-impact guard (this build is a disposable-testnet client)
+                  </label>
+                )}
+                {impact.kind === 'BLOCK' && impact.allowed && impact.title !== undefined && <Notice tone="warn" title={impact.title}>{impact.detail}</Notice>}
+                <p className="muted">The route is re-read from your wallet immediately before review. Every hop settles in one transaction or none does.</p>
+                <button
+                  type="button"
+                  className="button button-primary"
+                  disabled={!submitEnabled}
+                  onClick={() => void submit()}
+                >
+                  {busy ? 'Waiting for wallet…' : 'Review and swap'}
+                </button>
+              </>
+            );
+          })()}
         </Card>
       )}
       {quotes.length === 0 && fromAsset !== undefined && toAsset !== undefined && amountRaw !== undefined && (
