@@ -25,9 +25,9 @@ const NAV_ITEMS = [
 ] as const;
 
 /**
- * The testnet badge is NOT a separate header chip.
+ * The network badge is NOT a separate header chip.
  *
- * `NetworkBadge` already renders the network's `badge` (`TESTNET` / `DEVNET`),
+ * `NetworkBadge` already renders the network's `badge` (`MAINNET` / `TESTNET` / `DEVNET`),
  * and it is rendered on exactly one row per breakpoint — the inline row at
  * >= 1024px, the secondary row below it. Adding a second, independently-placed
  * TESTNET chip produced two of them side by side on desktop and one per row on
@@ -51,14 +51,28 @@ function NetworkBadge() {
   const network = FRONTEND_NETWORKS[config.network];
   const providerMismatch = wallet.networkId !== undefined && wallet.networkId !== config.network;
   const tone: BadgeTone = providerMismatch ? 'danger' : 'neutral';
+  // A real-value network gets the danger tone, not the testnet tone. The badge's job is to make
+  // the stakes unmistakable at a glance, and a mainnet chip styled like a testnet chip would do
+  // the opposite of that.
+  const badgeTone: BadgeTone = network.realValue ? 'danger' : 'testnet';
+  const badgeTitle = network.realValue
+    ? config.executionEnabled
+      ? 'This network carries real value and execution is authorized in this build.'
+      : `This network carries real value. Execution is NOT authorized in this build: ${config.executionReason ?? 'held pending authorization'}`
+    : 'A test network. Assets here have no value.';
   return (
     <span className="row" style={{ gap: 'var(--s-1)' }}>
       <Badge tone={tone} title={`Provider network: ${wallet.networkId ?? 'not connected'}`}>
         {network.displayName}
       </Badge>
-      <Badge tone="testnet" title="This build is testnet-only. Mainnet is not selectable.">
+      <Badge tone={badgeTone} title={badgeTitle}>
         {network.badge}
       </Badge>
+      {!config.executionEnabled && (
+        <Badge tone="warn" title={config.executionReason ?? 'Execution is not enabled in this build.'}>
+          EXECUTION HELD
+        </Badge>
+      )}
     </span>
   );
 }
@@ -353,6 +367,12 @@ export function AppShell({ children }: { children: ReactNode }) {
           <p className="hint">
             Liquidity provider fees go entirely to liquidity providers. Provider spread belongs to the cross-layer provider. There is no developer trading
             fee.
+          </p>
+          <p className="hint">
+            {/* In the footer rather than the primary nav: a donation link beside the trading
+                controls would read as a toll on trading, which it is not. */}
+            <Link to="/support">Support Shadow Swap development</Link> — voluntary, and never required
+            to trade, provide liquidity, or withdraw funds.
           </p>
         </div>
       </footer>

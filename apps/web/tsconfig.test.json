@@ -41,6 +41,8 @@
     "src/components/AppShell.tsx",
     "src/components/MakerInventoryPanel.tsx",
     "src/pages/CrossLayerMarketPage.tsx",
+    "src/components/SupportDevelopmentPanel.tsx",
+    "src/pages/SupportPage.tsx",
     "src/components/ProtocolMark.tsx"
   ],
   "exclude": ["src/services/envSource.ts"]

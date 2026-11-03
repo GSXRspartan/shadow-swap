@@ -110,6 +110,32 @@ const ESMERALDA_V048: ProtocolDeployment = {
     'Shadow Swap templates have not been published on the v0.48 reset network. The v0.48 builds exist and are tested, but publishing them is an operator decision outside this release candidate.',
 };
 
+/**
+ * Mainnet. Nothing is published, and this row exists so that `deploymentFor` cannot FALL THROUGH
+ * to Esmeralda's.
+ *
+ * That fall-through was real: the previous `deploymentFor` returned an Esmeralda deployment for
+ * every network that was not localnet, which was harmless while `FrontendNetworkId` had only two
+ * members and became a live hazard the moment mainnet joined it — a mainnet session would have
+ * trusted Esmeralda's recorded Pool v2 template address. A testnet template must never be
+ * treated as a mainnet deployment, so the function below is exhaustive and this row is empty.
+ */
+const MAINNET: ProtocolDeployment = {
+  network: 'mainnet',
+  generation: 'V048_RESET',
+  registryKey: 'mainnet',
+  poolTemplates: [],
+  marketplaceTemplates: undefined,
+  offerTemplates: [],
+  revealedPoolTemplates: [],
+  // Empty like the rest, and for the same reason the whole row exists. Worth noting that the
+  // cross-layer market needs BOTH legs, and Ootle L2 mainnet has not launched — so even a
+  // published template here would not make the feature usable on mainnet.
+  crossLayerHtlcTemplates: [],
+  status:
+    'No Shadow Swap template is published on mainnet, and Ootle L2 mainnet has not launched. Every feature reports unavailable here, which is the truthful state rather than a placeholder.',
+};
+
 const LOCALNET: ProtocolDeployment = {
   network: 'localnet',
   generation: 'V048_RESET',
@@ -122,9 +148,28 @@ const LOCALNET: ProtocolDeployment = {
   status: 'Localnet has no recorded deployment. Record a locally published template address here to use it.',
 };
 
+/**
+ * The deployment for a (network, generation), with NO fall-through.
+ *
+ * Exhaustive by construction: every `FrontendNetworkId` has its own branch, and the `never`
+ * assignment at the end makes adding a network a compile error here rather than a silent
+ * inheritance of whichever branch happened to be last.
+ */
 export function deploymentFor(network: FrontendNetworkId, generation: NetworkGeneration): ProtocolDeployment {
-  if (network === 'localnet') return generation === 'V048_RESET' ? LOCALNET : { ...LOCALNET, generation, registryKey: 'localnet@pre-v048' };
-  return generation === 'V048_RESET' ? ESMERALDA_V048 : ESMERALDA_PRE_V048;
+  switch (network) {
+    case 'localnet':
+      return generation === 'V048_RESET' ? LOCALNET : { ...LOCALNET, generation, registryKey: 'localnet@pre-v048' };
+    case 'esmeralda':
+      return generation === 'V048_RESET' ? ESMERALDA_V048 : ESMERALDA_PRE_V048;
+    case 'mainnet':
+      // One row for both generations: nothing is recorded either way, and a mainnet session must
+      // never be handed a testnet generation's templates.
+      return generation === 'V048_RESET' ? MAINNET : { ...MAINNET, generation, registryKey: 'mainnet@pre-v048' };
+    default: {
+      const unreachable: never = network;
+      throw new Error(`no deployment recorded for network ${String(unreachable)}`);
+    }
+  }
 }
 
 function bare(address: string): string {
