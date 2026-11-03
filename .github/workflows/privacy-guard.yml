@@ -1,0 +1,45 @@
+# Server-side privacy guard. Runs in GitHub CI, so it protects the repo no matter
+# what any contributor's local Git config or hooks look like — including a client
+# that overrides identity with an account email. It fails the check (and thus blocks
+# merge, under branch protection) if any commit in the push/PR carries a personal
+# email or a Claude session URL in author metadata, committer metadata, or message.
+name: Privacy Guard
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: ['**']
+permissions:
+  contents: read
+jobs:
+  scan-identity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Scan commit identity and messages for personal exposure
+        shell: bash
+        run: |
+          set -uo pipefail
+          # Personal / consumer email providers that must never appear, plus session URLs.
+          DENY_EMAIL='phildark\.pd@gmail\.com|@gmail\.com|@ymail\.com|@yahoo\.[a-z.]+|@hotmail\.[a-z.]+|@outlook\.[a-z.]+|@live\.[a-z.]+|@icloud\.com|@me\.com|@proton(mail)?\.(com|me)|@pm\.me|@aol\.com|@gmx\.[a-z.]+'
+          DENY_URL='claude\.ai/code/session_'
+          if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
+            base="${GITHUB_BASE_REF}"; git fetch -q origin "$base"
+            range="origin/${base}..${GITHUB_SHA}"
+          else
+            before="${GITHUB_EVENT_BEFORE:-}"
+            if [ -z "$before" ] || [ "$before" = "0000000000000000000000000000000000000000" ]; then range="${GITHUB_SHA}"; else range="${before}..${GITHUB_SHA}"; fi
+          fi
+          revs=$(git rev-list "$range" 2>/dev/null) || { echo "::error::cannot enumerate commits (fail-closed)"; exit 1; }
+          fail=0
+          for c in $revs; do
+            blob=$(git show -s --format='%ae%n%ce%n%B' "$c") || { echo "::error::cannot read $c (fail-closed)"; exit 1; }
+            if printf '%s' "$blob" | grep -Eiq "$DENY_EMAIL"; then
+              echo "::error::commit $c carries a personal email in author/committer/message"; fail=1; fi
+            if printf '%s' "$blob" | grep -Eiq "$DENY_URL"; then
+              echo "::error::commit $c carries a Claude session URL"; fail=1; fi
+          done
+          [ "$fail" -eq 0 ] || { echo "Privacy Guard: personal identity exposure detected. See errors above."; exit 1; }
+          echo "Privacy Guard: no personal email or session URL found in the scanned commits."

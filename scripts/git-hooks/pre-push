@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# PRIVACY GUARD (shadow-swap) — marker line; the installer greps for "PRIVACY GUARD"
+# to recognize its own hook and stay idempotent. Do not remove this line.
+# Fail-closed pre-push privacy guard. Inspects the COMMITS being pushed (not Git
+# config), so it catches a leak even when identity was forced via `git -c user.email=`.
+# Install for all repos:  git config --global core.hooksPath "$HOME/.git-hooks-global"
+#   (copy this file to that dir as 'pre-push', chmod +x)
+# Deliberate bypass:       PRIVACY_GUARD_OVERRIDE=1 git push ...
+set -uo pipefail
+DENY='phildark\.pd@gmail\.com|@gmail\.com|@ymail\.com|@yahoo\.[a-z.]+|@hotmail\.[a-z.]+|@outlook\.[a-z.]+|@live\.[a-z.]+|@icloud\.com|@me\.com|@proton(mail)?\.(com|me)|@pm\.me|@aol\.com|@gmx\.[a-z.]+|claude\.ai/code/session_'
+Z='0000000000000000000000000000000000000000'; fail=0
+while read -r _l localsha _r remotesha; do
+  [ "$localsha" = "$Z" ] && continue
+  if [ "$remotesha" = "$Z" ]; then revs=$(git rev-list "$localsha" --not --remotes 2>/dev/null) || { echo "pre-push: fail-closed (rev-list)"; exit 1; }
+  else revs=$(git rev-list "${remotesha}..${localsha}" 2>/dev/null) || { echo "pre-push: fail-closed (rev-list)"; exit 1; }; fi
+  for c in $revs; do
+    blob=$(git show -s --format='%ae%n%ce%n%B' "$c" 2>/dev/null) || { echo "pre-push: fail-closed (read $c)"; exit 1; }
+    printf '%s' "$blob" | grep -Eiq "$DENY" && { echo "pre-push PRIVACY BLOCK: commit ${c:0:12} carries a personal email or session URL"; fail=1; }
+  done
+done
+if [ "$fail" -ne 0 ]; then
+  [ "${PRIVACY_GUARD_OVERRIDE:-}" = "1" ] && { echo "PRIVACY_GUARD_OVERRIDE=1 — allowing."; exit 0; }
+  echo "Push REJECTED. Rewrite the offending commits, or set PRIVACY_GUARD_OVERRIDE=1 to bypass."; exit 1
+fi
+exit 0
