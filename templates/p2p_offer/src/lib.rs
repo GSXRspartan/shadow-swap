@@ -91,6 +91,7 @@ mod p2p_offer {
                 status: OfferStatus::Open,
             })
             .with_owner_rule(OwnerRule::None)
+            .with_upgrade_rule(UpdateRule::Locked)
             .with_access_rules(access_rules)
             .create()
         }

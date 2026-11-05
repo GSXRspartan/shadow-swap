@@ -27,8 +27,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/wallet-adapter
       '@tari-project/ootle-wasm-bor':
-        specifier: 0.48.0
-        version: 0.48.0
+        specifier: 0.49.2
+        version: 0.49.2
       lightweight-charts:
         specifier: 5.2.1
         version: 5.2.1
@@ -491,8 +491,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@tari-project/ootle-wasm-bor@0.48.0':
-    resolution: {integrity: sha512-eH9+yUwRFqd5/wWU/Rgk2R18MVm2hUIMSGhwKJ+EzUVayyNqCyeGm89oI4eku/Gd6/DNPxyC9dZNxIJGe3bp9g==}
+  '@tari-project/ootle-wasm-bor@0.49.2':
+    resolution: {integrity: sha512-aiOyioEvUCp8ezlrvFAN3KwtoZxM5jmUyp35DeuzTNaBRfMD/PgGSjZyDAbEwxF8QExu+vfQztCMA+zJOfFBhQ==}
 
   '@types/babel__core@7.20.5':
     resolution: {integrity: sha512-qoQprZvz5wQFJwMDqeseRXWv3rqMvhgpbXFfVyWhbx9X47POIA6i/+dXefEmZKoAgOaTdaIgNSMqMIU61yRyzA==}
@@ -1061,7 +1061,7 @@ snapshots:
   '@rollup/rollup-win32-x64-msvc@4.67.2':
     optional: true
 
-  '@tari-project/ootle-wasm-bor@0.48.0': {}
+  '@tari-project/ootle-wasm-bor@0.49.2': {}
 
   '@types/babel__core@7.20.5':
     dependencies:

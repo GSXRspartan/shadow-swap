@@ -126,8 +126,8 @@ checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
 
 [[package]]
 name = "ootle_serde"
-version = "0.6.1"
-source = "git+https://github.com/tari-project/tari-ootle.git?rev=6a25dbc524581bfaa0a3c6ef120f8d59cc827572#6a25dbc524581bfaa0a3c6ef120f8d59cc827572"
+version = "0.6.2"
+source = "git+https://github.com/tari-project/tari-ootle.git?rev=aa7b0c81719e5c3cfaf9bf3b5fb87bd83180cb90#aa7b0c81719e5c3cfaf9bf3b5fb87bd83180cb90"
 dependencies = [
  "serde",
 ]
@@ -213,8 +213,8 @@ dependencies = [
 
 [[package]]
 name = "tari_bor"
-version = "0.16.5"
-source = "git+https://github.com/tari-project/tari-ootle.git?rev=6a25dbc524581bfaa0a3c6ef120f8d59cc827572#6a25dbc524581bfaa0a3c6ef120f8d59cc827572"
+version = "0.16.6"
+source = "git+https://github.com/tari-project/tari-ootle.git?rev=aa7b0c81719e5c3cfaf9bf3b5fb87bd83180cb90#aa7b0c81719e5c3cfaf9bf3b5fb87bd83180cb90"
 dependencies = [
  "borsh",
  "minicbor",
@@ -224,7 +224,7 @@ dependencies = [
 [[package]]
 name = "tari_template_abi"
 version = "0.22.0"
-source = "git+https://github.com/tari-project/tari-ootle.git?rev=6a25dbc524581bfaa0a3c6ef120f8d59cc827572#6a25dbc524581bfaa0a3c6ef120f8d59cc827572"
+source = "git+https://github.com/tari-project/tari-ootle.git?rev=aa7b0c81719e5c3cfaf9bf3b5fb87bd83180cb90#aa7b0c81719e5c3cfaf9bf3b5fb87bd83180cb90"
 dependencies = [
  "minicbor",
  "serde",
@@ -234,8 +234,8 @@ dependencies = [
 
 [[package]]
 name = "tari_template_lib"
-version = "0.36.0"
-source = "git+https://github.com/tari-project/tari-ootle.git?rev=6a25dbc524581bfaa0a3c6ef120f8d59cc827572#6a25dbc524581bfaa0a3c6ef120f8d59cc827572"
+version = "0.37.0"
+source = "git+https://github.com/tari-project/tari-ootle.git?rev=aa7b0c81719e5c3cfaf9bf3b5fb87bd83180cb90#aa7b0c81719e5c3cfaf9bf3b5fb87bd83180cb90"
 dependencies = [
  "minicbor",
  "serde",
@@ -248,7 +248,7 @@ dependencies = [
 [[package]]
 name = "tari_template_lib_types"
 version = "0.36.0"
-source = "git+https://github.com/tari-project/tari-ootle.git?rev=6a25dbc524581bfaa0a3c6ef120f8d59cc827572#6a25dbc524581bfaa0a3c6ef120f8d59cc827572"
+source = "git+https://github.com/tari-project/tari-ootle.git?rev=aa7b0c81719e5c3cfaf9bf3b5fb87bd83180cb90#aa7b0c81719e5c3cfaf9bf3b5fb87bd83180cb90"
 dependencies = [
  "borsh",
  "minicbor",
@@ -261,8 +261,8 @@ dependencies = [
 
 [[package]]
 name = "tari_template_macros"
-version = "0.25.0"
-source = "git+https://github.com/tari-project/tari-ootle.git?rev=6a25dbc524581bfaa0a3c6ef120f8d59cc827572#6a25dbc524581bfaa0a3c6ef120f8d59cc827572"
+version = "0.26.0"
+source = "git+https://github.com/tari-project/tari-ootle.git?rev=aa7b0c81719e5c3cfaf9bf3b5fb87bd83180cb90#aa7b0c81719e5c3cfaf9bf3b5fb87bd83180cb90"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -281,9 +281,9 @@ dependencies = [
 
 [[package]]
 name = "toml_edit"
-version = "0.25.17+spec-1.1.0"
+version = "0.25.18+spec-1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e3641d5bbb5349a79e1020a242d251efbc546ad8048d133958323ce9c40a9c9c"
+checksum = "1ec6e78bd70db9420d8d212fa9dc97f116448a1ceff5d00eabb991d407e21396"
 dependencies = [
  "indexmap",
  "toml_datetime",
@@ -308,9 +308,9 @@ checksum = "a2c754d6c33795a1c324727428e5a7dedb5b06195f9890bdbcba760d3e246563"
 
 [[package]]
 name = "winnow"
-version = "1.0.4"
+version = "1.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "23b97319f7b8343df12cc98938e5c3eb436064524c8d2b4e30a1d3a36eecdf81"
+checksum = "8c3b93199df0ab874cdf0c6a94f0a0dc3423fe41f1cafb62b8bd7b1deb277aef"
 dependencies = [
  "memchr",
 ]

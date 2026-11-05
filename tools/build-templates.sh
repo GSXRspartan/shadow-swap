@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Reproducible release build of the Shadow Swap Ootle templates (four published before the
-# v0.48 reset, plus the unpublished SwapOffer escrow, so its bytes are fixed before anyone publishes it).
+# v0.49 reset, plus the unpublished SwapOffer escrow, so its bytes are fixed before anyone publishes it).
 #
 # WHY: a plain `cargo build` embeds absolute host paths (e.g. `/root/.cargo/git/checkouts/...`)
 # into the WASM via panic-location strings, so two machines building the same commit produce
@@ -8,7 +8,7 @@
 # addresses. That makes "this published template is this source" unverifiable.
 #
 # This script removes both sources of variance it controls:
-#   1. toolchain  -> pinned to TOOLCHAIN below (the same channel upstream tari-ootle v0.48.0 pins);
+#   1. toolchain  -> pinned to TOOLCHAIN below (the same channel upstream tari-ootle v0.49.2 pins);
 #   2. host paths -> remapped with --remap-path-prefix for CARGO_HOME and the repo root.
 # and builds with --locked, so the committed Cargo.lock files are used as-is.
 #
@@ -54,7 +54,7 @@ done
 case "${1:-}" in
   --write)
     { echo "# sha256 of the reproducible template builds (tools/build-templates.sh, Rust $TOOLCHAIN,"
-      echo "# tari-ootle v0.48.0 6a25dbc). Regenerate with: tools/build-templates.sh --write"
+      echo "# tari-ootle v0.49.2 aa7b0c81719e5c3cfaf9bf3b5fb87bd83180cb90). Regenerate with: tools/build-templates.sh --write"
       cat "$OUT/sums"; } > "$SUMS"
     echo "wrote $SUMS" ;;
   --check)

@@ -132,6 +132,8 @@ mod cross_layer_htlc {
                 revealed_preimage: None,
             })
             .with_owner_rule(OwnerRule::None)
+            // A code replacement could alter claim/refund timing or key checks.
+            .with_upgrade_rule(UpdateRule::Locked)
             .with_access_rules(access_rules)
             .create()
         }

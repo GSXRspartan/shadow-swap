@@ -4,7 +4,7 @@
  * WHY THIS EXISTS
  *
  * Every Ootle minor release since v0.46 changed what the indexer puts on the wire,
- * and v0.48.0 (2026-10-29) was a TESTNET RESET as well:
+ * and v0.48.0 (2026-10-29) and v0.49.0 (2026-11-02) were TESTNET RESETs:
  *
  *   - v0.46.x  `POST /substates/fetch` entries are `{ version, substate: <SubstateValue JSON> }`.
  *   - v0.47.x  `GET /substates/{id}` answers `{ version, state: { up: { substate: <JSON> } }, verified }`.
@@ -16,7 +16,9 @@
  *              REPUBLISHED (`crates/engine_types/src/protocol_version.rs` at
  *              `6a25dbc`). The public indexers move to `esme-indexer-{a,b}.ootle.tari.com`.
  *
- * A client that guesses the format reads a v0.48 receipt (a string) as "not a receipt",
+ *   - v0.49.x retains the CBOR/base64 transport but starts a new Esmeralda generation.
+ *
+ * A client that guesses the format reads a CBOR receipt (a string) as "not a receipt",
  * skips it, and reports a deployed protocol as EMPTY. That is a silent false negative,
  * and it is exactly what the pre-v0.48 discovery code did. So the format is derived
  * from the endpoint's own reported version and then ENFORCED per entry: a value whose
@@ -43,7 +45,9 @@ export type NetworkGeneration =
   /** Esmeralda as it ran up to and including v0.47.x (Protocol V2 from epoch 12220). */
   | 'PRE_V048_RESET'
   /** The network that starts over at the v0.48.0 reset (single V0 genesis). */
-  | 'V048_RESET';
+  | 'V048_RESET'
+  /** The network that starts over again at the v0.49.0 Esmeralda reset. */
+  | 'V049_RESET';
 
 export interface IndexerCohort {
   /** The exact version string the endpoint reported. */
@@ -55,13 +59,13 @@ export interface IndexerCohort {
 }
 
 /** Human-readable range, used in refusals and in the documentation. */
-export const SUPPORTED_INDEXER_RANGE = '0.41.x through 0.48.x';
+export const SUPPORTED_INDEXER_RANGE = '0.41.x through 0.49.x';
 
 /** The cohort this build's templates and engine tests are pinned to. */
 export const PINNED_OOTLE_RELEASE = {
-  tag: 'v0.48.0',
-  commit: '6a25dbc524581bfaa0a3c6ef120f8d59cc827572',
-  published: '2026-10-29',
+  tag: 'v0.49.2',
+  commit: 'aa7b0c81719e5c3cfaf9bf3b5fb87bd83180cb90',
+  published: '2026-11-02',
 } as const;
 
 const VERSION = /^v?(\d{1,4})\.(\d{1,4})(?:\.(\d{1,6}))?(?:[-+][0-9A-Za-z.+-]{0,64})?$/;
@@ -91,10 +95,13 @@ export function classifyIndexerVersion(version: unknown): CohortClassification {
   if (major === 0 && minor === 48) {
     return { ok: true, cohort: { version: text, major, minor, generation: 'V048_RESET', wireFormat: 'CBOR_VALUES' } };
   }
+  if (major === 0 && minor === 49) {
+    return { ok: true, cohort: { version: text, major, minor, generation: 'V049_RESET', wireFormat: 'CBOR_VALUES' } };
+  }
   if (major === 0 && minor >= 41 && minor <= 47) {
     return { ok: true, cohort: { version: text, major, minor, generation: 'PRE_V048_RESET', wireFormat: 'JSON_VALUES' } };
   }
-  const direction = major > 0 || minor > 48 ? 'newer than' : 'older than';
+  const direction = major > 0 || minor > 49 ? 'newer than' : 'older than';
   return {
     ok: false,
     reason: `The endpoint runs Ootle ${text}, which is ${direction} the range this build is verified against (${SUPPORTED_INDEXER_RANGE}). Its reply format is not assumed.`,
@@ -102,5 +109,9 @@ export function classifyIndexerVersion(version: unknown): CohortClassification {
 }
 
 export function describeGeneration(generation: NetworkGeneration): string {
-  return generation === 'V048_RESET' ? 'reset network (Ootle v0.48)' : 'pre-reset network (Ootle ≤ v0.47)';
+  switch (generation) {
+    case 'V049_RESET': return 'reset network (Ootle v0.49)';
+    case 'V048_RESET': return 'reset network (Ootle v0.48)';
+    case 'PRE_V048_RESET': return 'pre-reset network (Ootle ≤ v0.47)';
+  }
 }

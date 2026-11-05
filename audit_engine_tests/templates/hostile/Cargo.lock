@@ -29,7 +29,7 @@ dependencies = [
  "proc-macro-crate",
  "proc-macro2",
  "quote",
- "syn 3.0.6",
+ "syn 3.0.9",
 ]
 
 [[package]]
@@ -46,9 +46,9 @@ checksum = "f079e83a288787bcd14a6aea84cee5c87a67c5a3e660c30f557a3d24761b3527"
 
 [[package]]
 name = "equivalent"
-version = "1.0.2"
+version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "877a4ace8713b0bcf2a4e7eec82529c029f1d0619886d18145fea96c3ffe5c0f"
+checksum = "00d174d5400e5e8fd687ad1049e2f578285fa914201b1af7e8b112a4546bd826"
 
 [[package]]
 name = "hashbrown"
@@ -81,9 +81,9 @@ checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
 
 [[package]]
 name = "minicbor"
-version = "2.3.0"
+version = "2.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c12b4033ffaa92fbf9df03df38d19324f52bad130dd223f811734a8006dd2d69"
+checksum = "e7244eafd1e09e7c4e33043881997aa6ab6dffff3ed2cee3395a278980481d6e"
 dependencies = [
  "minicbor-derive",
 ]
@@ -125,8 +125,8 @@ checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
 
 [[package]]
 name = "ootle_serde"
-version = "0.6.1"
-source = "git+https://github.com/tari-project/tari-ootle.git?rev=6a25dbc524581bfaa0a3c6ef120f8d59cc827572#6a25dbc524581bfaa0a3c6ef120f8d59cc827572"
+version = "0.6.2"
+source = "git+https://github.com/tari-project/tari-ootle.git?rev=aa7b0c81719e5c3cfaf9bf3b5fb87bd83180cb90#aa7b0c81719e5c3cfaf9bf3b5fb87bd83180cb90"
 dependencies = [
  "serde",
 ]
@@ -185,7 +185,7 @@ checksum = "e7a5d71263a5a7d47b41f6b3f06ba276f10cc18b0931f1799f710578e2309348"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 3.0.6",
+ "syn 3.0.9",
 ]
 
 [[package]]
@@ -201,9 +201,9 @@ dependencies = [
 
 [[package]]
 name = "syn"
-version = "3.0.6"
+version = "3.0.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8593e8e72159ed2257d083c7a454a85cbf854f37a0966d8d483aff8c8a3ebcee"
+checksum = "d78c8dee4c7bf0e14673097256fed6142ce9d3b85a408189d07482442145823b"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -212,8 +212,8 @@ dependencies = [
 
 [[package]]
 name = "tari_bor"
-version = "0.16.5"
-source = "git+https://github.com/tari-project/tari-ootle.git?rev=6a25dbc524581bfaa0a3c6ef120f8d59cc827572#6a25dbc524581bfaa0a3c6ef120f8d59cc827572"
+version = "0.16.6"
+source = "git+https://github.com/tari-project/tari-ootle.git?rev=aa7b0c81719e5c3cfaf9bf3b5fb87bd83180cb90#aa7b0c81719e5c3cfaf9bf3b5fb87bd83180cb90"
 dependencies = [
  "borsh",
  "minicbor",
@@ -223,7 +223,7 @@ dependencies = [
 [[package]]
 name = "tari_template_abi"
 version = "0.22.0"
-source = "git+https://github.com/tari-project/tari-ootle.git?rev=6a25dbc524581bfaa0a3c6ef120f8d59cc827572#6a25dbc524581bfaa0a3c6ef120f8d59cc827572"
+source = "git+https://github.com/tari-project/tari-ootle.git?rev=aa7b0c81719e5c3cfaf9bf3b5fb87bd83180cb90#aa7b0c81719e5c3cfaf9bf3b5fb87bd83180cb90"
 dependencies = [
  "minicbor",
  "serde",
@@ -233,8 +233,8 @@ dependencies = [
 
 [[package]]
 name = "tari_template_lib"
-version = "0.36.0"
-source = "git+https://github.com/tari-project/tari-ootle.git?rev=6a25dbc524581bfaa0a3c6ef120f8d59cc827572#6a25dbc524581bfaa0a3c6ef120f8d59cc827572"
+version = "0.37.0"
+source = "git+https://github.com/tari-project/tari-ootle.git?rev=aa7b0c81719e5c3cfaf9bf3b5fb87bd83180cb90#aa7b0c81719e5c3cfaf9bf3b5fb87bd83180cb90"
 dependencies = [
  "minicbor",
  "serde",
@@ -247,7 +247,7 @@ dependencies = [
 [[package]]
 name = "tari_template_lib_types"
 version = "0.36.0"
-source = "git+https://github.com/tari-project/tari-ootle.git?rev=6a25dbc524581bfaa0a3c6ef120f8d59cc827572#6a25dbc524581bfaa0a3c6ef120f8d59cc827572"
+source = "git+https://github.com/tari-project/tari-ootle.git?rev=aa7b0c81719e5c3cfaf9bf3b5fb87bd83180cb90#aa7b0c81719e5c3cfaf9bf3b5fb87bd83180cb90"
 dependencies = [
  "borsh",
  "minicbor",
@@ -260,8 +260,8 @@ dependencies = [
 
 [[package]]
 name = "tari_template_macros"
-version = "0.25.0"
-source = "git+https://github.com/tari-project/tari-ootle.git?rev=6a25dbc524581bfaa0a3c6ef120f8d59cc827572#6a25dbc524581bfaa0a3c6ef120f8d59cc827572"
+version = "0.26.0"
+source = "git+https://github.com/tari-project/tari-ootle.git?rev=aa7b0c81719e5c3cfaf9bf3b5fb87bd83180cb90#aa7b0c81719e5c3cfaf9bf3b5fb87bd83180cb90"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -271,18 +271,18 @@ dependencies = [
 
 [[package]]
 name = "toml_datetime"
-version = "1.1.1+spec-1.1.0"
+version = "1.1.2+spec-1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3165f65f62e28e0115a00b2ebdd37eb6f3b641855f9d636d3cd4103767159ad7"
+checksum = "2b86d767906c6c42421dcba507eb9d203e779497710a47782a224bb871653053"
 dependencies = [
  "serde_core",
 ]
 
 [[package]]
 name = "toml_edit"
-version = "0.25.15+spec-1.1.0"
+version = "0.25.18+spec-1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1340ea94a5856333492c9064b02c778b191dd2c853778d9609debdcdfea3a614"
+checksum = "1ec6e78bd70db9420d8d212fa9dc97f116448a1ceff5d00eabb991d407e21396"
 dependencies = [
  "indexmap",
  "toml_datetime",
@@ -292,30 +292,30 @@ dependencies = [
 
 [[package]]
 name = "toml_parser"
-version = "1.1.3+spec-1.1.0"
+version = "1.1.5+spec-1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1d38ac1cf9b95face32296c0a3ede1fdc270627c9d9c02a7274dd6d960dc4d56"
+checksum = "baa693a8032d7e1cada7d0041e96126df243179ff061456783ac7f12bda4744c"
 dependencies = [
  "winnow",
 ]
 
 [[package]]
 name = "unicode-ident"
-version = "1.0.26"
+version = "1.0.27"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d245f478577f809a851594d02313b640fb437e0bb33866753cff937863096954"
+checksum = "a2c754d6c33795a1c324727428e5a7dedb5b06195f9890bdbcba760d3e246563"
 
 [[package]]
 name = "winnow"
-version = "1.0.4"
+version = "1.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "23b97319f7b8343df12cc98938e5c3eb436064524c8d2b4e30a1d3a36eecdf81"
+checksum = "8c3b93199df0ab874cdf0c6a94f0a0dc3423fe41f1cafb62b8bd7b1deb277aef"
 dependencies = [
  "memchr",
 ]
 
 [[package]]
 name = "xxhash-rust"
-version = "0.8.18"
+version = "0.8.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aee1b19627c7c60102ab80d3a9cbe18de90bfe03bfa6c3715447681f0e8c8af6"
+checksum = "550a2b930b62486a393c52d5c3b84bff264b28aa437ed64694d31e93b1757af7"

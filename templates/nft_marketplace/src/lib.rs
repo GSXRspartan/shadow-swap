@@ -75,6 +75,8 @@ mod nft_marketplace {
             })
             // No marketplace operator can alter access rules or recover escrowed assets.
             .with_owner_rule(OwnerRule::None)
+            // v0.49 code upgrades are independently controlled, so lock them too.
+            .with_upgrade_rule(UpdateRule::Locked)
             .with_access_rules(access_rules)
             .create()
         }

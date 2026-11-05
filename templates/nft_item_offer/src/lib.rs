@@ -80,6 +80,7 @@ mod nft_item_offer {
                 status: ItemOfferStatus::Active,
             })
             .with_owner_rule(OwnerRule::None)
+            .with_upgrade_rule(UpdateRule::Locked)
             .with_access_rules(
                 ComponentAccessRules::new()
                     .default(AccessRule::DenyAll)

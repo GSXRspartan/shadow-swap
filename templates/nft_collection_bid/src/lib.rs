@@ -94,6 +94,7 @@ mod nft_collection_bid {
                 status: CollectionBidStatus::Active,
             })
             .with_owner_rule(OwnerRule::None)
+            .with_upgrade_rule(UpdateRule::Locked)
             .with_access_rules(
                 ComponentAccessRules::new()
                     .default(AccessRule::DenyAll)

@@ -22,15 +22,15 @@
  *    recorded against the GENERATION it was observed on and is consulted only when the
  *    verified indexer reports that same generation (`lib/ootleCohort.ts`).
  *
- * THE v0.48 ROWS ARE EMPTY ON PURPOSE. This campaign does not publish templates. Until the
- * operator publishes the v0.48 builds and records the resulting addresses here, discovery
+ * THE v0.49 ROWS ARE EMPTY ON PURPOSE. This campaign does not publish templates. Until the
+ * operator publishes the v0.49 builds and records the resulting addresses here, discovery
  * on the reset network truthfully reports that the protocol is not deployed there, and
  * marketplace actions refuse to build a call to a template that does not exist.
  */
 
 import type { OotleReadbackProvider } from '@tari-ootle/protocol-client';
 import type { FrontendNetworkId } from '../lib/networks.js';
-import type { NetworkGeneration } from '../lib/ootleCohort.js';
+import { describeGeneration, type NetworkGeneration } from '../lib/ootleCohort.js';
 
 export type MarketplaceTemplateName = 'FixedPriceListing' | 'ItemOffer' | 'CollectionBid';
 
@@ -110,6 +110,20 @@ const ESMERALDA_V048: ProtocolDeployment = {
     'Shadow Swap templates have not been published on the v0.48 reset network. The v0.48 builds exist and are tested, but publishing them is an operator decision outside this release candidate.',
 };
 
+/** The v0.49 reset network. No v0.48 address or wallet state is inherited. */
+const ESMERALDA_V049: ProtocolDeployment = {
+  network: 'esmeralda',
+  generation: 'V049_RESET',
+  registryKey: 'esmeralda@v049',
+  poolTemplates: [],
+  marketplaceTemplates: undefined,
+  offerTemplates: [],
+  revealedPoolTemplates: [],
+  crossLayerHtlcTemplates: [],
+  status:
+    'Shadow Swap templates have not been published on the v0.49 reset network. v0.48 template and component addresses are deliberately not reusable; an operator must record fresh v0.49 deployment receipts before discovery or trading is enabled.',
+};
+
 /**
  * Mainnet. Nothing is published, and this row exists so that `deploymentFor` cannot FALL THROUGH
  * to Esmeralda's.
@@ -122,7 +136,7 @@ const ESMERALDA_V048: ProtocolDeployment = {
  */
 const MAINNET: ProtocolDeployment = {
   network: 'mainnet',
-  generation: 'V048_RESET',
+  generation: 'V049_RESET',
   registryKey: 'mainnet',
   poolTemplates: [],
   marketplaceTemplates: undefined,
@@ -138,7 +152,7 @@ const MAINNET: ProtocolDeployment = {
 
 const LOCALNET: ProtocolDeployment = {
   network: 'localnet',
-  generation: 'V048_RESET',
+  generation: 'V049_RESET',
   registryKey: 'localnet',
   poolTemplates: [],
   marketplaceTemplates: undefined,
@@ -158,13 +172,17 @@ const LOCALNET: ProtocolDeployment = {
 export function deploymentFor(network: FrontendNetworkId, generation: NetworkGeneration): ProtocolDeployment {
   switch (network) {
     case 'localnet':
-      return generation === 'V048_RESET' ? LOCALNET : { ...LOCALNET, generation, registryKey: 'localnet@pre-v048' };
+      if (generation === 'V049_RESET') return LOCALNET;
+      return generation === 'V048_RESET'
+        ? { ...LOCALNET, generation, registryKey: 'localnet@v048' }
+        : { ...LOCALNET, generation, registryKey: 'localnet@pre-v048' };
     case 'esmeralda':
+      if (generation === 'V049_RESET') return ESMERALDA_V049;
       return generation === 'V048_RESET' ? ESMERALDA_V048 : ESMERALDA_PRE_V048;
     case 'mainnet':
       // One row for both generations: nothing is recorded either way, and a mainnet session must
       // never be handed a testnet generation's templates.
-      return generation === 'V048_RESET' ? MAINNET : { ...MAINNET, generation, registryKey: 'mainnet@pre-v048' };
+      return { ...MAINNET, generation };
     default: {
       const unreachable: never = network;
       throw new Error(`no deployment recorded for network ${String(unreachable)}`);
@@ -214,12 +232,12 @@ export function isTrustedCrossLayerTemplate(deployment: ProtocolDeployment, temp
 export function crossLayerAvailability(
   deployment: ProtocolDeployment,
 ): { readonly available: true } | { readonly available: false; readonly reason: string; readonly kind: 'INCOMPATIBLE_GENERATION' | 'NOT_RECORDED' } {
-  if (deployment.generation !== 'V048_RESET') {
+  if (deployment.generation !== 'V049_RESET') {
     return {
       available: false,
       kind: 'INCOMPATIBLE_GENERATION',
       reason:
-        'The cross-layer escrow template is built for the v0.48.0 cohort, and this network is running its pre-reset generation. It cannot be published or used here — this is not a missing address but an incompatible network. The existing pool and NFT routes are unaffected.',
+        'The cross-layer escrow template is built for the v0.49.2 cohort, and this network is not on the v0.49 reset generation. It cannot be published or used here — this is not a missing address but an incompatible network. The existing pool and NFT routes are unaffected.',
     };
   }
   if (deployment.crossLayerHtlcTemplates.length === 0) {
@@ -264,7 +282,7 @@ export function recordVerifiedGeneration(network: FrontendNetworkId, generation:
   if (existing !== undefined && existing !== generation) {
     return {
       ok: false,
-      reason: `This session already reads the ${existing === 'V048_RESET' ? 'v0.48 reset' : 'pre-reset'} ${network} network; an indexer on the other generation was refused so the two are never mixed. Reload to start over.`,
+      reason: `This session already reads the ${describeGeneration(existing)} ${network} network; an indexer on the other generation was refused so the two are never mixed. Reload to start over.`,
     };
   }
   verifiedGeneration.set(network, generation);

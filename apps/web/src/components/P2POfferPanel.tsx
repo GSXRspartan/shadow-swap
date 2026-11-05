@@ -98,7 +98,11 @@ export function P2POfferPanel(props: { offeredResource?: string; requestedResour
   const { config, wallet, executionWallets, walletBridge, liveExecutionIdentity } = useApp();
   const deployment = activeDeployment(config.network);
   const template = deployment?.offerTemplates[0];
-  const generation = deployment?.generation === 'V048_RESET' ? 'v048' : 'pre-v048';
+  const generation = deployment?.generation === 'V049_RESET'
+    ? 'v049'
+    : deployment?.generation === 'V048_RESET'
+      ? 'v048'
+      : 'pre-v048';
   const network = wallet.networkId ?? config.network;
   const [tab, setTab] = useState<'create' | 'import' | 'mine'>('create');
   const [busy, setBusy] = useState(false);

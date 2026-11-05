@@ -95,6 +95,7 @@ export const MARKETPLACE_REGISTRY_SEED: Readonly<Record<string, readonly KnownMa
   // `esmeralda@v048` the v0.48 reset network. Both empty, for the reasons above.
   esmeralda: [],
   'esmeralda@v048': [],
+  'esmeralda@v049': [],
 };
 
 /** Storage key prefix. Deliberately distinct from the pool registry's. */

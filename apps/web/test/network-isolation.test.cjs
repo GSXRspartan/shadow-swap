@@ -37,7 +37,7 @@ test('A MAINNET SESSION IS NEVER HANDED A TESTNET DEPLOYMENT', () => {
   assert.match(deployment.deploymentFor('mainnet', 'V048_RESET').registryKey, /^mainnet$/);
 
   // And Esmeralda's recorded template is NOT trusted on mainnet.
-  for (const generation of ['PRE_V048_RESET', 'V048_RESET']) {
+  for (const generation of ['PRE_V048_RESET', 'V048_RESET', 'V049_RESET']) {
     const row = deployment.deploymentFor('mainnet', generation);
     for (const template of esmeralda.poolTemplates) {
       assert.equal(deployment.isTrustedPoolTemplate(row, template), false, `Esmeralda's pool template must not be trusted on mainnet (${generation})`);
@@ -155,15 +155,20 @@ test('TESTNET RESETS DO NOT CORRUPT MAINNET SETTINGS', () => {
   // Isolation test 6, at the frontend's registry keys.
   const preReset = deployment.deploymentFor('esmeralda', 'PRE_V048_RESET');
   const postReset = deployment.deploymentFor('esmeralda', 'V048_RESET');
+  const v049Reset = deployment.deploymentFor('esmeralda', 'V049_RESET');
   assert.notEqual(preReset.registryKey, postReset.registryKey, 'each generation has its own key');
+  assert.notEqual(postReset.registryKey, v049Reset.registryKey, 'the second reset has its own key too');
   assert.deepEqual(postReset.poolTemplates, [], 'the reset network starts with nothing recorded');
+  assert.deepEqual(v049Reset.poolTemplates, [], 'v0.49 does not inherit v0.48 pool addresses');
+  assert.equal(v049Reset.registryKey, 'esmeralda@v049');
   assert.ok(preReset.poolTemplates.length > 0, 'and the pre-reset record is untouched');
 
   const mainnetKeys = new Set([
     deployment.deploymentFor('mainnet', 'PRE_V048_RESET').registryKey,
     deployment.deploymentFor('mainnet', 'V048_RESET').registryKey,
+    deployment.deploymentFor('mainnet', 'V049_RESET').registryKey,
   ]);
-  for (const key of [preReset.registryKey, postReset.registryKey]) {
+  for (const key of [preReset.registryKey, postReset.registryKey, v049Reset.registryKey]) {
     assert.equal(mainnetKeys.has(key), false, 'no key is shared between mainnet and a testnet');
   }
 });

@@ -140,6 +140,8 @@ mod revealed_asset_pool {
             // means no such authorisation can ever exist. LP mint/burn is unaffected: it is
             // authorised by the component frame, not by ownership.
             .with_owner_rule(OwnerRule::None)
+            // v0.49 makes template replacement a separate permission; keep this pool immutable.
+            .with_upgrade_rule(UpdateRule::Locked)
             .with_access_rules(
                 ComponentAccessRules::new()
                     .default(AccessRule::DenyAll)

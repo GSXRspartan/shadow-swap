@@ -55,6 +55,8 @@ export const POOL_REGISTRY_SEED: Readonly<Record<string, readonly KnownPoolEntry
   // the pre-reset component above does not exist on it. Add a line only for a component
   // actually created from a template recorded in protocolDeployment.ts for V048_RESET.
   'esmeralda@v048': [],
+  // v0.49 reset: never copy the v0.48 address above into this fresh generation.
+  'esmeralda@v049': [],
 };
 
 const STORAGE_PREFIX = 'ootle.poolRegistry.';

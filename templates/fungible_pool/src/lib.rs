@@ -121,6 +121,9 @@ mod fungible_pool {
             // anyone. LP mint/burn is unaffected because it is authorised by the
             // COMPONENT frame (`rule!(component(this_component))`), not by ownership.
             .with_owner_rule(OwnerRule::None)
+            // v0.49 separates code replacement from component ownership. Lock it explicitly:
+            // no future template may change LP accounting or reserve withdrawal semantics.
+            .with_upgrade_rule(UpdateRule::Locked)
             // STRICT ACCESS RULES: only component methods (not arbitrary callers).
             // No admin withdrawal method exists, and with OwnerRule::None above the rule
             // set below can never be changed — the pool is immutable after creation.
