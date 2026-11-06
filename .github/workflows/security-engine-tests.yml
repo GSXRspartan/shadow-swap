@@ -62,7 +62,7 @@ jobs:
       # account, nft_faucet, faucet, liquidity_pool and burn_rate_governance and writes
       # crates/template_builtin/compiled/*.wasm before the engine binaries are built.
       - name: Generate pinned Tari built-in WASM artifacts
-        run: cargo check --manifest-path audit_engine_tests/Cargo.toml
+        run: cargo check --locked --manifest-path audit_engine_tests/Cargo.toml
 
       # ---- Formatting (all Rust crates) ----
       - name: rustfmt (pool_math)
