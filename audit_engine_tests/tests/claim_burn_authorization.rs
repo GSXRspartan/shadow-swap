@@ -4,7 +4,7 @@
 //! itself cannot be performed by any browser wallet. That claim about a claim is load-bearing:
 //! if it were wrong, the app would be withholding a route it could offer; if it were right but
 //! unproven, it would be an assertion dressed as a finding. These tests settle it by executing
-//! real `ClaimBurn` instructions in the pinned v0.48.0 engine.
+//! real `ClaimBurn` instructions in the pinned v0.49.2 engine.
 //!
 //! Three facts established here, each with its own test:
 //!

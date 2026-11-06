@@ -1,4 +1,4 @@
-// ACCOUNT INVENTORY fixtures, produced by the REAL v0.48 engine.
+// ACCOUNT INVENTORY fixtures, produced by the REAL v0.49.2 engine.
 //
 // A dApp cannot learn which NFTs an account holds from the wallet: Sapient's documented
 // `DappTokenBalance` (tari-wallet docs/integration/provider-api.md) carries

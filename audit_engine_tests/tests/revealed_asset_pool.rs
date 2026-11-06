@@ -1,4 +1,4 @@
-// RevealedAssetPool (templates/revealed_asset_pool, UNPUBLISHED) in the REAL v0.48 engine: a
+// RevealedAssetPool (templates/revealed_asset_pool, UNPUBLISHED) in the REAL v0.49.2 engine: a
 // constant-product AMM for assets whose value is an exact REVEALED integer, which is the class
 // Pool v2 deliberately refuses.
 //

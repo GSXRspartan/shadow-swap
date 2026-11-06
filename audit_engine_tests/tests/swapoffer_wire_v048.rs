@@ -1,4 +1,4 @@
-// SwapOffer SUBSTATE fixtures, produced by the REAL v0.48 engine running templates/p2p_offer.
+// SwapOffer SUBSTATE fixtures, produced by the REAL v0.49.2 engine running templates/p2p_offer.
 //
 // A shareable invitation is untrusted text. Before anyone fills an offer, the browser re-reads
 // the offer component (and its escrow vault) from the network and derives the terms from
