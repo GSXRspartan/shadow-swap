@@ -1,0 +1,81 @@
+{
+  "account": "component_3230781eb41523d792c58a7f6485e18cef92f71003100b14c347c1bd5d28006a",
+  "cohort": "tari-ootle v0.49.2 (aa7b0c81719e5c3cfaf9bf3b5fb87bd83180cb90)",
+  "expect": [
+    {
+      "amount": "1000000000",
+      "containerKind": "Fungible",
+      "resource": "resource_6d14629db67473fab2614903b6d6795614c18e54d784857ed704df5e4ac9abc8",
+      "tokenIds": []
+    },
+    {
+      "amount": "400000",
+      "containerKind": "Stealth",
+      "resource": "resource_df2bd10d0ef31d2923244dc3f5f514a21d3b26a7369788e48c109da39fd98897",
+      "tokenIds": []
+    },
+    {
+      "amount": "250000",
+      "containerKind": "Confidential",
+      "resource": "resource_54c8730320e77b7032ba0f68185389e09f3daa1312639a6845a185465e09684f",
+      "tokenIds": []
+    },
+    {
+      "amount": "0",
+      "containerKind": "NonFungible",
+      "resource": "resource_6f2af0d88cc8a37e5e0f9e7553b019a2f2cac8b0b2144cfcbd7ca5070c676820",
+      "tokenIds": [
+        "str_art-1",
+        "str_art-2"
+      ]
+    },
+    {
+      "amount": "0",
+      "containerKind": "NonFungible",
+      "resource": "resource_cfc695c6d09bb89a2d9711832cf1367261ccae77eca5c4f599e9013645398462",
+      "tokenIds": [
+        "u64_77"
+      ]
+    },
+    {
+      "amount": "1000000000",
+      "containerKind": "Stealth",
+      "note": "the account's funding vault, created by create_funded_account",
+      "resource": "resource_0101010101010101010101010101010101010101010101010101010101010101",
+      "tokenIds": []
+    }
+  ],
+  "generatedBy": "audit_engine_tests/tests/account_inventory_v048.rs -> ootle-v049-account-inventory.json (SHADOW_SWAP_WRITE_WIRE_FIXTURES=1)",
+  "note": "TemplateTest addresses. They identify nothing on Esmeralda and must never seed a registry.",
+  "proofResource": "resource_0100000000000000000000000000000000000000000000000000000000000000",
+  "substates": {
+    "component_3230781eb41523d792c58a7f6485e18cef92f71003100b14c347c1bd5d28006a": {
+      "value": "ggCBgoVYIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAggKBWCBcfw/sFkFCmGraGN98CVDZOCeSXs4GsOahJHtqOjBMfIKkZ2JhbGFuY2WCAIBnZGVwb3NpdIIAgGxnZXRfYmFsYW5jZXOCAIBxd2l0aGRyYXdfYXBwcm92ZWSCAICCAYBBMoIAgIGCptiDWCABAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAdiEWCAyFor3LQh9L87iJxbSyXj4yDBsWIksrWxj8qk8lQnSu9iDWCBtFGKdtnRz+rJhSQO21nlWFMGOVNeEhX7XBN9eSsmryNiEWCAyecDD+v/SiQgIvTDQUsEikzjHsp/4MH5RUfrFdzQe59iDWCDfK9ENDvMdKSMkTcP19RSiHTsmpzaXiOSMEJ2jn9mIl9iEWCAyg5fJV+QiilItt2x42udOKce1FKMORg448s+tdKjNtdiDWCBUyHMDIOd7cDK6D2gYU4ngnz2qExJjmmhFoYVGXgloT9iEWCAy7rkmLwdI/uPtoDJ7u3S27vM1D0tMx2/rcPF4gBGjI9iDWCBvKvDYjMijfl4PnnVTsBmi8srIsLIUTPy9fKUHDGdoINiEWCAybm2yvUZexCYCAEwG8OIWrvhQgToHmWEeW9ABfw49mNiDWCDPxpXG0Ju4mi2XEYMs8TZyYcyud+ylxPWZ6QE2RTmEYtiEWCAyRviSIYrq4XpdZu57upR7q2ff67yoXeQ9T8k9tQlQc6A=",
+      "version": 5
+    },
+    "vault_32168af72d087d2fcee22716d2c978f8c8306c58892cad6c63f2a93c9509d2bb": {
+      "value": "ggKBgoIDg9iDWCABAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBARo7msoAAAA=",
+      "version": 0
+    },
+    "vault_3246f892218aeae17a5d66ee7bba947bab67dfebbca85de43d4fc93db5095073": {
+      "value": "ggKBgoIBg9iDWCDPxpXG0Ju4mi2XEYMs8TZyYcyud+ylxPWZ6QE2RTmEYoGCA4EYTYAA",
+      "version": 0
+    },
+    "vault_326e6db2bd465ec42602004c06f0e216aef850813a0799611e5bd0017f0e3d98": {
+      "value": "ggKBgoIBg9iDWCBvKvDYjMijfl4PnnVTsBmi8srIsLIUTPy9fKUHDGdoIIKCAYFlYXJ0LTGCAYFlYXJ0LTKAAA==",
+      "version": 1
+    },
+    "vault_3279c0c3faffd2890808bd30d052c1229338c7b29ff8307e5151fac577341ee7": {
+      "value": "ggKBgoIAg9iDWCBtFGKdtnRz+rJhSQO21nlWFMGOVNeEhX7XBN9eSsmryBo7msoAAAA=",
+      "version": 0
+    },
+    "vault_328397c957e4228a522db76c78dae74e29c7b514a30e460e38f2cfad74a8cdb5": {
+      "value": "ggKBgoIDg9iDWCDfK9ENDvMdKSMkTcP19RSiHTsmpzaXiOSMEJ2jn9mIlxoABhqAAAA=",
+      "version": 0
+    },
+    "vault_32eeb9262f0748fee3eda0327bbb74b6eef3350f4b4cc76feb70f1788011a323": {
+      "value": "ggKBgoIChdiDWCBUyHMDIOd7cDK6D2gYU4ngnz2qExJjmmhFoYVGXgloT4AaAAPQkIAAAA==",
+      "version": 0
+    }
+  }
+}

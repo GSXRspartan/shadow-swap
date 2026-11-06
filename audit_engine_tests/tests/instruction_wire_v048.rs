@@ -37,8 +37,8 @@ use tari_template_lib::types::{
 use tari_template_test_tooling::TemplateTest;
 
 const CRATE_PATH: &str = env!("CARGO_MANIFEST_DIR");
-const FIXTURE_PATH: &str = "../apps/web/test/fixtures/ootle-v048-instructions.json";
-const COHORT: &str = "tari-ootle v0.48.0 (6a25dbc524581bfaa0a3c6ef120f8d59cc827572)";
+const FIXTURE_PATH: &str = "../apps/web/test/fixtures/ootle-v049-instructions.json";
+const COHORT: &str = "tari-ootle v0.49.2 (aa7b0c81719e5c3cfaf9bf3b5fb87bd83180cb90)";
 
 const FIXED_RESOURCE: &str =
     "resource_7e0d2b7f4c1a9e8d6b5a4c3d2e1f00112233445566778899aabbccddeeff0011";
@@ -1079,7 +1079,7 @@ fn w01_instruction_wire_is_upstream_serde_json_and_executes() {
     if write {
         let doc = json!({
             "cohort": COHORT,
-            "generatedBy": "audit_engine_tests/tests/instruction_wire_v048.rs",
+            "generatedBy": "audit_engine_tests/tests/instruction_wire_v048.rs -> ootle-v049-instructions.json",
             "note": "Scenario addresses are TemplateTest addresses (random keys); they identify nothing on Esmeralda.",
             "probe": probe,
             "literals": literals,

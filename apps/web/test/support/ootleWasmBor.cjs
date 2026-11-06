@@ -1,5 +1,5 @@
 /**
- * Node loader for the OFFICIAL Ootle v0.48 value decoder (`@tari-project/ootle-wasm-bor@0.48.0`).
+ * Node loader for the OFFICIAL Ootle v0.49.2 value decoder (`@tari-project/ootle-wasm-bor@0.49.2`).
  *
  * Performs exactly the instantiation the browser loader (`src/wasm/ootleWasmBor.browser.ts`)
  * performs, against the same installed package bytes, so the tests exercise the real
@@ -15,7 +15,7 @@ async function loadOotleWasmBor() {
   if (cached !== undefined) return cached;
   const pkg = path.dirname(require.resolve('@tari-project/ootle-wasm-bor/package.json', { paths: [path.resolve(__dirname, '..', '..')] }));
   const manifest = JSON.parse(fs.readFileSync(path.join(pkg, 'package.json'), 'utf8'));
-  if (manifest.version !== '0.48.0') throw new Error(`expected the pinned ootle-wasm-bor 0.48.0, found ${manifest.version}`);
+  if (manifest.version !== '0.49.2') throw new Error(`expected the pinned ootle-wasm-bor 0.49.2, found ${manifest.version}`);
   const glue = await import(pathToFileURL(path.join(pkg, 'ootle_wasm_bor_bg.js')).href);
   const { instance } = await WebAssembly.instantiate(fs.readFileSync(path.join(pkg, 'ootle_wasm_bor_bg.wasm')), { './ootle_wasm_bor_bg.js': glue });
   glue.__wbg_set_wasm(instance.exports);

@@ -755,23 +755,23 @@ test('cross-layer: a pre-reset network is INCOMPATIBLE, not merely unrecorded', 
   const verdict = deployment.crossLayerAvailability(pre);
   assert.equal(verdict.available, false);
   assert.equal(verdict.kind, 'INCOMPATIBLE_GENERATION');
-  assert.match(verdict.reason, /built for the v0\.48\.0 cohort/);
+  assert.match(verdict.reason, /built for the v0\.49\.2 cohort/);
   assert.match(verdict.reason, /not a missing address but an incompatible network/);
   // And it must say the existing routes are unaffected, so nobody reads this as a regression.
   assert.match(verdict.reason, /pool and NFT routes are unaffected/);
 });
 
-test('cross-layer: on v0.48 the blocker is a missing recorded address, with the operator step named', () => {
-  const v048 = deployment.deploymentFor('esmeralda', 'V048_RESET');
-  const verdict = deployment.crossLayerAvailability(v048);
+test('cross-layer: on v0.49 the blocker is a missing recorded address, with the operator step named', () => {
+  const v049 = deployment.deploymentFor('esmeralda', 'V049_RESET');
+  const verdict = deployment.crossLayerAvailability(v049);
   assert.equal(verdict.available, false);
   assert.equal(verdict.kind, 'NOT_RECORDED');
   assert.match(verdict.reason, /must publish it through walletd and record the address/);
 });
 
 test('cross-layer: availability turns on ONLY a recorded address, on a compatible generation', () => {
-  const v048 = deployment.deploymentFor('esmeralda', 'V048_RESET');
-  const recorded = { ...v048, crossLayerHtlcTemplates: ['ab'.repeat(32)] };
+  const v049 = deployment.deploymentFor('esmeralda', 'V049_RESET');
+  const recorded = { ...v049, crossLayerHtlcTemplates: ['ab'.repeat(32)] };
   assert.deepEqual(deployment.crossLayerAvailability(recorded), { available: true });
   assert.equal(deployment.isTrustedCrossLayerTemplate(recorded, 'ab'.repeat(32)), true);
   assert.equal(deployment.isTrustedCrossLayerTemplate(recorded, 'template_' + 'ab'.repeat(32)), true, 'prefixed form compares equal');
@@ -785,9 +785,9 @@ test('cross-layer: availability turns on ONLY a recorded address, on a compatibl
 });
 
 test('cross-layer: the escrow template is never mistaken for a pool template', () => {
-  const v048 = deployment.deploymentFor('esmeralda', 'V048_RESET');
+  const v049 = deployment.deploymentFor('esmeralda', 'V049_RESET');
   const addr = 'ab'.repeat(32);
-  const recorded = { ...v048, crossLayerHtlcTemplates: [addr] };
+  const recorded = { ...v049, crossLayerHtlcTemplates: [addr] };
   // A cross-layer escrow must never be quoted or traded as a pool of either kind.
   assert.equal(deployment.poolKindOf(recorded, addr), undefined);
   assert.equal(deployment.isTrustedPoolTemplate(recorded, addr), false);

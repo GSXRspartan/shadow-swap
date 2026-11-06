@@ -70,8 +70,8 @@ export const CONTENT_SECURITY_POLICY = [
   // the embedding note above. This is the one non-'self' script source.
   //
   // `'wasm-unsafe-eval'` permits COMPILING WebAssembly and nothing else: not `eval`,
-  // not `new Function`, not inline script. Ootle v0.48 serves chain values as CBOR and
-  // the official decoder (`@tari-project/ootle-wasm-bor`, pinned 0.48.0) is WebAssembly,
+  // not `new Function`, not inline script. Ootle v0.49 serves chain values as CBOR and
+  // the official decoder (`@tari-project/ootle-wasm-bor`, pinned 0.49.2) is WebAssembly,
   // loaded from this origin as a hashed build asset (src/wasm/ootleWasmBor.browser.ts).
   // `'unsafe-eval'` remains absent and is asserted absent by the deployment suite.
   `script-src 'self' 'wasm-unsafe-eval' ${WALLET_DAPP_ORIGIN}`,

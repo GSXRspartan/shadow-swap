@@ -1,22 +1,22 @@
 require('./bootstrap.cjs');
 /**
- * Ootle v0.48 wire conformance, over REAL engine bytes and the OFFICIAL decoder.
+ * Ootle v0.49.2 wire conformance, over REAL engine bytes and the OFFICIAL decoder.
  *
- * `fixtures/ootle-v048-pool-wire.json` is emitted by `audit_engine_tests/tests/wire_fixtures_v048.rs`:
- * the pinned v0.48.0 engine executes THIS repository's Pool template (create, add
+ * `fixtures/ootle-v049-pool-wire.json` is emitted by `audit_engine_tests/tests/wire_fixtures_v048.rs`:
+ * the pinned v0.49.2 engine executes THIS repository's Pool template (create, add
  * liquidity, swap, and a rejected swap) and every resulting value is encoded exactly as
  * the indexer encodes it. The Rust test re-checks, in CI, that the committed bytes are a
  * canonical encoding under the pinned cohort.
  *
  * Here the bytes go through the browser's real path:
- *   base64 -> @tari-project/ootle-wasm-bor 0.48.0 -> services/ootleWire.ts -> protocol-client decoders.
+ *   base64 -> @tari-project/ootle-wasm-bor 0.49.2 -> services/ootleWire.ts -> protocol-client decoders.
  *
  * Nothing in this file hand-writes a v0.48 value. The adversarial cases MUTATE real ones.
  */
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const fixture = require('./fixtures/ootle-v048-pool-wire.json');
+const fixture = require('./fixtures/ootle-v049-pool-wire.json');
 const { loadOotleWasmBor } = require('./support/ootleWasmBor.cjs');
 const wire = require('../build-test/services/ootleWire.js');
 const cohort = require('../build-test/lib/ootleCohort.js');
@@ -85,7 +85,7 @@ test('cohort: v0.48 is the reset generation with CBOR values; v0.41-v0.47 are pr
 });
 
 test('cohort: an unknown, newer, older, missing or malformed version fails closed', () => {
-  for (const v of ['0.49.0', '1.0.0', '0.40.9', '', undefined, null, 48, 'latest', '0.48', '0.48.0; drop', 'x'.repeat(500)]) {
+  for (const v of ['0.50.0', '1.0.0', '0.40.9', '', undefined, null, 48, 'latest', '0.48', '0.48.0; drop', 'x'.repeat(500)]) {
     const c = cohort.classifyIndexerVersion(v);
     if (v === '0.48') {
       // major.minor alone is accepted: the minor determines the format.
@@ -97,7 +97,7 @@ test('cohort: an unknown, newer, older, missing or malformed version fails close
 });
 
 test('identity: a right-network endpoint on an unsupported version is refused, not read', () => {
-  const verdict = identity.classifyIndexerIdentity('https://x.test/info', { version: '0.49.0', network: 'esmeralda', network_byte: 38 }, { network: 'esmeralda', networkName: 'esmeralda' });
+  const verdict = identity.classifyIndexerIdentity('https://x.test/info', { version: '0.50.0', network: 'esmeralda', network_byte: 38 }, { network: 'esmeralda', networkName: 'esmeralda' });
   assert.equal(verdict.status, 'UNSUPPORTED_VERSION');
   assert.equal(identity.isVerified(verdict), false);
   const missing = identity.classifyIndexerIdentity('https://x.test/info', { network: 'esmeralda', network_byte: 38 }, { network: 'esmeralda', networkName: 'esmeralda' });

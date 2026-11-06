@@ -373,18 +373,18 @@ test.describe('CSP enforcement in a real browser', () => {
 });
 
 test.describe('real Ootle/indexer reachability', () => {
-  // The configured Esmeralda indexer hostnames do not resolve from this
-  // environment. That is the REAL outage, not a simulated one: no request is
-  // intercepted, so this exercises the genuine failure path end to end and
-  // proves the degraded states are correct and that no fixture data appears.
-  test('with the real indexer unreachable, the app shows UNAVAILABLE and no fixture data', async ({ page }) => {
+  // The configured Esmeralda indexer answers from this environment, but the
+  // reset network has no Shadow Swap deployment. This exercises the genuine
+  // protocol-not-deployed path and proves no fixture data appears.
+  test('with the reset network reachable but undeployed, the app shows no protocol and no fixture data', async ({ page }) => {
     await page.goto(`${APP_ORIGIN_UNDER_TEST}/pools`);
     // The shell must still render: an outage is not a blank page.
     await expect(page.getByRole('navigation', { name: 'Primary' })).toBeVisible();
 
-    // Discovery must report that it could not find out, not that there are none.
-    await expect(page.getByText(/Pool discovery unavailable/).first()).toBeVisible({ timeout: 30_000 });
-    await expect(page.getByText('Pool list unavailable').first()).toBeVisible();
+    // A reachable reset without Shadow Swap templates must report that fact,
+    // not pretend that a deployed protocol or empty market exists.
+    await expect(page.getByText('Network reachable, protocol not yet deployed').first()).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText('Protocol not yet deployed on this network').first()).toBeVisible();
     // A failure must never be rendered as an authoritative zero.
     await expect(page.getByText(/0 pools/).first()).toHaveCount(0);
 

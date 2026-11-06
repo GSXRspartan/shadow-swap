@@ -18,8 +18,8 @@
  * compiling WebAssembly only; it does NOT permit `eval`, `new Function`, or any remote
  * script, and the only module this app ever compiles is this same-origin asset.
  *
- * The package version is pinned EXACTLY (`0.48.0`) and its tarball integrity is fixed
- * by the lockfile, so the decoder is the one published with the v0.48.0 release.
+ * The package version is pinned EXACTLY (`0.49.2`) and its tarball integrity is fixed
+ * by the lockfile, so the decoder is the one published with the v0.49.2 release.
  */
 
 import wasmUrl from '@tari-project/ootle-wasm-bor/ootle_wasm_bor_bg.wasm?url';

@@ -1,5 +1,5 @@
 /**
- * Ootle v0.48 instruction ARGUMENT encoding: `InstructionArg::Literal(bytes)`.
+ * Ootle v0.49.2 instruction ARGUMENT encoding: `InstructionArg::Literal(bytes)`.
  *
  * Upstream (`crates/transaction/src/args.rs` at the pinned cohort) defines an instruction
  * argument as `Workspace(WorkspaceOffsetId) | Literal(Bytes) | Blob(BlobIndex)`, and a
@@ -9,7 +9,7 @@
  *
  * A bare JSON string is NOT an argument. Every encoding here is pinned, byte for byte, to
  * what the real engine's builder produced (`audit_engine_tests/tests/instruction_wire_v048.rs`
- * -> `apps/web/test/fixtures/ootle-v048-instructions.json`), not to a reading of the spec:
+ * -> `apps/web/test/fixtures/ootle-v049-instructions.json`), not to a reading of the spec:
  *
  *   ResourceAddress   tag 131 + bytes(32)        ComponentAddress  tag 128 + bytes(32)
  *   Amount (u128)     uint if <= u64::MAX, else tag 2 (bignum) + minimal big-endian bytes

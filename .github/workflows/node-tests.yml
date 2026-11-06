@@ -83,10 +83,10 @@ jobs:
           test -f "$D/index.html" || { echo "::error::index.html missing"; exit 1; }
           test -f "$D/_headers" || { echo "::error::_headers missing"; exit 1; }
           test -f "$D/_redirects" || { echo "::error::_redirects missing (SPA deep routes would 404)"; exit 1; }
-          ls "$D"/assets/ootle_wasm_bor_bg-*.wasm >/dev/null || { echo "::error::the v0.48 value decoder asset is missing"; exit 1; }
-          grep -q "'wasm-unsafe-eval'" "$D/_headers" || { echo "::error::CSP lacks wasm-unsafe-eval; v0.48 values could not be decoded"; exit 1; }
+          ls "$D"/assets/ootle_wasm_bor_bg-*.wasm >/dev/null || { echo "::error::the v0.49 value decoder asset is missing"; exit 1; }
+          grep -q "'wasm-unsafe-eval'" "$D/_headers" || { echo "::error::CSP lacks wasm-unsafe-eval; v0.49 values could not be decoded"; exit 1; }
           if grep -q "'unsafe-eval'" "$D/_headers"; then echo "::error::CSP must never carry 'unsafe-eval'"; exit 1; fi
-          grep -q 'esme-indexer-a.ootle.tari.com' "$D/_headers" || { echo "::error::v0.48 indexer missing from connect-src"; exit 1; }
+          grep -q 'esme-indexer-a.ootle.tari.com' "$D/_headers" || { echo "::error::Esmeralda indexer missing from connect-src"; exit 1; }
           if find "$D" -name '*.map' | grep -q .; then echo "Source maps present (policy is asserted by the web suite)."; fi
 
   protocol-client:

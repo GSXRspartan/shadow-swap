@@ -1,8 +1,8 @@
 /**
- * Ootle v0.48 in a REAL browser, under the SHIPPED Content-Security-Policy.
+ * Ootle v0.49.2 in a REAL browser, under the SHIPPED Content-Security-Policy.
  *
- * The v0.48 indexer serves chain values as base64 CBOR, and the app decodes them with
- * the official `@tari-project/ootle-wasm-bor@0.48.0` WebAssembly module. Node tests
+ * The v0.49.2 indexer serves chain values as base64 CBOR, and the app decodes them with
+ * the official `@tari-project/ootle-wasm-bor@0.49.2` WebAssembly module. Node tests
  * prove the decoder's output against real engine bytes; only a browser can prove the
  * part that matters at deployment time: that the production build actually loads and
  * compiles that module under its own CSP (`script-src 'self' 'wasm-unsafe-eval' …`)
@@ -17,7 +17,7 @@ import { mockIndexer } from './mockIndexer.js';
 const assets = path.resolve(process.cwd(), 'dist', 'assets');
 const loaderChunk = fs.readdirSync(assets).find((name) => /^ootleWasmBor\.browser-[\w-]+\.js$/.test(name));
 const wasmAsset = fs.readdirSync(assets).find((name) => /^ootle_wasm_bor_bg-[\w-]+\.wasm$/.test(name));
-const fixture = JSON.parse(fs.readFileSync(path.resolve(process.cwd(), 'test', 'fixtures', 'ootle-v048-pool-wire.json'), 'utf8')) as {
+const fixture = JSON.parse(fs.readFileSync(path.resolve(process.cwd(), 'test', 'fixtures', 'ootle-v049-pool-wire.json'), 'utf8')) as {
   poolComponent: string;
   substates: Record<string, { version: number; value: string }>;
   executeResults: { acceptedSwap: string; rejectedSwap: string };
@@ -26,10 +26,10 @@ const fixture = JSON.parse(fs.readFileSync(path.resolve(process.cwd(), 'test', '
 test('the production build ships the decoder as a same-origin hashed asset', () => {
   expect(loaderChunk, 'the lazy decoder chunk is emitted').toBeTruthy();
   expect(wasmAsset, 'the WebAssembly module is emitted as an asset').toBeTruthy();
-  expect(fs.statSync(path.join(assets, wasmAsset as string)).size).toBe(473_351);
+  expect(fs.statSync(path.join(assets, wasmAsset as string)).size).toBe(473_221);
 });
 
-test('the official v0.48 decoder compiles and decodes real engine bytes under the shipped CSP', async ({ page }) => {
+test('the official v0.49.2 decoder compiles and decodes real engine bytes under the shipped CSP', async ({ page }) => {
   const violations: string[] = [];
   page.on('console', (message) => {
     if (/Content Security Policy|Refused to|wasm-unsafe-eval|WebAssembly/i.test(message.text()) && message.type() === 'error') violations.push(message.text());
@@ -82,7 +82,7 @@ test('the official v0.48 decoder compiles and decodes real engine bytes under th
 
 test('NEGATIVE CONTROL: without wasm-unsafe-eval the same decode is refused, so the CSP is really enforced', async ({ page }) => {
   // Proves the positive test above is not vacuous: the page's policy genuinely governs
-  // WebAssembly compilation, and the one token added for v0.48 is load-bearing. (The
+  // WebAssembly compilation, and the one token added for v0.49.2 is load-bearing. (The
   // policy's continued refusal of JavaScript eval is asserted token-exactly in
   // test/deployment.test.cjs; DevTools-evaluated code is exempt from eval checks, so a
   // browser probe of `new Function` here would prove nothing.)

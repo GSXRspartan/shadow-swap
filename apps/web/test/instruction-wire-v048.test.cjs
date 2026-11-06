@@ -1,8 +1,8 @@
 require('./bootstrap.cjs');
 /**
- * Browser instruction JSON == the JSON the REAL v0.48 engine executed.
+ * Browser instruction JSON == the JSON the REAL v0.49.2 engine executed.
  *
- * `ootle-v048-instructions.json` is written by audit_engine_tests/tests/instruction_wire_v048.rs,
+ * `ootle-v049-instructions.json` is written by audit_engine_tests/tests/instruction_wire_v048.rs,
  * which builds every browser operation with the upstream Rust builder, serialises it with
  * upstream serde, deserialises it again and EXECUTES the deserialised list (balances are
  * asserted there). Here the same parameters go through this app's own builders
@@ -12,7 +12,7 @@ require('./bootstrap.cjs');
  */
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const fixture = require('./fixtures/ootle-v048-instructions.json');
+const fixture = require('./fixtures/ootle-v049-instructions.json');
 const w = require('@tari-ootle/wallet-adapter');
 const { buildSignableInstructions } = require('../build-test/lib/instructions.js');
 const { encodeLiteral, LiteralEncodingError } = require('../build-test/lib/instructionArgs.js');
@@ -26,8 +26,8 @@ const scenario = (name) => {
 const wire = (intent) => buildSignableInstructions({ instructions: intent.instructions ?? intent, maxEpoch: '10' });
 const evidence = { quotedOutput: '1', feeBps: '30', slippageBps: '50', effectiveInput: '1' };
 
-test('fixture: produced by the pinned v0.48.0 engine', () => {
-  assert.match(fixture.cohort, /v0\.48\.0 \(6a25dbc5/);
+test('fixture: produced by the pinned v0.49.2 engine', () => {
+  assert.match(fixture.cohort, /v0\.49\.2 \(aa7b0c81/);
   assert.ok(fixture.literals.length >= 30);
   assert.ok(fixture.scenarios.length >= 16);
 });

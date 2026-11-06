@@ -10,12 +10,12 @@ require('./bootstrap.cjs');
  * — afterwards — whether the funds actually arrived.
  *
  * The account's own public key comes from the ENGINE-PRODUCED account component in
- * `ootle-v048-account-inventory.json` (`owner_rule: { ByPublicKey }`), so the destination check
+ * `ootle-v049-account-inventory.json` (`owner_rule: { ByPublicKey }`), so the destination check
  * is wired to real chain state rather than to a hand-written constant.
  */
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const fixture = require('./fixtures/ootle-v048-account-inventory.json');
+const fixture = require('./fixtures/ootle-v049-account-inventory.json');
 const { loadOotleWasmBor } = require('./support/ootleWasmBor.cjs');
 const pc = require('@tari-ootle/protocol-client');
 

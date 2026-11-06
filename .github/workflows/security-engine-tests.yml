@@ -43,7 +43,7 @@ jobs:
 
       # PINNED, not `stable`: the reproducible-WASM gate below compares byte-exact hashes, which
       # change with the compiler. 1.97.1 is the channel tari-ootle v0.48.0 itself pins
-      # (rust-toolchain.toml at 6a25dbc). Bump it together with templates/WASM_SHA256SUMS.
+      # (rust-toolchain.toml at aa7b0c8). Bump it together with templates/WASM_SHA256SUMS.
       - name: Install Rust toolchain (1.97.1 + wasm target)
         uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
         with:
@@ -55,7 +55,7 @@ jobs:
         uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           # Distinct caches per standalone crate/target we touch.
-          key: security-engine-v048-rust-1.97.1
+          key: security-engine-v0492-rust-1.97.1
 
       # ---- Formatting (all Rust crates) ----
       - name: rustfmt (pool_math)

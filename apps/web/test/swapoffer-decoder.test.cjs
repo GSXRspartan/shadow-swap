@@ -1,13 +1,13 @@
 require('./bootstrap.cjs');
 /**
- * SwapOffer terms are read from CHAIN STATE: engine bytes -> official v0.48 decoder ->
+ * SwapOffer terms are read from CHAIN STATE: engine bytes -> official v0.49.2 decoder ->
  * protocol-client `decodeSwapOffer`. The fixture is produced by the real engine
  * (audit_engine_tests/tests/swapoffer_wire_v048.rs) for open (fungible, with designated taker,
  * hash lock and expiry), open NFT barter, filled and cancelled offers.
  */
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const fixture = require('./fixtures/ootle-v048-swapoffer-wire.json');
+const fixture = require('./fixtures/ootle-v049-swapoffer-wire.json');
 const { loadOotleWasmBor } = require('./support/ootleWasmBor.cjs');
 const pc = require('@tari-ootle/protocol-client');
 

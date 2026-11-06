@@ -35,8 +35,8 @@ use tari_template_lib::types::{Amount, ComponentAddress, ResourceAddress};
 use tari_template_test_tooling::TemplateTest;
 
 const CRATE_PATH: &str = env!("CARGO_MANIFEST_DIR");
-const FIXTURE_PATH: &str = "../apps/web/test/fixtures/ootle-v048-pool-wire.json";
-const COHORT: &str = "tari-ootle v0.48.0 (6a25dbc524581bfaa0a3c6ef120f8d59cc827572)";
+const FIXTURE_PATH: &str = "../apps/web/test/fixtures/ootle-v049-pool-wire.json";
+const COHORT: &str = "tari-ootle v0.49.2 (aa7b0c81719e5c3cfaf9bf3b5fb87bd83180cb90)";
 
 fn faucet(t: &mut TemplateTest, symbol: &str) -> (ComponentAddress, ResourceAddress) {
     let component: ComponentAddress = t.call_function(
@@ -218,7 +218,7 @@ fn fixture_json(run: &Run) -> serde_json::Value {
         .collect();
     serde_json::json!({
         "cohort": COHORT,
-        "generatedBy": "audit_engine_tests/tests/wire_fixtures_v048.rs (SHADOW_SWAP_WRITE_WIRE_FIXTURES=1)",
+        "generatedBy": "audit_engine_tests/tests/wire_fixtures_v048.rs -> ootle-v049-pool-wire.json (SHADOW_SWAP_WRITE_WIRE_FIXTURES=1)",
         "note": "TemplateTest addresses. They identify nothing on Esmeralda and must never seed a registry.",
         "poolComponent": run.pool,
         "poolTemplate": run.template,
@@ -232,7 +232,7 @@ fn fixture_json(run: &Run) -> serde_json::Value {
 }
 
 #[test]
-fn v048_wire_fixture_is_engine_produced_and_decodes_under_the_pinned_cohort() {
+fn v049_wire_fixture_is_engine_produced_and_decodes_under_the_pinned_cohort() {
     if std::env::var_os("SHADOW_SWAP_WRITE_WIRE_FIXTURES").is_some() {
         let run = run_pool_lifecycle();
         let text = serde_json::to_string_pretty(&fixture_json(&run)).unwrap() + "\n";

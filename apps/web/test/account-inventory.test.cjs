@@ -1,6 +1,6 @@
 require('./bootstrap.cjs');
 /**
- * What an account holds, read from ENGINE-PRODUCED vault bytes through the official v0.48
+ * What an account holds, read from ENGINE-PRODUCED vault bytes through the official v0.49.2
  * decoder: the NFT ids a picker lists, the revealed amounts a payment check uses, and the
  * container kind that decides whether a revealed-value mechanism may touch a holding.
  *
@@ -10,7 +10,7 @@ require('./bootstrap.cjs');
  */
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const fixture = require('./fixtures/ootle-v048-account-inventory.json');
+const fixture = require('./fixtures/ootle-v049-account-inventory.json');
 const { loadOotleWasmBor } = require('./support/ootleWasmBor.cjs');
 const pc = require('@tari-ootle/protocol-client');
 
@@ -24,7 +24,7 @@ async function reader(mutate) {
 const expected = (resource) => fixture.expect.find((e) => e.resource === resource);
 
 test('fixture: engine-produced, covers every container kind', () => {
-  assert.match(fixture.cohort, /v0\.48\.0 \(6a25dbc5/);
+  assert.match(fixture.cohort, /v0\.49\.2 \(aa7b0c81/);
   const kinds = new Set(fixture.expect.map((e) => e.containerKind));
   assert.deepEqual([...kinds].sort(), ['Confidential', 'Fungible', 'NonFungible', 'Stealth']);
 });

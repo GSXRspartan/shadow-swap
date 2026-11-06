@@ -1,0 +1,167 @@
+{
+  "cohort": "tari-ootle v0.49.2 (aa7b0c81719e5c3cfaf9bf3b5fb87bd83180cb90)",
+  "createExecuteResult": {
+    "component": "component_fa7755aab39b229d3f1cfae4691c771e27dd34d7c10b017642635ce04edf2d79",
+    "executeResult": "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"
+  },
+  "generatedBy": "audit_engine_tests/tests/swapoffer_wire_v048.rs -> ootle-v049-swapoffer-wire.json (SHADOW_SWAP_WRITE_WIRE_FIXTURES=1)",
+  "maker": {
+    "account": "component_3230781eb41523d792c58a7f6485e18cef92f71003100b14c347c1bd5d28006a",
+    "publicKey": "5c7f0fec164142986ada18df7c0950d93827925ece06b0e6a1247b6a3a304c7c"
+  },
+  "note": "TemplateTest addresses. They identify nothing on Esmeralda and must never seed a registry.",
+  "offers": [
+    {
+      "component": "component_fa7755aab39b229d3f1cfae4691c771e27dd34d7c10b017642635ce04edf2d79",
+      "expect": {
+        "designatedTaker": "c2a0394cab5ff3b6b51335386d8fb473cf03db714258bc17a10165783b3cf46c",
+        "expiresAtEpoch": "1000000",
+        "hashLock": "4194cba8cba04c6d95cf80be3dfa5128b2442a91632b72e9db9f1fee76276bc1",
+        "maker": "5c7f0fec164142986ada18df7c0950d93827925ece06b0e6a1247b6a3a304c7c",
+        "offered": {
+          "amount": "1000",
+          "kind": "fungible",
+          "resource": "resource_e66d255711c9ad817fd621895f1430021fe2c54e5c612181eb9b10510db880c3"
+        },
+        "proceeds": "0",
+        "requested": {
+          "amount": "2500",
+          "kind": "fungible",
+          "resource": "resource_560130e151f05db3bece5893bfd202c7125dfae526078cea8dcfb153861657c4"
+        },
+        "status": "Open"
+      },
+      "name": "open_fungible",
+      "preimage": "736861646f772d73776170206669787475726520707265696d616765",
+      "substates": {
+        "component_fa7755aab39b229d3f1cfae4691c771e27dd34d7c10b017642635ce04edf2d79": {
+          "value": "ggCBgoVYIClJskZQDSMrqWRszCJZuuOVad11719f8E7eMNok51ZfggCAgqRmY2FuY2VsggKBggCBggCBggGB2IKC2INYIAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAggCBWCBcfw/sFkFCmGraGN98CVDZOCeSXs4GsOahJHtqOjBMfGVjbGFpbYICgYIAgYIAgYIBgdiCgtiDWCABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIIAgVggXH8P7BZBQphq2hjffAlQ2Tgnkl7OBrDmoSR7ajowTHxkZmlsbIICgYIAgYIAgYIBgdiCgtiDWCABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIIAgVggwqA5TKtf87a1EzU4bY+0c88D23FCWLwXoQFleDs89Gxlb2ZmZXKCAICCAYBB+oIAgIGJ2IRYIPoLDJM4CHo9YLL9ejKTgoDL5NoW1lS+t54y+tOaR9r+2IRYIPqQRozuAphc8LHd+yfVUv/lJlJsiS7dI8UBhgO/wdpH2INYIOZtJVcRya2Bf9YhiV8UMAIf4sVOXGEhgeubEFENuIDD2INYIFYBMOFR8F2zvs5Yk7/SAscSXfrlJgeM6o3PsVOGFlfEGQnE9lggQZTLqMugTG2Vz4C+PfpRKLJEKpFjK3Lp258f7nYna8EaAA9CQIIAgA==",
+          "version": 0
+        },
+        "vault_fa0b0c9338087a3d60b2fd7a32938280cbe4da16d654beb79e32fad39a47dafe": {
+          "value": "ggKBgoIAg9iDWCDmbSVXEcmtgX/WIYlfFDACH+LFTlxhIYHrmxBRDbiAwxkD6AAA",
+          "version": 0
+        },
+        "vault_fa90468cee02985cf0b1ddfb27d552ffe526526c892edd23c5018603bfc1da47": {
+          "value": "ggKBgoIAg9iDWCBWATDhUfBds77OWJO/0gLHEl365SYHjOqNz7FThhZXxAAAAA==",
+          "version": 0
+        }
+      }
+    },
+    {
+      "component": "component_6ff5145113de8079af312d37e48918f8ca7e47d3e1abff10f3fb28611cd2eef6",
+      "expect": {
+        "designatedTaker": null,
+        "expiresAtEpoch": "0",
+        "hashLock": null,
+        "maker": "5c7f0fec164142986ada18df7c0950d93827925ece06b0e6a1247b6a3a304c7c",
+        "offered": {
+          "kind": "nft",
+          "nftIds": [
+            "str_art-1"
+          ],
+          "resource": "resource_f158140dd5200a9546aa9ec14b0e70ffb9bc384758d11de822fbcca7b2ff28eb"
+        },
+        "proceeds": "0",
+        "requested": {
+          "kind": "nft",
+          "nftId": "str_art-2",
+          "resource": "resource_757662365e64dbde51cde8ec7c33db87bff1949f7efaa6f3bce421a9b0363148"
+        },
+        "status": "Open"
+      },
+      "name": "open_nft",
+      "substates": {
+        "component_6ff5145113de8079af312d37e48918f8ca7e47d3e1abff10f3fb28611cd2eef6": {
+          "value": "ggCBgoVYIClJskZQDSMrqWRszCJZuuOVad11719f8E7eMNok51ZfggCAgqRmY2FuY2VsggKBggCBggCBggGB2IKC2INYIAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAggCBWCBcfw/sFkFCmGraGN98CVDZOCeSXs4GsOahJHtqOjBMfGVjbGFpbYICgYIAgYIAgYIBgdiCgtiDWCABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIIAgVggXH8P7BZBQphq2hjffAlQ2Tgnkl7OBrDmoSR7ajowTHxkZmlsbIIAgGVvZmZlcoIAgIIBgEFvggCAgYnYhFggb7EnL0/aLIilsCg/R5Qx929a7Lhc7xuUvJ7kBMFJnjfYhFggb3O2Iizs3/0FESdi6pUdm4r1inhFoG36EOijWs14dIXYg1gg8VgUDdUgCpVGqp7BSw5w/7m8OEdY0R3oIvvMp7L/KOvYg1ggdXZiNl5k295RzejsfDPbh7/xlJ9++qbzvOQhqbA2MUgAggGBZWFydC0y9gCCAIA=",
+          "version": 0
+        },
+        "vault_6f73b6222cecdffd05112762ea951d9b8af58a7845a06dfa10e8a35acd787485": {
+          "value": "ggKBgoIBg9iDWCB1dmI2XmTb3lHN6Ox8M9uHv/GUn376pvO85CGpsDYxSICAAA==",
+          "version": 0
+        },
+        "vault_6fb1272f4fda2c88a5b0283f479431f76f5aecb85cef1b94bc9ee404c1499e37": {
+          "value": "ggKBgoIBg9iDWCDxWBQN1SAKlUaqnsFLDnD/ubw4R1jRHegi+8ynsv8o64GCAYFlYXJ0LTGAAA==",
+          "version": 0
+        }
+      }
+    },
+    {
+      "component": "component_fa7755aab39b229d3f1cfae4691c771e27dd34d7c10b017642635ce04edf2d79",
+      "expect": {
+        "designatedTaker": "c2a0394cab5ff3b6b51335386d8fb473cf03db714258bc17a10165783b3cf46c",
+        "expiresAtEpoch": "1000000",
+        "hashLock": "4194cba8cba04c6d95cf80be3dfa5128b2442a91632b72e9db9f1fee76276bc1",
+        "maker": "5c7f0fec164142986ada18df7c0950d93827925ece06b0e6a1247b6a3a304c7c",
+        "offered": {
+          "amount": "0",
+          "kind": "fungible",
+          "resource": "resource_e66d255711c9ad817fd621895f1430021fe2c54e5c612181eb9b10510db880c3"
+        },
+        "proceeds": "2500",
+        "requested": {
+          "amount": "2500",
+          "kind": "fungible",
+          "resource": "resource_560130e151f05db3bece5893bfd202c7125dfae526078cea8dcfb153861657c4"
+        },
+        "status": "Filled"
+      },
+      "name": "filled",
+      "substates": {
+        "component_fa7755aab39b229d3f1cfae4691c771e27dd34d7c10b017642635ce04edf2d79": {
+          "value": "ggCBgoVYIClJskZQDSMrqWRszCJZuuOVad11719f8E7eMNok51ZfggCAgqRmY2FuY2VsggKBggCBggCBggGB2IKC2INYIAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAggCBWCBcfw/sFkFCmGraGN98CVDZOCeSXs4GsOahJHtqOjBMfGVjbGFpbYICgYIAgYIAgYIBgdiCgtiDWCABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIIAgVggXH8P7BZBQphq2hjffAlQ2Tgnkl7OBrDmoSR7ajowTHxkZmlsbIICgYIAgYIAgYIBgdiCgtiDWCABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIIAgVggwqA5TKtf87a1EzU4bY+0c88D23FCWLwXoQFleDs89Gxlb2ZmZXKCAICCAYBB+oIAgIGJ2IRYIPoLDJM4CHo9YLL9ejKTgoDL5NoW1lS+t54y+tOaR9r+2IRYIPqQRozuAphc8LHd+yfVUv/lJlJsiS7dI8UBhgO/wdpH2INYIOZtJVcRya2Bf9YhiV8UMAIf4sVOXGEhgeubEFENuIDD2INYIFYBMOFR8F2zvs5Yk7/SAscSXfrlJgeM6o3PsVOGFlfEGQnE9lggQZTLqMugTG2Vz4C+PfpRKLJEKpFjK3Lp258f7nYna8EaAA9CQIIBgA==",
+          "version": 1
+        },
+        "vault_fa0b0c9338087a3d60b2fd7a32938280cbe4da16d654beb79e32fad39a47dafe": {
+          "value": "ggKBgoIAg9iDWCDmbSVXEcmtgX/WIYlfFDACH+LFTlxhIYHrmxBRDbiAwwAAAA==",
+          "version": 1
+        },
+        "vault_fa90468cee02985cf0b1ddfb27d552ffe526526c892edd23c5018603bfc1da47": {
+          "value": "ggKBgoIAg9iDWCBWATDhUfBds77OWJO/0gLHEl365SYHjOqNz7FThhZXxBkJxAAA",
+          "version": 1
+        }
+      }
+    },
+    {
+      "component": "component_6ff5145113de8079af312d37e48918f8ca7e47d3e1abff10f3fb28611cd2eef6",
+      "expect": {
+        "designatedTaker": null,
+        "expiresAtEpoch": "0",
+        "hashLock": null,
+        "maker": "5c7f0fec164142986ada18df7c0950d93827925ece06b0e6a1247b6a3a304c7c",
+        "offered": {
+          "kind": "nft",
+          "nftIds": [],
+          "resource": "resource_f158140dd5200a9546aa9ec14b0e70ffb9bc384758d11de822fbcca7b2ff28eb"
+        },
+        "proceeds": "0",
+        "requested": {
+          "kind": "nft",
+          "nftId": "str_art-2",
+          "resource": "resource_757662365e64dbde51cde8ec7c33db87bff1949f7efaa6f3bce421a9b0363148"
+        },
+        "status": "Cancelled"
+      },
+      "name": "cancelled",
+      "substates": {
+        "component_6ff5145113de8079af312d37e48918f8ca7e47d3e1abff10f3fb28611cd2eef6": {
+          "value": "ggCBgoVYIClJskZQDSMrqWRszCJZuuOVad11719f8E7eMNok51ZfggCAgqRmY2FuY2VsggKBggCBggCBggGB2IKC2INYIAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAggCBWCBcfw/sFkFCmGraGN98CVDZOCeSXs4GsOahJHtqOjBMfGVjbGFpbYICgYIAgYIAgYIBgdiCgtiDWCABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIIAgVggXH8P7BZBQphq2hjffAlQ2Tgnkl7OBrDmoSR7ajowTHxkZmlsbIIAgGVvZmZlcoIAgIIBgEFvggCAgYnYhFggb7EnL0/aLIilsCg/R5Qx929a7Lhc7xuUvJ7kBMFJnjfYhFggb3O2Iizs3/0FESdi6pUdm4r1inhFoG36EOijWs14dIXYg1gg8VgUDdUgCpVGqp7BSw5w/7m8OEdY0R3oIvvMp7L/KOvYg1ggdXZiNl5k295RzejsfDPbh7/xlJ9++qbzvOQhqbA2MUgAggGBZWFydC0y9gCCAoA=",
+          "version": 1
+        },
+        "vault_6f73b6222cecdffd05112762ea951d9b8af58a7845a06dfa10e8a35acd787485": {
+          "value": "ggKBgoIBg9iDWCB1dmI2XmTb3lHN6Ox8M9uHv/GUn376pvO85CGpsDYxSICAAA==",
+          "version": 0
+        },
+        "vault_6fb1272f4fda2c88a5b0283f479431f76f5aecb85cef1b94bc9ee404c1499e37": {
+          "value": "ggKBgoIBg9iDWCDxWBQN1SAKlUaqnsFLDnD/ubw4R1jRHegi+8ynsv8o64CAAA==",
+          "version": 1
+        }
+      }
+    }
+  ],
+  "taker": {
+    "account": "component_3af8d8c2f59a9b50d2060002382ac631652c931aa134df81ceb3c254164b497c",
+    "publicKey": "c2a0394cab5ff3b6b51335386d8fb473cf03db714258bc17a10165783b3cf46c"
+  },
+  "template": "2949b246500d232ba9646ccc2259bae39569dd75ef5f5ff04ede30da24e7565f"
+}

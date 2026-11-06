@@ -1,5 +1,5 @@
 /**
- * Ootle v0.48 instruction serialisation for the Tari wallet boundary.
+ * Ootle v0.49.2 instruction serialisation for the Tari wallet boundary.
  *
  * What crosses the boundary is the serde JSON of upstream's
  * `tari_ootle_transaction::Instruction` (crates/transaction/src/v1/instruction.rs at the

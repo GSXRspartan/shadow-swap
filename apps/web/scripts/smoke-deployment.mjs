@@ -10,7 +10,7 @@
 //   1. every SPA route answers 200 with the application document (no 404 on deep links);
 //   2. every script/style the document references loads with a script/style content type,
 //      not the SPA fallback document;
-//   3. the Ootle v0.48 value decoder (lazy chunk + .wasm) is served, the .wasm as
+//   3. the Ootle v0.49.2 value decoder (lazy chunk + .wasm) is served, the .wasm as
 //      application/wasm with the exact pinned size, so CBOR chain values can be decoded;
 //   4. the favicon, PWA manifest and social card load;
 //   5. the document contains no development-provider marker and no loopback endpoint;
@@ -30,7 +30,7 @@ if (!/^https:\/\//.test(base) && !(flags.has('--allow-http') && /^http:\/\/(127\
 }
 
 const ROUTES = ['/', '/pools', '/pools/component_' + '0'.repeat(64), '/nfts', '/nfts/resource_' + '0'.repeat(64), '/activity', '/support', '/a-route-that-does-not-exist'];
-const DECODER_WASM_BYTES = 473_351; // @tari-project/ootle-wasm-bor@0.48.0
+const DECODER_WASM_BYTES = 473_221; // @tari-project/ootle-wasm-bor@0.49.2
 // Which network to smoke-test, and its endpoints and expected byte — all from one place, so a
 // network added to the app does not need this script edited to match. An unknown network, or one
 // with no published endpoint, is a refusal rather than a check against the wrong chain.
@@ -92,13 +92,13 @@ if (decoderChunk !== undefined) {
   const text = await (await get(`${base}/assets/${decoderChunk}`)).text();
   wasmAsset = text.match(/(ootle_wasm_bor_bg-[\w-]+\.wasm)/)?.[1];
 }
-check('v0.48 decoder chunk is referenced by the entry bundle', decoderChunk !== undefined, decoderChunk ?? 'not found');
+check('v0.49.2 decoder chunk is referenced by the entry bundle', decoderChunk !== undefined, decoderChunk ?? 'not found');
 if (wasmAsset !== undefined) {
   const response = await get(`${base}/assets/${wasmAsset}`);
   const bytes = (await response.arrayBuffer()).byteLength;
-  check('v0.48 decoder .wasm served as application/wasm, exact size', response.status === 200 && /application\/wasm/.test(response.headers.get('content-type') ?? '') && bytes === DECODER_WASM_BYTES, `${response.status} ${response.headers.get('content-type')} ${bytes}B`);
+  check('v0.49.2 decoder .wasm served as application/wasm, exact size', response.status === 200 && /application\/wasm/.test(response.headers.get('content-type') ?? '') && bytes === DECODER_WASM_BYTES, `${response.status} ${response.headers.get('content-type')} ${bytes}B`);
 } else {
-  check('v0.48 decoder .wasm is referenced', false, 'not found');
+  check('v0.49.2 decoder .wasm is referenced', false, 'not found');
 }
 
 for (const asset of ['/icon.svg', '/manifest.json', '/og-card.png']) {

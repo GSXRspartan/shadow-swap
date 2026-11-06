@@ -33,8 +33,8 @@ use tari_template_lib::types::{
 use tari_template_test_tooling::TemplateTest;
 
 const CRATE_PATH: &str = env!("CARGO_MANIFEST_DIR");
-const FIXTURE_PATH: &str = "../apps/web/test/fixtures/ootle-v048-swapoffer-wire.json";
-const COHORT: &str = "tari-ootle v0.48.0 (6a25dbc524581bfaa0a3c6ef120f8d59cc827572)";
+const FIXTURE_PATH: &str = "../apps/web/test/fixtures/ootle-v049-swapoffer-wire.json";
+const COHORT: &str = "tari-ootle v0.49.2 (aa7b0c81719e5c3cfaf9bf3b5fb87bd83180cb90)";
 
 fn encode_value(value: &SubstateValue) -> String {
     let encoded = Encoded::encode(value).expect("a live substate value always encodes");
@@ -345,7 +345,7 @@ fn generate() -> Value {
 
     json!({
         "cohort": COHORT,
-        "generatedBy": "audit_engine_tests/tests/swapoffer_wire_v048.rs (SHADOW_SWAP_WRITE_WIRE_FIXTURES=1)",
+        "generatedBy": "audit_engine_tests/tests/swapoffer_wire_v048.rs -> ootle-v049-swapoffer-wire.json (SHADOW_SWAP_WRITE_WIRE_FIXTURES=1)",
         "note": "TemplateTest addresses. They identify nothing on Esmeralda and must never seed a registry.",
         "template": tmpl.to_string(),
         "maker": { "account": maker.to_string(), "publicKey": hex(maker_pk.as_ref()) },
