@@ -2,8 +2,8 @@ name: Security Engine Tests
 
 # Executes the REAL Ootle engine test suite (audit_engine_tests) on Linux, where the engine's
 # wasmer/Cranelift backend actually compiles (it does not on Windows). The cohort is tari-ootle
-# v0.48.0 (6a25dbc), pinned in every Cargo.toml. This is the authoritative runtime evidence for
-# the SECURITY_AUDIT_OPUS findings, OPUS-08, the add_liquidity_exact fix and the v0.48 wire
+# v0.49.2 (aa7b0c8), pinned in every Cargo.toml. This is the authoritative runtime evidence for
+# the SECURITY_AUDIT_OPUS findings, OPUS-08, the add_liquidity_exact fix and the v0.49 wire
 # fixtures the web suite consumes.
 #
 # This job is the ONLY place the real engine suites run: on a Windows developer machine
@@ -42,7 +42,7 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       # PINNED, not `stable`: the reproducible-WASM gate below compares byte-exact hashes, which
-      # change with the compiler. 1.97.1 is the channel tari-ootle v0.48.0 itself pins
+      # change with the compiler. 1.97.1 is the channel tari-ootle v0.49.2 itself pins
       # (rust-toolchain.toml at aa7b0c8). Bump it together with templates/WASM_SHA256SUMS.
       - name: Install Rust toolchain (1.97.1 + wasm target)
         uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
@@ -56,6 +56,13 @@ jobs:
         with:
           # Distinct caches per standalone crate/target we touch.
           key: security-engine-v0492-rust-1.97.1
+
+      # tari_template_builtin/build.rs is the official upstream prerequisite. With the
+      # `templates` feature enabled on the direct, pinned dependency above, Cargo compiles
+      # account, nft_faucet, faucet, liquidity_pool and burn_rate_governance and writes
+      # crates/template_builtin/compiled/*.wasm before the engine binaries are built.
+      - name: Generate pinned Tari built-in WASM artifacts
+        run: cargo check --manifest-path audit_engine_tests/Cargo.toml
 
       # ---- Formatting (all Rust crates) ----
       - name: rustfmt (pool_math)
