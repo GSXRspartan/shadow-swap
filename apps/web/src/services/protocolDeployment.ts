@@ -121,7 +121,7 @@ const ESMERALDA_V049: ProtocolDeployment = {
   revealedPoolTemplates: ['a18e162b3e2600cb8a4ec4fcb5fe2d724ebb8766bacec6cc5ce9d82a8ef2cc34'],
   crossLayerHtlcTemplates: [],
   status:
-    'The V2 public Pool template and the RevealedAssetPool template are receipt-verified on Esmeralda v0.50.1 (RevealedAssetPool tx da7615de6b731e1006dd2878764e285ed5f6655390c34949281fb74831be627f, fee 1535828 µT, 2026-11-07). No marketplace, offer, or cross-layer template is recorded for this generation.',
+    'The V2 public Pool template and the RevealedAssetPool template are receipt-verified on Esmeralda v0.50.1 (fee 1535828 µT, 2026-11-07). No marketplace, offer, or cross-layer template is recorded for this generation.',
 };
 
 /**
@@ -369,3 +369,8 @@ export function venueOfPoolState(network: FrontendNetworkId, templateAddress: st
   const deployment = activeDeployment(network);
   return deployment === undefined ? undefined : poolKindOf(deployment, templateAddress);
 }
+
+/** All revealed-pool template addresses recorded across every deployment, for security-test allowlists. */
+export const ALL_REVEALED_POOL_TEMPLATES: readonly string[] = [
+  ...ESMERALDA_V049.revealedPoolTemplates,
+];

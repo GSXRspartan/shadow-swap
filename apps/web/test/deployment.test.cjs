@@ -569,6 +569,13 @@ test('secrets: preimage names may appear only as rejection rules, never with a v
   // constant, not secret material. Derived from the export, not retyped.
   const { PUBLIC_IDENTITY_RESOURCE } = require('@tari-ootle/protocol-client');
   allowed.add(PUBLIC_IDENTITY_RESOURCE.replace(/^resource_/, ''));
+  // RevealedAssetPool template addresses recorded for each deployment. These are CREATE
+  // pinned on submission — same category as the Pool template and marketplace templates
+  // above. Derived from the deployments module so the allowlist stays in sync.
+  const { ALL_REVEALED_POOL_TEMPLATES } = require('../build-test/services/protocolDeployment.js');
+  for (const addr of (ALL_REVEALED_POOL_TEMPLATES ?? [])) {
+    if (typeof addr === 'string' && addr) allowed.add(addr.replace(/^template_/, ''));
+  }
   for (const literal of new Set(hexLiterals)) {
     assert.ok(
       allowed.has(literal),
