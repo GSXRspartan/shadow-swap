@@ -1,0 +1,17 @@
+[package]
+name = "test_token_minter"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+# Same signed Ootle v0.50.1 cohort as the deployable Shadow Swap templates.  v0.50
+# requires its V2 template-definition layout, emitted by tari_template_lib 0.38.0.
+tari_template_lib = { git = "https://github.com/tari-project/tari-ootle.git", rev = "0b3f364dd0eaff9997b08d722948619981b62ce7" }
+
+[profile.release]
+opt-level = "z"
+lto = true
+panic = "abort"
