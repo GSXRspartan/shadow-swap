@@ -9,7 +9,7 @@
 // `TestCoinFactory`; the pool is the published `Pool` template.
 //
 // Usage:
-//   node cli.mjs create-token  <SYMBOL> [--supply N] [--div 6]
+//   node cli.mjs mint-test-pair --template <receipt-verified V2 TestTokenMinter>
 //   node cli.mjs create-pool   --template <audited pool template> --a <resA> --b <resB> [--fee-bps 30]
 //   node cli.mjs add-liquidity --pool <c> --res-a <r> --amt-a N --res-b <r> --amt-b N
 //   node cli.mjs swap          --pool <c> --in <res> --amt N --out <res> --min-out N
@@ -22,7 +22,18 @@
 
 import { WalletdExecutor, assertAuditedPoolTemplate } from './walletd.mjs';
 
-const TEST_COIN_FACTORY = '93aa539e3a59bd9e45db35f88ec733a40d493223b5892d8724fbfe198831b692';
+// The former hard-coded TestCoinFactory was removed by the Esmeralda reset. Do not add
+// a speculative replacement here: the V2 minter address must be copied from its committed
+// publication receipt and supplied explicitly for every dry run or submission.
+const RETIRED_TEST_COIN_FACTORY = '93aa539e3a59bd9e45db35f88ec733a40d493223b5892d8724fbfe198831b692';
+
+function receiptVerifiedTemplate(flags) {
+  const bare = req(flags, 'template').replace(/^template_/, '');
+  if (!/^[0-9a-f]{64}$/i.test(bare) || bare.toLowerCase() === RETIRED_TEST_COIN_FACTORY) {
+    throw new Error('refusing a missing or reset-era minter template; use the V2 template address from its committed receipt');
+  }
+  return bare.toLowerCase();
+}
 
 function parseArgs(argv) {
   const positional = [];
@@ -69,25 +80,23 @@ async function main() {
       emit({ account: acct, network: identity });
       break;
     }
-    case 'create-token': {
-      const symbol = positional[1];
-      if (!symbol) throw new Error('usage: create-token <SYMBOL>');
-      const supply = flags.supply && flags.supply !== true ? String(flags.supply) : '1000000000';
-      const div = flags.div && flags.div !== true ? Number(flags.div) : 6;
-      const manifest = `use template_${TEST_COIN_FACTORY} as TestCoinFactory;
+    case 'mint-test-pair': {
+      const template = receiptVerifiedTemplate(flags);
+      const manifest = `use template_${template} as TestTokenMinter;
 fn main() {
   let account = arg!["account"];
-  let coins = TestCoinFactory::create_public_fungible_test_coin("${symbol}", ${div}u8, amount!(${supply}));
-  account.deposit(coins);
+  let (testa, testb) = TestTokenMinter::mint_pair();
+  account.deposit(testa);
+  account.deposit(testb);
 }`;
       const r = await ex.submitManifest({
-        opId: `create-token-${symbol}`,
-        intent: `create public fungible ${symbol} (supply ${supply}, div ${div})`,
+        opId: 'mint-testa-testb-pair',
+        intent: 'mint and deposit fixed public TESTA/TESTB pair (10,000.000000 each)',
         manifest,
         variables: { account: acct.component },
         maxFeeMicro,
         dryRunOnly,
-        meta: { symbol, supply, divisibility: div, template: 'TestCoinFactory' },
+        meta: { template, symbols: ['TESTA', 'TESTB'], supplyRaw: '10000000000', divisibility: 6 },
       });
       emit(r);
       break;

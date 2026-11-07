@@ -29,16 +29,19 @@ Testnet only. No mainnet. No L1 burns. No cross-chain.
 
 ## Published templates used
 
-- Public fungible test coins: `TestCoinFactory` (published on Esmeralda,
-  `template_93aa539e…`) — `create_public_fungible_test_coin(symbol, div, supply)`.
-- AMM pool: the published `Pool` v2 template (`template_f47a330e...`, CURRENT_ESMERALDA). Pool v1 (`template_ef2bc1b0...`) is superseded; `create-pool` refuses it.
+- Public fungible test coins: the v0.50.1 `TestTokenMinter` is not yet published. After a
+  committed publication receipt supplies its V2 template address, `mint-test-pair` creates and
+  deposits a fixed public TESTA/TESTB pair. The reset-era `TestCoinFactory` is intentionally
+  refused.
+- AMM pool: the receipt-verified v0.50.1 `Pool` V2 template
+  (`template_1c7d39e782b6ca5023ad186c7d5f82cb2ad171336cd75ae0025245fe84bebae3`).
 
 ## Commands
 
 ```bash
 node cli.mjs account
-node cli.mjs create-token  LPTESTA --supply 1000000000 --div 6
-node cli.mjs create-pool   --a <resA> --b <resB> --fee-bps 30
+node cli.mjs mint-test-pair --template <committed-v2-minter-template> --dry-run --max-fee <micro>
+node cli.mjs create-pool --template template_1c7d39e782b6ca5023ad186c7d5f82cb2ad171336cd75ae0025245fe84bebae3 --a <TESTA-resource> --b <TESTB-resource> --fee-bps 30
 node cli.mjs add-liquidity --pool <c> --res-a <r> --amt-a N --res-b <r> --amt-b N
 node cli.mjs swap          --pool <c> --in <res> --amt N --out <res> --min-out N
 node cli.mjs remove-liquidity --pool <c> --lp <res> --amt N

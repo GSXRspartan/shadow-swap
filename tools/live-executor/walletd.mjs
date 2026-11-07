@@ -35,28 +35,24 @@ export const EXPECTED_NETWORK_BYTE = 38;
 export const MAX_FEE_PER_TX_MICRO = 5_000_000; // 5 tTARI
 
 /**
- * The audited, CURRENT Pool template on Esmeralda (Pool v2, `OwnerRule::None`).
- *
- * Pool v1 (`ef2bc1b0…`) is SUPERSEDED: its component is owner-controlled, which is the
- * OPUS-16 class the v2 template exists to close. Instantiating a new pool at all is out of
- * scope for this venue (the existing Pool v2 IS the market), so the template is never
- * defaulted: a caller must name it, and it must be this one.
+ * The receipt-verified Pool V2 template published for the v0.50.1 Esmeralda acceptance
+ * campaign. It has an ownerless, locked Pool implementation; callers may not silently
+ * substitute a historical or reset-era template address.
  */
-export const CURRENT_POOL_TEMPLATE = 'f47a330eee1bbf91f58d9ff4280b4279c3c4fe91fb59ab5812cd5128442819ab';
+export const CURRENT_POOL_TEMPLATE = '1c7d39e782b6ca5023ad186c7d5f82cb2ad171336cd75ae0025245fe84bebae3';
 
 /**
  * Refuse any pool instantiation that is not against the audited template.
  *
- * This is a build-time constant check, not a chain read: it exists because the previous
- * shipped default WAS the superseded v1 template, so a command that looked current would
- * have created an owner-controlled pool the protocol does not support.
+ * This is a build-time constant check. The address must still be checked against its
+ * publication receipt and current indexer definition before any live submission.
  */
 export function assertAuditedPoolTemplate(template) {
   const bare = String(template ?? '').replace(/^template_/, '');
   if (bare !== CURRENT_POOL_TEMPLATE) {
     throw new ExecutorError(
       `REFUSED: pool template ${template} is not the audited Pool v2 template (${CURRENT_POOL_TEMPLATE}). ` +
-        'Pool v1 (ef2bc1b0...) is superseded and must not be instantiated; this venue reuses the existing pool.',
+        'Historical/reset-era Pool addresses are refused; use the receipt-verified v0.50.1 Pool template.',
     );
   }
   return bare;
