@@ -18,7 +18,7 @@ import { readBrowserEnv } from '../services/envSource.js';
 import { createWalletService, type WalletBridge } from '../services/walletService.js';
 import { browserPendingRequestStorage } from '../lib/pendingRequests.js';
 import { captureIdentity, type ExecutionIdentity, type ProviderCapabilities } from '../lib/executionIdentity.js';
-import { createPoolDiscovery, descriptorFromAuthoritativeRead, type PoolDescriptor, type PoolDiscoveryResult } from '../services/pools.js';
+import { createPoolDiscovery, descriptorFromAuthoritativeRead, type PoolDescriptor, type PoolDiscoveryResult, type ResourceDisplayMeta } from '../services/pools.js';
 import { seededTemplateFor } from '../services/poolRegistry.js';
 import { activeDeployment, poolKindOf, withTrustedPoolTemplates } from '../services/protocolDeployment.js';
 import { createOotleReadbackProvider } from '@tari-ootle/protocol-client';
@@ -468,8 +468,30 @@ export function AppProvider({
           if (kind === undefined) continue;
           const template = seededTemplateFor(deployment.registryKey, candidate.componentAddress) ?? candidate.templateAddress;
           const read = await readback.readPool(candidate.componentAddress, { templateAddress: template });
-          if (read.status !== 'FOUND') continue;
+          if (read.status !== 'FOUND') { continue; }
           const state = read.value;
+          // Read on-chain resource metadata for symbol/divisibility when the
+          // wallet has no balance for a resource (e.g. tokens fully in pool vaults).
+          // Safety classification is NOT affected: it stays UNKNOWN unless the
+          // wallet actually holds the resource.
+          const rawReader = bridge.substateReader('DISPLAY');
+          const resourceAddresses = [state.resourceA, state.resourceB].filter(Boolean) as string[];
+          const resourceMeta = new Map<string, ResourceDisplayMeta>();
+          for (const addr of resourceAddresses) {
+            if (wallet.balances.some((b) => b.resourceAddress === addr)) continue; // wallet already knows it
+            try {
+              const sub = rawReader.readRaw !== undefined ? await rawReader.readRaw(addr) as Record<string, unknown> | undefined : undefined;
+              const res = sub !== null && typeof sub === 'object' ? (sub as Record<string, unknown>).Resource : undefined;
+              if (res === null || typeof res !== 'object') continue;
+              const r = res as Record<string, unknown>;
+              const meta = r.metadata !== null && typeof r.metadata === 'object' ? r.metadata as Record<string, unknown> : undefined;
+              const symbol = typeof meta?.SYMBOL === 'string' && meta.SYMBOL !== '' ? meta.SYMBOL : undefined;
+              const divisibility = typeof r.divisibility === 'number' && Number.isInteger(r.divisibility) && r.divisibility >= 0 ? r.divisibility : undefined;
+              if (symbol !== undefined || divisibility !== undefined) resourceMeta.set(addr, { symbol, divisibility });
+            } catch {
+              // Non-fatal: missing metadata means 0 decimals and no symbol, which is the conservative default.
+            }
+          }
           const descriptor = descriptorFromAuthoritativeRead(
             {
               poolComponent: state.poolComponent,
@@ -479,6 +501,7 @@ export function AppProvider({
               ...(state.lpResource === undefined ? {} : { lpResource: state.lpResource }),
             },
             wallet.balances,
+            resourceMeta.size > 0 ? resourceMeta : undefined,
           );
           if (descriptor !== undefined) decoded.push({ ...descriptor, kind });
         } catch {

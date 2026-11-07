@@ -110,18 +110,18 @@ const ESMERALDA_V048: ProtocolDeployment = {
     'Shadow Swap templates have not been published on the v0.48 reset network. The v0.48 builds exist and are tested, but publishing them is an operator decision outside this release candidate.',
 };
 
-/** The v0.49 reset network. No v0.48 address or wallet state is inherited. */
+/** The v0.49 reset network, continued by v0.50.1 without another reset. */
 const ESMERALDA_V049: ProtocolDeployment = {
   network: 'esmeralda',
   generation: 'V049_RESET',
   registryKey: 'esmeralda@v049',
-  poolTemplates: [],
+  poolTemplates: ['1c7d39e782b6ca5023ad186c7d5f82cb2ad171336cd75ae0025245fe84bebae3'],
   marketplaceTemplates: undefined,
   offerTemplates: [],
   revealedPoolTemplates: [],
   crossLayerHtlcTemplates: [],
   status:
-    'Shadow Swap templates have not been published on the v0.49 reset network. v0.48 template and component addresses are deliberately not reusable; an operator must record fresh v0.49 deployment receipts before discovery or trading is enabled.',
+    'The V2 public Pool template was receipt-verified on Esmeralda v0.50.1. No marketplace, offer, revealed-value, or cross-layer template is recorded for this generation.',
 };
 
 /**

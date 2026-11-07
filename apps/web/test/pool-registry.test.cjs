@@ -174,3 +174,73 @@ test('discovery: a reverified pool is persisted back to the cache', async () => 
   await discovery(storage).discover();
   assert.ok(registry.loadCachedComponents('esmeralda', storage).includes(KNOWN_POOL));
 });
+
+// --- CORS-safe fallback: scan fails but knownComponents present ---------------
+
+/**
+ * An indexer where /transaction-receipts fails (CORS, 503, etc.) but
+ * /substates/fetch answers for the given known components.
+ */
+function corsBlockedReceiptsIndexer(presentComponents) {
+  return async (url, init) => {
+    const p = new URL(url).pathname;
+    if (p === '/info') return jsonResponse(IDENTITY_OK);
+    if (p === '/templates/catalogue') return jsonResponse({ entries: [{ template_address: POOL_TEMPLATE, template_name: 'Pool', author_public_key: '00'.repeat(32), binary_hash: '11'.repeat(32), at_epoch: 1 }] });
+    if (p === '/transaction-receipts') throw new TypeError('Failed to fetch'); // CORS
+    if (p === '/substates/fetch') {
+      const substates = {};
+      for (const [id, tmpl] of Object.entries(presentComponents)) {
+        substates[id] = { version: 3, substate: { Component: { header: { template_address: tmpl, owner_rule: 'None', access_rules: { method_access: {}, default: 'DenyAll' } }, body: { state: [{ '@cbor': 'map', entries: [] }, {}] } } } };
+      }
+      return jsonResponse({ substates });
+    }
+    return jsonResponse({});
+  };
+}
+
+test('discovery: CORS failure on receipts still finds seed Pool via registry fallback', async () => {
+  const seed = registry.seedComponents('esmeralda')[0];
+  globalThis.fetch = corsBlockedReceiptsIndexer({ [seed]: POOL_TEMPLATE });
+  const storage = fakeStorage();
+  const result = await discovery(storage).discover();
+  assert.equal(result.state, 'PROTOCOL_AVAILABLE', 'seed pool is discoverable even when receipt scan is blocked');
+  assert.ok(result.candidates.some((c) => c.componentAddress === seed), 'seed component is found');
+});
+
+test('discovery: CORS failure on receipts still finds cached Pool via registry fallback', async () => {
+  globalThis.fetch = corsBlockedReceiptsIndexer({ [KNOWN_POOL]: POOL_TEMPLATE });
+  const storage = fakeStorage({ 'ootle.poolRegistry.esmeralda': JSON.stringify([KNOWN_POOL]) });
+  const result = await discovery(storage).discover();
+  assert.equal(result.state, 'PROTOCOL_AVAILABLE');
+  assert.ok(result.candidates.some((c) => c.componentAddress === KNOWN_POOL));
+});
+
+test('discovery: CORS failure with no known components returns INDEXER_UNAVAILABLE (fail-closed)', async () => {
+  // Seed components for esmeralda exist, but we give the indexer an empty substates response
+  // so the seeds don't appear — in practice this tests the scan-fails + empty-seed path.
+  // Use a fully-blocked indexer (receipts AND substates both fail) with no cache.
+  const fullyBlockedFetch = async (url) => {
+    const p = new URL(url).pathname;
+    if (p === '/info') return jsonResponse(IDENTITY_OK);
+    if (p === '/templates/catalogue') return jsonResponse({ entries: [{ template_address: POOL_TEMPLATE, template_name: 'Pool', author_public_key: '00'.repeat(32), binary_hash: '11'.repeat(32), at_epoch: 1 }] });
+    if (p === '/transaction-receipts') throw new TypeError('Failed to fetch');
+    if (p === '/substates/fetch') throw new TypeError('Failed to fetch');
+    return jsonResponse({});
+  };
+  globalThis.fetch = fullyBlockedFetch;
+  const storage = fakeStorage(); // empty: no cached pool addresses
+  // Remove seed by using a fresh registry-less discovery
+  // (esmeralda seed always has 1 entry — this tests that the seed path still bails
+  // when the batch fetch itself also fails)
+  const result = await discovery(storage).discover();
+  assert.equal(result.state, 'INDEXER_UNAVAILABLE');
+});
+
+test('discovery: CORS fallback drops known component with wrong template address', async () => {
+  const seed = registry.seedComponents('esmeralda')[0];
+  globalThis.fetch = corsBlockedReceiptsIndexer({ [seed]: OTHER_TEMPLATE });
+  const storage = fakeStorage();
+  const result = await discovery(storage).discover();
+  assert.equal(result.state, 'PROTOCOL_DEPLOYED_EMPTY', 'wrong-template component is dropped even in fallback mode');
+  assert.deepEqual(result.candidates, []);
+});

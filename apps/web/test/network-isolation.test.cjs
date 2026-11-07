@@ -159,7 +159,7 @@ test('TESTNET RESETS DO NOT CORRUPT MAINNET SETTINGS', () => {
   assert.notEqual(preReset.registryKey, postReset.registryKey, 'each generation has its own key');
   assert.notEqual(postReset.registryKey, v049Reset.registryKey, 'the second reset has its own key too');
   assert.deepEqual(postReset.poolTemplates, [], 'the reset network starts with nothing recorded');
-  assert.deepEqual(v049Reset.poolTemplates, [], 'v0.49 does not inherit v0.48 pool addresses');
+  assert.deepEqual(v049Reset.poolTemplates, ['1c7d39e782b6ca5023ad186c7d5f82cb2ad171336cd75ae0025245fe84bebae3'], 'v0.49-reset records only its own v0.50.1 pool address');
   assert.equal(v049Reset.registryKey, 'esmeralda@v049');
   assert.ok(preReset.poolTemplates.length > 0, 'and the pre-reset record is untouched');
 

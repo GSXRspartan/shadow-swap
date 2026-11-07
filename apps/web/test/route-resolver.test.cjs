@@ -178,3 +178,111 @@ test('signable set: a revealed-value or mixed route is only EXECUTABLE once its 
   assert.match(unrecorded.REVEALED_POOL.reason, /RevealedAssetPool template is recorded/);
   assert.equal(unrecorded.MIXED_MULTI_HOP, undefined, 'no mixed route is quoted while the revealed template is unrecorded');
 });
+
+// ---------------------------------------------------------------------------
+// Live TESTA/TESTB pool: quote math and route verification
+// Live reserves fetched from esme-indexer-a.ootle.tari.com 2026-11-07:
+//   vault_5cb803... → TESTA: 101,000,000 raw (101 TESTA at 6 dp)
+//   vault_5c5d29... → TESTB:  99,012,842 raw (99.012842 TESTB at 6 dp)
+// ---------------------------------------------------------------------------
+
+const TESTA = 'resource_bcee58e93c7bada4eaf4acadb43dff825b74caca09dfe4567390513525560c57';
+const TESTB = 'resource_bc2f414f1b554f09aeebe22ea56a4feba32ab5419f970d1054d915bb9c2ff93c';
+const LIVE_POOL = 'component_5c554ab71fa912da3f92f932cc79db4af2ecb21bbec657480a97b5017704b2c6';
+const RESERVE_A = 101_000_000; // raw TESTA
+const RESERVE_B =  99_012_842; // raw TESTB
+const FEE_BPS   = '30';
+
+const livePool = { poolComponent: LIVE_POOL, resourceA: TESTA, resourceB: TESTB, reserveA: String(RESERVE_A), reserveB: String(RESERVE_B), feeBps: FEE_BPS };
+
+test('TESTA/TESTB live pool: direct AMM route is EXECUTABLE with 1 TESTA input', () => {
+  const opts = byMech(resolvePairRoutes({
+    input: { resource: TESTA, kind: 'fungible' },
+    output: { resource: TESTB, kind: 'fungible' },
+    amountIn: '1000000', // 1 TESTA at 6 decimals
+    pools: [livePool],
+    poolTemplateRecorded: true,
+  }));
+  assert.equal(opts.AMM.availability, 'EXECUTABLE', 'direct AMM route must be EXECUTABLE for a live fungible pair');
+  assert.ok(opts.AMM.quotes.length >= 1, 'at least one direct quote');
+  const q = opts.AMM.quotes[0];
+  assert.equal(q.inputResource, TESTA);
+  assert.equal(q.outputResource, TESTB);
+  assert.equal(q.amountIn, '1000000');
+  // Output: (RESERVE_B * 1_000_000 * 9970) / (RESERVE_A * 10_000 + 1_000_000 * 9970)
+  // = (99_012_842 * 9_970_000_000) / (1_010_000_000_000 + 9_970_000_000)
+  // = 967_830 (floor division)
+  assert.equal(q.amountOut, '967830', '1 TESTA → 967830 raw TESTB (0.96783) with 30 bps fee');
+});
+
+test('TESTA/TESTB live pool: resource ordering is symmetric (B→A route)', () => {
+  // Pool stores [TESTA, TESTB] in that order. Routing B→A must work too.
+  const opts = byMech(resolvePairRoutes({
+    input: { resource: TESTB, kind: 'fungible' },
+    output: { resource: TESTA, kind: 'fungible' },
+    amountIn: '1000000', // 1 TESTB
+    pools: [livePool],
+    poolTemplateRecorded: true,
+  }));
+  assert.equal(opts.AMM.availability, 'EXECUTABLE', 'reverse direction must also find the same pool');
+  const q = opts.AMM.quotes[0];
+  assert.equal(q.inputResource, TESTB);
+  assert.equal(q.outputResource, TESTA);
+  // Reverse reserves: in=TESTB(99_012_842), out=TESTA(101_000_000)
+  // out = (101_000_000 * 1_000_000 * 9970) / (99_012_842 * 10_000 + 1_000_000 * 9970)
+  const rIn = BigInt(RESERVE_B), rOut = BigInt(RESERVE_A), aIn = 1_000_000n, fac = 9970n;
+  const expected = String((rOut * aIn * fac) / (rIn * 10000n + aIn * fac));
+  assert.equal(q.amountOut, expected, 'reverse-direction quote uses the correct reserves');
+});
+
+test('TESTA/TESTB live pool: no route when Pool template is not recorded for the generation', () => {
+  const opts = byMech(resolvePairRoutes({
+    input: { resource: TESTA, kind: 'fungible' },
+    output: { resource: TESTB, kind: 'fungible' },
+    amountIn: '1000000',
+    pools: [livePool],
+    poolTemplateRecorded: false,
+  }));
+  assert.equal(opts.AMM.availability, 'BLOCKED');
+  assert.match(opts.AMM.reason, /No Shadow Swap Pool template is recorded/);
+});
+
+test('TESTA/TESTB live pool: no route when pool list is empty (wallet not yet connected)', () => {
+  const opts = byMech(resolvePairRoutes({
+    input: { resource: TESTA, kind: 'fungible' },
+    output: { resource: TESTB, kind: 'fungible' },
+    amountIn: '1000000',
+    pools: [],  // market.pools is [] until wallet connects and pool decode runs
+    poolTemplateRecorded: true,
+  }));
+  assert.equal(opts.AMM.availability, 'NO_LIQUIDITY');
+  assert.match(opts.AMM.reason, /No verified pool holds this exact pair/);
+});
+
+test('TESTA/TESTB: quote with zero amount returns NO_LIQUIDITY (enter-amount prompt)', () => {
+  const opts = byMech(resolvePairRoutes({
+    input: { resource: TESTA, kind: 'fungible' },
+    output: { resource: TESTB, kind: 'fungible' },
+    // no amountIn
+    pools: [livePool],
+    poolTemplateRecorded: true,
+  }));
+  assert.equal(opts.AMM.availability, 'NO_LIQUIDITY');
+  assert.match(opts.AMM.reason, /Enter an amount/);
+});
+
+test('TESTA constant-product math: 30 bps fee reduces output exactly', () => {
+  // Verify the fee formula directly: amountOut = floor(rB * aIn * (10000 - fee) / (rA * 10000 + aIn * (10000 - fee)))
+  const rA = BigInt(RESERVE_A), rB = BigInt(RESERVE_B), aIn = 1_000_000n, fee = 30n;
+  const factor = 10000n - fee;
+  const expectedOut = (rB * aIn * factor) / (rA * 10000n + aIn * factor);
+  assert.equal(expectedOut, 967830n, 'constant-product formula with 30 bps fee gives 967830 raw TESTB for 1 TESTA');
+
+  // Zero-fee would give a larger output: verify fee actually reduces it
+  const noFeeOut = (rB * aIn * 10000n) / (rA * 10000n + aIn * 10000n);
+  assert.ok(noFeeOut > expectedOut, 'fee reduces output');
+
+  // 1 bps fee should give a result strictly between zero-fee and 30-bps output
+  const oneBpsOut = (rB * aIn * 9999n) / (rA * 10000n + aIn * 9999n);
+  assert.ok(oneBpsOut > expectedOut && oneBpsOut <= noFeeOut, '1 bps fee is strictly less than zero-fee output');
+});

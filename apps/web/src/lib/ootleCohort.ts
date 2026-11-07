@@ -17,6 +17,9 @@
  *              `6a25dbc`). The public indexers move to `esme-indexer-{a,b}.ootle.tari.com`.
  *
  *   - v0.49.x retains the CBOR/base64 transport but starts a new Esmeralda generation.
+ *   - v0.50.1 retains that v0.49-reset CBOR/base64 transport. This was read from both
+ *              official Esmeralda indexers on 2026-11-07: `/info`, template catalogue,
+ *              and `/substates/fetch` all preserve their v0.49 field shapes.
  *
  * A client that guesses the format reads a CBOR receipt (a string) as "not a receipt",
  * skips it, and reports a deployed protocol as EMPTY. That is a silent false negative,
@@ -59,13 +62,13 @@ export interface IndexerCohort {
 }
 
 /** Human-readable range, used in refusals and in the documentation. */
-export const SUPPORTED_INDEXER_RANGE = '0.41.x through 0.49.x';
+export const SUPPORTED_INDEXER_RANGE = '0.41.x through 0.50.x';
 
 /** The cohort this build's templates and engine tests are pinned to. */
 export const PINNED_OOTLE_RELEASE = {
-  tag: 'v0.49.2',
-  commit: 'aa7b0c81719e5c3cfaf9bf3b5fb87bd83180cb90',
-  published: '2026-11-02',
+  tag: 'v0.50.1',
+  commit: '0b3f364dd0eaff9997b08d722948619981b62ce7',
+  published: '2026-11-06',
 } as const;
 
 const VERSION = /^v?(\d{1,4})\.(\d{1,4})(?:\.(\d{1,6}))?(?:[-+][0-9A-Za-z.+-]{0,64})?$/;
@@ -98,10 +101,13 @@ export function classifyIndexerVersion(version: unknown): CohortClassification {
   if (major === 0 && minor === 49) {
     return { ok: true, cohort: { version: text, major, minor, generation: 'V049_RESET', wireFormat: 'CBOR_VALUES' } };
   }
+  if (major === 0 && minor === 50) {
+    return { ok: true, cohort: { version: text, major, minor, generation: 'V049_RESET', wireFormat: 'CBOR_VALUES' } };
+  }
   if (major === 0 && minor >= 41 && minor <= 47) {
     return { ok: true, cohort: { version: text, major, minor, generation: 'PRE_V048_RESET', wireFormat: 'JSON_VALUES' } };
   }
-  const direction = major > 0 || minor > 49 ? 'newer than' : 'older than';
+  const direction = major > 0 || minor > 50 ? 'newer than' : 'older than';
   return {
     ok: false,
     reason: `The endpoint runs Ootle ${text}, which is ${direction} the range this build is verified against (${SUPPORTED_INDEXER_RANGE}). Its reply format is not assumed.`,

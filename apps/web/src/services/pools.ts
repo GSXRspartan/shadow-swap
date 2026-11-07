@@ -209,7 +209,17 @@ export interface BalanceFacts {
  * SAFETY: the canonical class is bound to the exact address, never to a symbol.
  * A token printing `tTARI` is not canonical TARI and is not treated as one.
  */
-export function descriptorFromAuthoritativeRead(facts: DecodedPoolFacts, balances: readonly BalanceFacts[]): PoolDescriptor | undefined {
+/** On-chain resource display metadata: symbol and divisibility only, no safety assertion. */
+export interface ResourceDisplayMeta {
+  readonly symbol?: string;
+  readonly divisibility?: number;
+}
+
+export function descriptorFromAuthoritativeRead(
+  facts: DecodedPoolFacts,
+  balances: readonly BalanceFacts[],
+  resourceMeta?: ReadonlyMap<string, ResourceDisplayMeta>,
+): PoolDescriptor | undefined {
   if (facts.poolComponent === '' || facts.resourceA === '' || facts.resourceB === '') return undefined;
   const byAddress = new Map<string, BalanceFacts>();
   for (const balance of balances) byAddress.set(balance.resourceAddress, balance);
@@ -218,17 +228,23 @@ export function descriptorFromAuthoritativeRead(facts: DecodedPoolFacts, balance
     if (address === CANONICAL_TARI_RESOURCE) return 'CANONICAL_TARI';
     // Present in the wallet's balances: the wallet can already hold it, so it
     // is at minimum the issuer's doing. Still not asserted as canonical.
+    // On-chain resource metadata alone does NOT elevate the safety class.
     return byAddress.has(address) ? 'ISSUER_CONTROLLED' : 'UNKNOWN';
   };
 
   const sideOf = (address: string) => {
     const balance = byAddress.get(address);
+    // Fall back to on-chain resource metadata for symbol/divisibility when the
+    // wallet has no balance for this resource (e.g. tokens fully in pool vaults).
+    const meta = resourceMeta?.get(address);
+    const symbol = balance?.symbol ?? meta?.symbol;
+    const divisibility = balance?.divisibility ?? meta?.divisibility;
     return {
       resourceAddress: address,
-      symbol: balance?.symbol,
+      symbol,
       // Raw units are authoritative; the display divisor is metadata only, and
       // an absent divisor renders as 0 rather than being invented.
-      decimals: balance?.divisibility !== undefined && Number.isInteger(balance.divisibility) && balance.divisibility >= 0 ? String(balance.divisibility) : '0',
+      decimals: divisibility !== undefined && Number.isInteger(divisibility) && divisibility >= 0 ? String(divisibility) : '0',
       safetyClass: safetyOf(address),
     } satisfies PoolAssetInfo;
   };

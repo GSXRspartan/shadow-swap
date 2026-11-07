@@ -405,15 +405,25 @@ export class TariIndexerDiscovery {
   ): Promise<{ ok: true; components: DiscoveredComponent[]; pages: number } | { ok: false; reason: string; rateLimited?: boolean }> {
     const wanted = new Set(templateAddresses);
     const scan = await this.scanReceiptComponents();
-    if (!scan.ok) return { ok: false, reason: scan.reason, ...(scan.rateLimited === true ? { rateLimited: true } : {}) };
-    // Durable registry: fold in KNOWN component ids (protocol seed + prior-discovery
-    // cache) so a pool that has aged out of the receipt window is still re-read. These
-    // are untrusted ADDRESSES only — each is reverified below from its own on-chain
-    // header exactly like a receipt-scanned one, so a stale/wrong/hostile id is simply
-    // dropped. Deduped against the receipt scan.
-    const scanned = new Set(scan.ids);
-    const extraKnown = knownComponents.filter((id) => typeof id === 'string' && id.startsWith('component_') && !scanned.has(id));
-    const allIds = [...scan.ids, ...extraKnown];
+    // When the receipt scan fails (CORS, outage, rate-limit) but we have registry-seeded
+    // known component addresses, fall back to those alone rather than suppressing them.
+    // Each address is independently reverified against its on-chain header below, so the
+    // registry seed alone is never treated as proof of an active Pool.
+    let allIds: string[];
+    let scanPages: number;
+    if (scan.ok) {
+      const scanned = new Set(scan.ids);
+      const extraKnown = knownComponents.filter((id) => typeof id === 'string' && id.startsWith('component_') && !scanned.has(id));
+      allIds = [...scan.ids, ...extraKnown];
+      scanPages = scan.pages;
+    } else {
+      const knownOnly = knownComponents.filter((id) => typeof id === 'string' && id.startsWith('component_'));
+      if (knownOnly.length === 0) {
+        return { ok: false, reason: scan.reason, ...(scan.rateLimited === true ? { rateLimited: true } : {}) };
+      }
+      allIds = knownOnly;
+      scanPages = 0;
+    }
     const components: DiscoveredComponent[] = [];
     const codec = await codecFor(this.wireFormat);
     if (!codec.ok) return { ok: false, reason: codec.reason };
@@ -458,7 +468,7 @@ export class TariIndexerDiscovery {
         });
       }
     }
-    return { ok: true, components, pages: scan.pages };
+    return { ok: true, components, pages: scanPages };
   }
 
   /**
