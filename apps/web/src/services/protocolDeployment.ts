@@ -118,10 +118,10 @@ const ESMERALDA_V049: ProtocolDeployment = {
   poolTemplates: ['1c7d39e782b6ca5023ad186c7d5f82cb2ad171336cd75ae0025245fe84bebae3'],
   marketplaceTemplates: undefined,
   offerTemplates: [],
-  revealedPoolTemplates: [],
+  revealedPoolTemplates: ['a18e162b3e2600cb8a4ec4fcb5fe2d724ebb8766bacec6cc5ce9d82a8ef2cc34'],
   crossLayerHtlcTemplates: [],
   status:
-    'The V2 public Pool template was receipt-verified on Esmeralda v0.50.1. No marketplace, offer, revealed-value, or cross-layer template is recorded for this generation.',
+    'The V2 public Pool template and the RevealedAssetPool template are receipt-verified on Esmeralda v0.50.1 (RevealedAssetPool tx da7615de6b731e1006dd2878764e285ed5f6655390c34949281fb74831be627f, fee 1535828 µT, 2026-11-07). No marketplace, offer, or cross-layer template is recorded for this generation.',
 };
 
 /**
