@@ -1,0 +1,37 @@
+[
+  {
+    "template": "confidential_probe",
+    "sha256": "021ad63a87603adae2f9f44428467363dcc61c7b0680b9d5475137be91c3fb7a",
+    "size_bytes": 174834,
+    "definition_length": 273,
+    "v2": true
+  },
+  {
+    "template": "faucet",
+    "sha256": "006a02cd54016bf2cc83ef9675640b0521d57bfe7209baa004765bc2877aaecd",
+    "size_bytes": 140112,
+    "definition_length": 137,
+    "v2": true
+  },
+  {
+    "template": "hostile",
+    "sha256": "491090b126cfb8f971f122ec67bfc4d4b0346a875485af0a3d77e81b3efed281",
+    "size_bytes": 156640,
+    "definition_length": 592,
+    "v2": true
+  },
+  {
+    "template": "nft_faucet",
+    "sha256": "42356e7d66f434d4d0add8d8ffda233733d6e7fb67b5638f287e6dc888325aa0",
+    "size_bytes": 189764,
+    "definition_length": 268,
+    "v2": true
+  },
+  {
+    "template": "stealth_probe",
+    "sha256": "4a34f65efdbff4d71abcfebec1818ba9ee0c9fa1837312b53612c83e7654e0bd",
+    "size_bytes": 142688,
+    "definition_length": 171,
+    "v2": true
+  }
+]

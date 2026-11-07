@@ -1,0 +1,68 @@
+[
+  {
+    "template": "cross_layer_htlc",
+    "artifact": "C:\\Users\\pdark\\.codex\\worktrees\\ootle-v0501-pool\\rewritten-main\\.acceptance-evidence\\v0501\\artifacts\\cross_layer_htlc-v0501-v2.wasm",
+    "sha256": "d0916869cb3f0bc07c8abb95fd45603f5980777af229ac1c9801b98776d59f59",
+    "size_bytes": 176373,
+    "definition_length": 301,
+    "cbor_prefix": "82 01",
+    "v2": true,
+    "source_commit": "0b3f364dd0eaff9997b08d722948619981b62ce7",
+    "rust": "1.97.1"
+  },
+  {
+    "template": "nft_marketplace",
+    "artifact": "C:\\Users\\pdark\\.codex\\worktrees\\ootle-v0501-pool\\rewritten-main\\.acceptance-evidence\\v0501\\artifacts\\nft_marketplace-v0501-v2.wasm",
+    "sha256": "d1b800b262a86c07c8dfb1a1432c1b4b26bdefed51ceb5736cf207efc711881b",
+    "size_bytes": 197443,
+    "definition_length": 312,
+    "cbor_prefix": "82 01",
+    "v2": true,
+    "source_commit": "0b3f364dd0eaff9997b08d722948619981b62ce7",
+    "rust": "1.97.1"
+  },
+  {
+    "template": "nft_item_offer",
+    "artifact": "C:\\Users\\pdark\\.codex\\worktrees\\ootle-v0501-pool\\rewritten-main\\.acceptance-evidence\\v0501\\artifacts\\nft_item_offer-v0501-v2.wasm",
+    "sha256": "1be1f407a0fb12d17740615f9964bfb4b99e7956ed83c81c36c57f12969f507c",
+    "size_bytes": 202426,
+    "definition_length": 326,
+    "cbor_prefix": "82 01",
+    "v2": true,
+    "source_commit": "0b3f364dd0eaff9997b08d722948619981b62ce7",
+    "rust": "1.97.1"
+  },
+  {
+    "template": "nft_collection_bid",
+    "artifact": "C:\\Users\\pdark\\.codex\\worktrees\\ootle-v0501-pool\\rewritten-main\\.acceptance-evidence\\v0501\\artifacts\\nft_collection_bid-v0501-v2.wasm",
+    "sha256": "f36d01d505acc12997dce9379e93a113d60c6d0e6375098a8d7186ccc5d1d7c5",
+    "size_bytes": 201644,
+    "definition_length": 346,
+    "cbor_prefix": "82 01",
+    "v2": true,
+    "source_commit": "0b3f364dd0eaff9997b08d722948619981b62ce7",
+    "rust": "1.97.1"
+  },
+  {
+    "template": "p2p_offer",
+    "artifact": "C:\\Users\\pdark\\.codex\\worktrees\\ootle-v0501-pool\\rewritten-main\\.acceptance-evidence\\v0501\\artifacts\\p2p_offer-v0501-v2.wasm",
+    "sha256": "cfe55fdf957298657b913cab2b1d3c4408826f463d096edde18d865886a0581f",
+    "size_bytes": 189841,
+    "definition_length": 446,
+    "cbor_prefix": "82 01",
+    "v2": true,
+    "source_commit": "0b3f364dd0eaff9997b08d722948619981b62ce7",
+    "rust": "1.97.1"
+  },
+  {
+    "template": "revealed_asset_pool",
+    "artifact": "C:\\Users\\pdark\\.codex\\worktrees\\ootle-v0501-pool\\rewritten-main\\.acceptance-evidence\\v0501\\artifacts\\revealed_asset_pool-v0501-v2.wasm",
+    "sha256": "145c2083f453540c8124997a16f23f7b52c6e95541b0b7cd9e9b6352b35a6cc6",
+    "size_bytes": 256116,
+    "definition_length": 761,
+    "cbor_prefix": "82 01",
+    "v2": true,
+    "source_commit": "0b3f364dd0eaff9997b08d722948619981b62ce7",
+    "rust": "1.97.1"
+  }
+]
