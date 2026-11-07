@@ -14,14 +14,15 @@ publish = false
 [dependencies]
 
 [dev-dependencies]
-# One cohort, one revision: the v0.49.2 release commit (aa7b0c8). The engine and test
+# One cohort, one revision: the signed v0.50.1 release commit (0b3f364). The engine and test
 # tooling that execute the templates in tests must be the same build the target validators run.
-# v0.49 retains CBOR-encoded indexer values and adds authorization windows plus explicit
-# component upgrade rules, so a v0.48 engine test is not compatibility evidence.
+# v0.50 requires V2 template definitions and tightens method resolution, vault ownership,
+# fee processing, and access-rule validation, so a v0.49 engine test is not compatibility
+# evidence.
 #
 # History: v0.46.0 retired `FinalizeResult.execution_results` (#2859); `TemplateTest::return_values()`
 # replaces the old `res.finalize.execution_results[0].get_value(...)` reads.
-# v0.49.2 continues to pin tari_crypto 0.24.1. tari_engine_types 0.49.2
+# v0.50.1 continues to pin tari_crypto 0.24.1. tari_engine_types 0.50.1
 # requires tari_crypto ^0.24, so this must match the workspace or the cohort is unresolvable.
 tari_crypto = "0.24.1"
 # Test-only: tests/claim_burn_authorization.rs needs the `ClaimProofVerifier` trait the engine
@@ -29,17 +30,17 @@ tari_crypto = "0.24.1"
 # validator node supplies the verifier that scans the base layer — so a host test can only
 # prove the AUTHORIZATION model, with the verifier's verdict injected. That distinction is the
 # point of the test, so the trait has to be nameable.
-tari_template_test_tooling = { git = "https://github.com/tari-project/tari-ootle.git", rev = "aa7b0c81719e5c3cfaf9bf3b5fb87bd83180cb90" }
-tari_template_lib = { git = "https://github.com/tari-project/tari-ootle.git", rev = "aa7b0c81719e5c3cfaf9bf3b5fb87bd83180cb90" }
-tari_template_abi = { git = "https://github.com/tari-project/tari-ootle.git", rev = "aa7b0c81719e5c3cfaf9bf3b5fb87bd83180cb90" }
-tari_ootle_transaction = { git = "https://github.com/tari-project/tari-ootle.git", rev = "aa7b0c81719e5c3cfaf9bf3b5fb87bd83180cb90" }
-tari_ootle_common_types = { git = "https://github.com/tari-project/tari-ootle.git", rev = "aa7b0c81719e5c3cfaf9bf3b5fb87bd83180cb90" }
-tari_engine_types = { git = "https://github.com/tari-project/tari-ootle.git", rev = "aa7b0c81719e5c3cfaf9bf3b5fb87bd83180cb90" }
-tari_engine = { git = "https://github.com/tari-project/tari-ootle.git", rev = "aa7b0c81719e5c3cfaf9bf3b5fb87bd83180cb90" }
+tari_template_test_tooling = { git = "https://github.com/tari-project/tari-ootle.git", rev = "0b3f364dd0eaff9997b08d722948619981b62ce7" }
+tari_template_lib = { git = "https://github.com/tari-project/tari-ootle.git", rev = "0b3f364dd0eaff9997b08d722948619981b62ce7" }
+tari_template_abi = { git = "https://github.com/tari-project/tari-ootle.git", rev = "0b3f364dd0eaff9997b08d722948619981b62ce7" }
+tari_ootle_transaction = { git = "https://github.com/tari-project/tari-ootle.git", rev = "0b3f364dd0eaff9997b08d722948619981b62ce7" }
+tari_ootle_common_types = { git = "https://github.com/tari-project/tari-ootle.git", rev = "0b3f364dd0eaff9997b08d722948619981b62ce7" }
+tari_engine_types = { git = "https://github.com/tari-project/tari-ootle.git", rev = "0b3f364dd0eaff9997b08d722948619981b62ce7" }
+tari_engine = { git = "https://github.com/tari-project/tari-ootle.git", rev = "0b3f364dd0eaff9997b08d722948619981b62ce7" }
 # Enable Tari's official build.rs generation path before the engine tests run. This creates
 # account.wasm and the other built-in artifacts from the same pinned revision; no placeholder
 # or copied v0.48 artifact can satisfy the dependency.
-tari_template_builtin = { git = "https://github.com/tari-project/tari-ootle.git", rev = "aa7b0c81719e5c3cfaf9bf3b5fb87bd83180cb90", features = ["templates"] }
+tari_template_builtin = { git = "https://github.com/tari-project/tari-ootle.git", rev = "0b3f364dd0eaff9997b08d722948619981b62ce7", features = ["templates"] }
 # Test-only: a second random keypair for "sealed by the wrong key" (claim_burn_authorization).
 # Must be the rand whose `rand_core` tari_crypto 0.24.1 implements its `Rng`/`CryptoRng` bounds
 # against, or `random_keypair` does not accept the thread rng.
@@ -52,6 +53,6 @@ bounded-vec = "0.9"
 # (base64). Already in the lockfile through the engine; declared here so the test can name it.
 serde_json = "1"
 # Test-only: derive RistrettoPublicKeyBytes for a second signer (p2p_offer designated taker).
-ootle_byte_type = { git = "https://github.com/tari-project/tari-ootle.git", rev = "aa7b0c81719e5c3cfaf9bf3b5fb87bd83180cb90" }
+ootle_byte_type = { git = "https://github.com/tari-project/tari-ootle.git", rev = "0b3f364dd0eaff9997b08d722948619981b62ce7" }
 # Test-only: compute the SHA-256 hash lock for tests/p2p_offer_routes.rs (already in the lockfile).
 sha2 = "0.10"
