@@ -595,11 +595,15 @@ export function AppProvider({
         expectedNetwork: config.network,
         providerNetwork: wallet.networkId,
         account: wallet.account,
-        capabilities: wallet.capabilities as ProviderCapabilities | undefined,
+        // Use the raw TariWalletCapabilities (which has 'transactionRequests', 'stealthWithdraw'),
+        // not the mapped WalletLegCapabilities (which has 'l2HtlcFund' etc.). The liveIdentity()
+        // path in walletService also returns raw capabilities, so both snapshots must use the
+        // same shape for the fingerprint comparison to hold.
+        capabilities: wallet.walletCapabilities as ProviderCapabilities | undefined,
       });
     }
     return identityRef.current;
-  }, [wallet.status, wallet.account, wallet.networkId, wallet.capabilities, config.network]);
+  }, [wallet.status, wallet.account, wallet.networkId, wallet.walletCapabilities, config.network]);
 
   // Any identity change must invalidate outstanding reviews.
   useEffect(() => {

@@ -22,7 +22,7 @@ import { resolveMultiHopSwap, type PoolEdge, type RouteQuote } from '@tari-ootle
 import { REVEALED_POOL_DISCLOSURE, ammRouteIntentBuilder, multiHopDisclosureFor, toAmmPreview, type AmmTransactionIntent } from '@tari-ootle/wallet-adapter';
 import { useApp } from '../state/AppContext.js';
 import { activeDeployment, venueOfPoolState } from '../services/protocolDeployment.js';
-import { executeSwap, newOperationId, type ExecutionWallets } from '../services/execution.js';
+import { executeSwap, newOperationId, IdentityChangedError, ReviewMismatchError, type ExecutionWallets } from '../services/execution.js';
 import { reviewFromAmmIntent } from '../lib/review.js';
 import { stealthInputFor } from '../services/stealthWithdraw.js';
 import { parseDecimalToRaw } from '../lib/amountInput.js';
@@ -261,7 +261,13 @@ export function SwapRoutesPage() {
         stack: error instanceof Error ? error.stack?.slice(0, 1200) : undefined,
         at: new Date().toISOString(),
       };
-      setMessage({ tone: 'danger', title: 'Not submitted', detail: normalizeError({ error }).message });
+      if (error instanceof IdentityChangedError) {
+        setMessage({ tone: 'warn', title: 'Not submitted — wallet changed', detail: `${error.message} Nothing was signed.` });
+      } else if (error instanceof ReviewMismatchError) {
+        setMessage({ tone: 'danger', title: 'Not submitted — review mismatch', detail: `${error.message}` });
+      } else {
+        setMessage({ tone: 'danger', title: 'Not submitted', detail: normalizeError({ error }).message });
+      }
     } finally {
       guard.current = false;
       setBusy(false);

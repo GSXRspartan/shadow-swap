@@ -27,6 +27,7 @@ import { reviewFromAmmIntent } from '../lib/review.js';
 import { stealthInputFor } from '../services/stealthWithdraw.js';
 import { normalizeError, type NormalizedError } from '../lib/errorMessage.js';
 import { buildPoolIdentity, presentSafety, type AssetChip } from '../lib/assetIdentity.js';
+import { parseDecimalToRaw } from '../lib/amountInput.js';
 import { formatBps, formatUnits, UNAVAILABLE } from '../lib/format.js';
 import { DEFAULT_SLIPPAGE_BPS, SLIPPAGE_PRESETS, validateSlippageInput } from '../lib/slippage.js';
 import { asRawExecutionAmount, asResourceAddress } from '../lib/tradeBoundary.js';
@@ -81,7 +82,7 @@ export function SwapCard({ pool }: { pool: PoolDescriptor }) {
   );
 
   const [inputResource, setInputResource] = useState(pool.base.resourceAddress);
-  const [amountRaw, setAmountRaw] = useState('');
+  const [amountDisplay, setAmountDisplay] = useState('');
   const [slippageInput, setSlippageInput] = useState(DEFAULT_SLIPPAGE_BPS);
   const [quote, setQuote] = useState<QuoteState>({ kind: 'IDLE' });
   const [poolState, setPoolState] = useState<PoolState | undefined>(undefined);
@@ -95,6 +96,18 @@ export function SwapCard({ pool }: { pool: PoolDescriptor }) {
 
   const from: AssetChip = inputResource === identity.base.resourceAddress ? identity.base : identity.quote;
   const to: AssetChip = from.resourceAddress === identity.base.resourceAddress ? identity.quote : identity.base;
+
+  // Convert the decimal display string (what the user types) to exact base units.
+  // Returns undefined while the input is empty or mid-typing (e.g. "1.").
+  const parsedInput = useMemo(() => {
+    if (amountDisplay === '') return undefined;
+    try {
+      return parseDecimalToRaw(amountDisplay, Number(from.decimals));
+    } catch {
+      return undefined;
+    }
+  }, [amountDisplay, from.decimals]);
+  const amountRaw = parsedInput?.raw ?? '';
 
   const slippage = useMemo(() => validateSlippageInput(slippageInput), [slippageInput]);
   const balanceRaw = balanceOf(from.resourceAddress);
@@ -219,7 +232,7 @@ export function SwapCard({ pool }: { pool: PoolDescriptor }) {
         setExecutionMessage({ tone: 'info', title: 'Swap submitted', detail: `Transaction ${result.transactionId} submitted. Track it on the Activity page.` });
       }
       setQuote({ kind: 'IDLE' });
-      setAmountRaw('');
+      setAmountDisplay('');
     } catch (error) {
       setExecutionMessage(normalizeSubmissionFailure(error));
     } finally {
@@ -230,7 +243,7 @@ export function SwapCard({ pool }: { pool: PoolDescriptor }) {
 
   const atomic = atomicSwapAvailability('XTM_TO_TARI', wallet.capabilities);
   const safety = presentSafety(identity.weakest);
-  const canSubmit = canReadAuthoritatively && !submitting && quote.kind === 'RESOLVED' && slippage.ok && amountRaw !== '' && wallet.account !== undefined;
+  const canSubmit = canReadAuthoritatively && !submitting && quote.kind === 'RESOLVED' && slippage.ok && parsedInput !== undefined && wallet.account !== undefined;
 
   return (
     <div className="card stack">
@@ -247,13 +260,12 @@ export function SwapCard({ pool }: { pool: PoolDescriptor }) {
             <input
               id={id}
               className="input"
-              inputMode="numeric"
-              pattern="[0-9]*"
+              inputMode="decimal"
               placeholder="0"
-              value={amountRaw}
+              value={amountDisplay}
               aria-describedby={describedBy}
-              aria-invalid={amountRaw !== '' && !/^\d+$/.test(amountRaw)}
-              onChange={(event) => setAmountRaw(event.target.value.replace(/[^\d]/g, ''))}
+              aria-invalid={amountDisplay !== '' && parsedInput === undefined}
+              onChange={(event) => setAmountDisplay(event.target.value.replace(/[^0-9.]/g, ''))}
             />
             <span className="btn" style={{ minWidth: 92, cursor: 'default' }} title={from.fullAddress}>
               <span className="truncate">{from.symbol}</span>
@@ -263,7 +275,7 @@ export function SwapCard({ pool }: { pool: PoolDescriptor }) {
       </Field>
 
       <div className="row" style={{ justifyContent: 'center' }}>
-        <button type="button" className="btn btn--sm" onClick={() => setInputResource(to.resourceAddress)} aria-label="Reverse swap direction">
+        <button type="button" className="btn btn--sm" onClick={() => { setInputResource(to.resourceAddress); setAmountDisplay(''); }} aria-label="Reverse swap direction">
           <span aria-hidden="true">⇅</span> Reverse
         </button>
       </div>
