@@ -21,9 +21,9 @@ import { DEFAULT_NETWORK, type FrontendNetworkId } from '../lib/networks.js';
 import { getJson, postJson } from './net.js';
 import { describeIdentity, isVerified, verifyIndexerIdentity } from './indexerIdentity.js';
 import { TariIndexerDiscovery, CANONICAL_TARI_RESOURCE, type DiscoveredComponent, type IndexerTransport, type ProtocolDeploymentState, type TemplateCatalogueEntry } from './ootleIndexer.js';
-import { knownComponents as registryKnownComponents, rememberDiscovered, safeLocalStorage, type RegistryStorage } from './poolRegistry.js';
+import { knownComponents as registryKnownComponents, POOL_REGISTRY_SEED, rememberDiscovered, safeLocalStorage, type RegistryStorage } from './poolRegistry.js';
 import { deploymentFor, recordVerifiedGeneration, type ProtocolDeployment } from './protocolDeployment.js';
-import { describeGeneration, type IndexerCohort } from '../lib/ootleCohort.js';
+import { classifyIndexerVersion, describeGeneration, PINNED_OOTLE_RELEASE, type IndexerCohort } from '../lib/ootleCohort.js';
 import type { AppConfig } from './config.js';
 
 /**
@@ -406,6 +406,38 @@ export class IndexerPoolDiscovery implements PoolDiscoverySource {
       },
     );
     if (!result.ok) {
+      // Indexer unreachable: fall back to registry seed using the pinned build cohort.
+      // The build is verified against PINNED_OOTLE_RELEASE; classifying that version
+      // gives the network generation without asking the unreachable endpoint. The
+      // authoritative wallet read in AppContext still re-verifies every candidate
+      // against the actual chain before it is described as a pool.
+      if (this.expected.network !== 'mainnet') {
+        const pinnedCohort = classifyIndexerVersion(PINNED_OOTLE_RELEASE.tag);
+        if (pinnedCohort.ok) {
+          const lock = recordVerifiedGeneration(this.expected.network, pinnedCohort.cohort.generation);
+          if (lock.ok) {
+            this.cohort = pinnedCohort.cohort;
+            const active = deploymentFor(this.expected.network, pinnedCohort.cohort.generation);
+            const knownAddresses = registryKnownComponents(active.registryKey, this.storage);
+            const seed = POOL_REGISTRY_SEED[active.registryKey] ?? [];
+            const candidates: DiscoveredComponent[] = knownAddresses
+              .map((componentAddress) => {
+                const entry = seed.find((e) => e.component === componentAddress);
+                return { componentAddress, templateAddress: entry?.templateAddress ?? '', version: '0' };
+              })
+              .filter((c) => c.templateAddress !== '');
+            if (candidates.length > 0) {
+              return {
+                pools: [],
+                candidates,
+                publishedTemplates: [],
+                state: 'PROTOCOL_AVAILABLE',
+                source: `${this.name}:seed-fallback`,
+              };
+            }
+          }
+        }
+      }
       return {
         pools: [],
         candidates: [],
