@@ -61,7 +61,30 @@ Extension popup: chrome-extension://demkeckolenopkgnfbnpflkpbbdhpgkl/popup.html
 chrome.runtime.getManifest().version → "0.8.0"
 ```
 
-Note: `tari_getCapabilities` returns "not running inside Tari Universe" in standard Chrome — this is expected; the provider API requires the Tari Universe desktop app context. Wallet balances and identity verified directly through the extension popup.
+The initial `tari_getCapabilities` call returned "not running inside Tari Universe" because the Shadow Swap tab was open *before* Sapient was installed via Load Unpacked — the inject script did not fire for the already-open tab. After the tab was reloaded, all provider calls succeeded.
+
+Full provider results (post-reload, 2026-11-08):
+- `tari_getNetwork` → `"esmeralda"` ✅
+- `tari_getAccounts` → `["component_2a6beb0db10903baf4e0e5a06004e78c4e49f832a82a5cb19e370498e56944e3"]` (pre-authorized, no prompt) ✅
+- `tari_getWalletAddress` → `"otl_esm_1cgng8ep06..."` ✅
+- `tari_getCapabilities` → full set including `htlcFund: true`, `transactionRequests: true`, `walletAddress: true` ✅
+- `tari_getBalances` → 10 TESTA (10,000,000/10⁶), 141 tTARI (141,000,000/10⁶), 2 NFTs ✅
+
+## Live Pool State (2026-11-08)
+
+Pool: **TESTB / TESTA** at `component_5c554ab71fa912da3f92f932cc79db4af2ecb21bbec657480a97b5017704b2c6`
+
+| Resource | On-chain reserve |
+|----------|-----------------|
+| TESTA (`resource_bcee58…0c57`) | 101,000,000 base units (101 TESTA) |
+| TESTB (`resource_bc2f41…93c`) | 99,012,842 base units (99.013 TESTB) |
+| Fee | 30 bps |
+
+AMM quotes (constant product):
+- 1 TESTA → TESTB: **~0.9678 TESTB** (input after fee: 997,000; dy = 99,012,842 × 997,000 / 101,997,000)
+- 1 TESTB → TESTA: **~1.0069 TESTA**
+
+The UI shows "—" for market metrics — this is because no market-data discovery source is configured for the local build, not because reserves are absent. On-chain vault reads confirm live liquidity.
 
 ## Notes
 
