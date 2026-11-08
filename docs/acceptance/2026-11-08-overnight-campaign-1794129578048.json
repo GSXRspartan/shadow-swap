@@ -1,0 +1,284 @@
+{
+  "startedAt": "2026-11-08T09:18:33.561Z",
+  "cdpBrowser": "156.0.8078.80",
+  "sapientVersion": null,
+  "walletAccount": null,
+  "network": null,
+  "passed": [
+    {
+      "name": "CDP connect",
+      "detail": "156.0.8078.80"
+    },
+    {
+      "name": "Found Shadow Swap tab",
+      "detail": "http://localhost:4173/nfts"
+    },
+    {
+      "name": "Page reload (new build)",
+      "detail": "http://localhost:4173/nfts"
+    },
+    {
+      "name": "Sapient provider injection",
+      "detail": "keys: claimPrivatePayment, createTransactionRequest, disconnect, getAccounts, getBalances, getCapabilities, getNetwork, getPrivateBalances, getShieldedOutputs, getSubstate, getTransactionRequest, getTransactionResult, getViewAccess, getWalletAddress, info, isTariWallet, on, request, requestAccounts, requestTransaction, requestViewAccess, revokeViewAccess, scanForPrivatePayments, scanForResourceUtxos, signAndSubmitTransaction, signOwnershipChallenge, signWalletOwnershipChallenge, submitTransactionRequest"
+    },
+    {
+      "name": "tari_getCapabilities",
+      "detail": "{\"exactInputSelection\":true,\"stealthWithdraw\":true,\"stealthRedeem\":true,\"stealthRedeemPrivateFee\":true,\"htlcFund\":true,\"scriptPathSpend\":true,\"privateSpend\":true,\"shieldFunds\":true,\"privateBalanceView\":true,\"privateScan\":true,\"privateViewGranted\":false,\"transactionResultLookup\":true,\"transactionRequests\":true,\"walletAddress\":true,\"minimumValuePromise\":true,\"ownershipProof\":true,\"walletOwnershipProof\":true,\"confidentialDeposit\":true,\"supportsPrivateFees\":true,\"dryRunIsLocal\":false}"
+    },
+    {
+      "name": "Home page renders",
+      "detail": "Contains expected content"
+    },
+    {
+      "name": "Home page — no captured errors"
+    },
+    {
+      "name": "Swap page renders"
+    },
+    {
+      "name": "Swap page selectors found",
+      "detail": "2 <select> element(s)"
+    },
+    {
+      "name": "From: selected TESTA"
+    },
+    {
+      "name": "To: selected TESTB"
+    },
+    {
+      "name": "Amount input: entered 1"
+    },
+    {
+      "name": "Pools list: TESTA/TESTB pool found"
+    },
+    {
+      "name": "Pool detail: SwapCard renders with pool tokens"
+    },
+    {
+      "name": "Pool detail: 30 bps fee tier displayed"
+    },
+    {
+      "name": "Pool detail: decimal input accepts \"1\""
+    },
+    {
+      "name": "Pool detail: decimal input accepts \"1.5\""
+    },
+    {
+      "name": "Pool detail: aria-invalid false for valid decimal input"
+    },
+    {
+      "name": "Pool detail: invalid chars stripped from input"
+    },
+    {
+      "name": "Pool detail: reverse direction button found and clicked"
+    },
+    {
+      "name": "Pool detail: amount cleared on reverse"
+    },
+    {
+      "name": "NFT page renders"
+    },
+    {
+      "name": "Activity page renders",
+      "detail": "Activity\nRefresh\n\nNo operations recorded\n\nOperations are persisted in this brows"
+    },
+    {
+      "name": "Charts page renders",
+      "detail": "Page not found\n\nThat address does not match any surface in this build."
+    },
+    {
+      "name": "Input: Negative sign stripped",
+      "detail": "'-1' → '1'"
+    },
+    {
+      "name": "Input: Scientific notation stripped",
+      "detail": "'1e9' → '19'"
+    },
+    {
+      "name": "Input: Zero is accepted",
+      "detail": "'0' → '0' (aria-invalid: false)"
+    },
+    {
+      "name": "Input: Large integer accepted",
+      "detail": "'999999999' → '999999999' (aria-invalid: false)"
+    },
+    {
+      "name": "Input: Exact precision accepted",
+      "detail": "'1.000001' → '1.000001' (aria-invalid: false)"
+    },
+    {
+      "name": "Wallet disconnect mock: UI shows connect prompt when tari removed"
+    },
+    {
+      "name": "Mobile viewport: home renders at 375px"
+    },
+    {
+      "name": "Mobile viewport: no horizontal overflow"
+    },
+    {
+      "name": "SPA navigation: cycled through 8 routes without page crash"
+    },
+    {
+      "name": "SPA navigation: no React error boundary triggered"
+    },
+    {
+      "name": "No __ssLastError set after reload (fix effective)"
+    },
+    {
+      "name": "RPC timeout mock: pools loaded (live indexer available, no timeout)"
+    },
+    {
+      "name": "P2P gates: XTM route panel rendered on pool detail"
+    },
+    {
+      "name": "P2P gates: cross-layer correctly shown as unavailable (no L1 capability)"
+    },
+    {
+      "name": "Quote consistency: same input gives same quote (deterministic)"
+    }
+  ],
+  "failed": [
+    {
+      "name": "tari.request getNetwork",
+      "detail": "Unsupported method: getNetwork"
+    },
+    {
+      "name": "Swap quote on /swap",
+      "detail": "Quote refused — check wallet connection"
+    },
+    {
+      "name": "Pool detail: quote",
+      "detail": "Quote refused — TESTB / TESTA\n / \nTESTA\n•\n24h —\n!\nIssuer controlled\n×\nData Unavailable\nInformational\nPRICE\n—\n24H VOL"
+    },
+    {
+      "name": "Input: Double dot: second dot stripped",
+      "detail": "Got '1.2.3' with 2 dots"
+    }
+  ],
+  "skipped": [
+    {
+      "name": "Wallet account tests",
+      "reason": "No accounts or authorization error: {\"error\":\"Unsupported method: getAccounts\"}"
+    },
+    {
+      "name": "Pool detail: Reserves row",
+      "reason": "Not found in page text"
+    },
+    {
+      "name": "Pool detail: 1.5 TESTA quote",
+      "reason": "State unclear"
+    },
+    {
+      "name": "Pool detail: reverse quote",
+      "reason": "State unclear — TESTB / TESTA\n / \nTESTA\n•\n24h —\n!\nIssuer controlled\n×\nData Unavailable\nInformational\nPRICE\n—\n24H VOL"
+    }
+  ],
+  "bugs": [
+    {
+      "name": "Input double-dot",
+      "description": "Two dots allowed in amount input '1.2.3'",
+      "severity": "medium",
+      "at": "2026-11-08T09:19:18.236Z"
+    }
+  ],
+  "screenshots": [
+    {
+      "label": "phase1-after-reload",
+      "file": "000-phase1_after_reload.png"
+    },
+    {
+      "label": "home-page",
+      "file": "001-home_page.png"
+    },
+    {
+      "label": "swap-page",
+      "file": "002-swap_page.png"
+    },
+    {
+      "label": "swap-after-amount",
+      "file": "003-swap_after_amount.png"
+    },
+    {
+      "label": "pools-list",
+      "file": "004-pools_list.png"
+    },
+    {
+      "label": "pool-detail-initial",
+      "file": "005-pool_detail_initial.png"
+    },
+    {
+      "label": "pool-detail-amount-1",
+      "file": "006-pool_detail_amount_1.png"
+    },
+    {
+      "label": "pool-detail-amount-1p5",
+      "file": "007-pool_detail_amount_1p5.png"
+    },
+    {
+      "label": "pool-detail-reverse-quote",
+      "file": "008-pool_detail_reverse_quote.png"
+    },
+    {
+      "label": "nft-page",
+      "file": "009-nft_page.png"
+    },
+    {
+      "label": "activity-page",
+      "file": "010-activity_page.png"
+    },
+    {
+      "label": "charts-page",
+      "file": "011-charts_page.png"
+    },
+    {
+      "label": "malformed-inputs",
+      "file": "012-malformed_inputs.png"
+    },
+    {
+      "label": "wallet-disconnect-mock",
+      "file": "013-wallet_disconnect_mock.png"
+    },
+    {
+      "label": "mobile-home",
+      "file": "014-mobile_home.png"
+    },
+    {
+      "label": "spa-nav-final",
+      "file": "015-spa_nav_final.png"
+    },
+    {
+      "label": "rpc-timeout-pools",
+      "file": "016-rpc_timeout_pools.png"
+    },
+    {
+      "label": "p2p-gates",
+      "file": "017-p2p_gates.png"
+    },
+    {
+      "label": "quote-consistency",
+      "file": "018-quote_consistency.png"
+    }
+  ],
+  "capabilities": {
+    "exactInputSelection": true,
+    "stealthWithdraw": true,
+    "stealthRedeem": true,
+    "stealthRedeemPrivateFee": true,
+    "htlcFund": true,
+    "scriptPathSpend": true,
+    "privateSpend": true,
+    "shieldFunds": true,
+    "privateBalanceView": true,
+    "privateScan": true,
+    "privateViewGranted": false,
+    "transactionResultLookup": true,
+    "transactionRequests": true,
+    "walletAddress": true,
+    "minimumValuePromise": true,
+    "ownershipProof": true,
+    "walletOwnershipProof": true,
+    "confidentialDeposit": true,
+    "supportsPrivateFees": true,
+    "dryRunIsLocal": false
+  }
+}

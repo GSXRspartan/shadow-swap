@@ -1,0 +1,116 @@
+{
+  "startedAt": "2026-11-08T14:42:29.344Z",
+  "cdpBrowser": "156.0.8078.80",
+  "sapientVersion": null,
+  "walletAccount": null,
+  "network": null,
+  "passed": [
+    {
+      "name": "CDP connect",
+      "detail": "156.0.8078.80"
+    },
+    {
+      "name": "Found Shadow Swap tab",
+      "detail": "http://localhost:4173/"
+    },
+    {
+      "name": "Navigated to latest build",
+      "detail": "http://localhost:4173/"
+    },
+    {
+      "name": "Sapient provider injection",
+      "detail": "keys: claimPrivatePayment, createTransactionRequest, disconnect, getAccounts, getBalances, getCapabilities, getNetwork, getPrivateBalances, getShieldedOutputs, getSubstate, getTransactionRequest, getTransactionResult, getViewAccess, getWalletAddress, info, isEmbedded, isTariWallet, on, proveFunds, request, requestAccounts, requestTransaction, requestViewAccess, revokeViewAccess, scanForPrivatePayments, scanForResourceUtxos, signAndSubmitTransaction, signOwnershipChallenge, signWalletOwnershipChallenge, submitTransactionRequest, verifyFunds"
+    },
+    {
+      "name": "Home page renders",
+      "detail": "Contains expected content"
+    },
+    {
+      "name": "Home page — no captured errors"
+    },
+    {
+      "name": "Swap page renders"
+    },
+    {
+      "name": "Swap page selectors found",
+      "detail": "2 <select> element(s)"
+    },
+    {
+      "name": "Amount input: entered 1"
+    },
+    {
+      "name": "NFT marketplace page renders"
+    }
+  ],
+  "failed": [
+    {
+      "name": "tari.request getNetwork",
+      "detail": "Tari wallet unavailable: this page is not running inside Tari Universe"
+    },
+    {
+      "name": "tari_getCapabilities",
+      "detail": "Tari wallet unavailable: this page is not running inside Tari Universe"
+    },
+    {
+      "name": "From: select TESTA",
+      "detail": "elementHandle.selectOption: Timeout 30000ms exceeded.\nCall log:\n\u001b[2m  - attempting select option action\u001b[22m\n\u001b[2m    2 × waiting for element to be visible and enabled\u001b[22m\n\u001b[2m      - did not find some options\u001b[22m\n\u001b[2m    - retrying select option action\u001b[22m\n\u001b[2m    - waiting 20ms\u001b[22m\n\u001b[2m    2 × waiting for element to be visible and enabled\u001b[22m\n\u001b[2m      - did not find some options\u001b[22m\n\u001b[2m    - retrying select option action\u001b[22m\n\u001b[2m      - waiting 100ms\u001b[22m\n\u001b[2m    56 × waiting for element to be visible and enabled\u001b[22m\n\u001b[2m       - did not find some options\u001b[22m\n\u001b[2m     - retrying select option action\u001b[22m\n\u001b[2m       - waiting 500ms\u001b[22m\n"
+    },
+    {
+      "name": "To: select TESTB",
+      "detail": "elementHandle.selectOption: Timeout 30000ms exceeded.\nCall log:\n\u001b[2m  - attempting select option action\u001b[22m\n\u001b[2m    2 × waiting for element to be visible and enabled\u001b[22m\n\u001b[2m      - did not find some options\u001b[22m\n\u001b[2m    - retrying select option action\u001b[22m\n\u001b[2m    - waiting 20ms\u001b[22m\n\u001b[2m    2 × waiting for element to be visible and enabled\u001b[22m\n\u001b[2m      - did not find some options\u001b[22m\n\u001b[2m    - retrying select option action\u001b[22m\n\u001b[2m      - waiting 100ms\u001b[22m\n\u001b[2m    57 × waiting for element to be visible and enabled\u001b[22m\n\u001b[2m       - did not find some options\u001b[22m\n\u001b[2m     - retrying select option action\u001b[22m\n\u001b[2m       - waiting 500ms\u001b[22m\n"
+    },
+    {
+      "name": "Swap quote on /swap",
+      "detail": "Quote refused — check wallet connection"
+    },
+    {
+      "name": "Pool detail: SwapCard render",
+      "detail": "Pool found on chain; state not yet read\n\ncomponent_5c554ab71fa912da3f92f932cc79db4af2ecb21bbec657480a97b5017704b2c6 was found in template 1c7d39e782b6"
+    }
+  ],
+  "skipped": [
+    {
+      "name": "Wallet account tests",
+      "reason": "No accounts or authorization error: {\"error\":\"Tari wallet unavailable: this page is not running inside Tari Universe\"}"
+    },
+    {
+      "name": "Pools list: pool content",
+      "reason": "Pool discovery pending or unavailable — text: Pools\n✓\nData Synced\nRefresh\n1 pool component discovered\nSearch pools\nPool components discovered on chain\nPOOL COMPONENT\tTEMPLATE\tVERSION\tPAIR / RESERV"
+    }
+  ],
+  "bugs": [],
+  "screenshots": [
+    {
+      "label": "phase1-after-navigate",
+      "file": "000-phase1_after_navigate.png"
+    },
+    {
+      "label": "home-page",
+      "file": "001-home_page.png"
+    },
+    {
+      "label": "swap-page",
+      "file": "002-swap_page.png"
+    },
+    {
+      "label": "swap-after-amount",
+      "file": "003-swap_after_amount.png"
+    },
+    {
+      "label": "pools-list",
+      "file": "004-pools_list.png"
+    },
+    {
+      "label": "pool-detail-initial",
+      "file": "005-pool_detail_initial.png"
+    },
+    {
+      "label": "nft-page-collections",
+      "file": "006-nft_page_collections.png"
+    }
+  ],
+  "campaignError": {
+    "message": "elementHandle.click: Timeout 30000ms exceeded.\nCall log:\n\u001b[2m  - attempting click action\u001b[22m\n\u001b[2m    2 × waiting for element to be visible, enabled and stable\u001b[22m\n\u001b[2m      - element is not enabled\u001b[22m\n\u001b[2m    - retrying click action\u001b[22m\n\u001b[2m    - waiting 20ms\u001b[22m\n\u001b[2m    2 × waiting for element to be visible, enabled and stable\u001b[22m\n\u001b[2m      - element is not enabled\u001b[22m\n\u001b[2m    - retrying click action\u001b[22m\n\u001b[2m      - waiting 100ms\u001b[22m\n\u001b[2m    55 × waiting for element to be visible, enabled and stable\u001b[22m\n\u001b[2m       - element is not enabled\u001b[22m\n\u001b[2m     - retrying click action\u001b[22m\n\u001b[2m       - waiting 500ms\u001b[22m\n",
+    "stack": "elementHandle.click: Timeout 30000ms exceeded.\nCall log:\n\u001b[2m  - attempting click action\u001b[22m\n\u001b[2m    2 × waiting for element to be visible, enabled and stable\u001b[22m\n\u001b[2m      - element is not enabled\u001b[22m\n\u001b[2m    - retrying click action\u001b[22m\n\u001b[2m    - waiting 20ms\u001b[22m\n\u001b[2m    2 × waiting for element to be visible, enabled and stable\u001b[22m\n\u001b[2m      - element is not enabled\u001b[22m\n\u001b[2m    - retrying click action\u001b[22m\n\u001b[2m      - waiting 100ms\u001b[22m\n\u001b[2m    55 × waiting for element to be visible, enabled and stable\u001b[22m\n\u001b[2m       - element is not enabled\u001b[22m\n\u001b[2m     - retrying click action\u001b[22m\n\u001b[2m       - waiting 500ms\u001b[22m\n\n    at testNFT (C:\\Users\\pdark\\Documents\\Codex\\2026-11-01\\shadow-swap-harness\\test-harness\\overnight-campaign.cjs:487:21)\n    at async C:\\Users\\pdark\\Documents\\Codex\\2026-11-01\\shadow-swap-harness\\test-harness\\overnight-campaign.cjs:823:5"
+  }
+}

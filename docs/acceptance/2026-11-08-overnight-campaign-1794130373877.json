@@ -1,0 +1,262 @@
+{
+  "startedAt": "2026-11-08T09:31:30.051Z",
+  "cdpBrowser": "156.0.8078.80",
+  "sapientVersion": null,
+  "walletAccount": null,
+  "network": "esmeralda",
+  "passed": [
+    {
+      "name": "CDP connect",
+      "detail": "156.0.8078.80"
+    },
+    {
+      "name": "Found Shadow Swap tab",
+      "detail": "http://localhost:4173/pools/component_5c554ab71fa912da3f92f932cc79db4af2ecb21bbec657480a97b5017704b2c6"
+    },
+    {
+      "name": "Navigated to latest build",
+      "detail": "http://localhost:4174/"
+    },
+    {
+      "name": "Sapient provider injection",
+      "detail": "keys: claimPrivatePayment, createTransactionRequest, disconnect, getAccounts, getBalances, getCapabilities, getNetwork, getPrivateBalances, getShieldedOutputs, getSubstate, getTransactionRequest, getTransactionResult, getViewAccess, getWalletAddress, info, isTariWallet, on, request, requestAccounts, requestTransaction, requestViewAccess, revokeViewAccess, scanForPrivatePayments, scanForResourceUtxos, signAndSubmitTransaction, signOwnershipChallenge, signWalletOwnershipChallenge, submitTransactionRequest"
+    },
+    {
+      "name": "getNetwork",
+      "detail": "\"esmeralda\""
+    },
+    {
+      "name": "Home page renders",
+      "detail": "Contains expected content"
+    },
+    {
+      "name": "Home page — no captured errors"
+    },
+    {
+      "name": "Swap page renders"
+    },
+    {
+      "name": "Swap page selectors found",
+      "detail": "2 <select> element(s)"
+    },
+    {
+      "name": "From: selected TESTA"
+    },
+    {
+      "name": "To: selected TESTB"
+    },
+    {
+      "name": "Amount input: entered 1"
+    },
+    {
+      "name": "Pools list: TESTA/TESTB pool found"
+    },
+    {
+      "name": "Pool detail: SwapCard renders with pool tokens"
+    },
+    {
+      "name": "Pool detail: 30 bps fee tier displayed"
+    },
+    {
+      "name": "Pool detail: decimal input accepts \"1\""
+    },
+    {
+      "name": "Pool detail: decimal input accepts \"1.5\""
+    },
+    {
+      "name": "Pool detail: aria-invalid false for valid decimal input"
+    },
+    {
+      "name": "Pool detail: invalid chars stripped from input"
+    },
+    {
+      "name": "Pool detail: reverse direction button found and clicked"
+    },
+    {
+      "name": "Pool detail: amount cleared on reverse"
+    },
+    {
+      "name": "NFT marketplace page renders"
+    },
+    {
+      "name": "My NFTs tab: shows tNFT holdings"
+    },
+    {
+      "name": "Activity page renders",
+      "detail": "Activity\nRefresh\n\nNo operations recorded\n\nOperations are persisted in this brows"
+    },
+    {
+      "name": "Charts page renders",
+      "detail": "Page not found\n\nThat address does not match any surface in this build."
+    },
+    {
+      "name": "Input: Negative sign stripped",
+      "detail": "'-1' → '1'"
+    },
+    {
+      "name": "Input: Scientific notation stripped",
+      "detail": "'1e9' → '19'"
+    },
+    {
+      "name": "Input: Double dot: second dot stripped",
+      "detail": "'1.2.3' → '1.23' (1 dot)"
+    },
+    {
+      "name": "Input: Zero is accepted",
+      "detail": "'0' → '0' (aria-invalid: false)"
+    },
+    {
+      "name": "Input: Large integer accepted",
+      "detail": "'999999999' → '999999999' (aria-invalid: false)"
+    },
+    {
+      "name": "Input: Exact precision accepted",
+      "detail": "'1.000001' → '1.000001' (aria-invalid: false)"
+    },
+    {
+      "name": "Wallet disconnect mock: UI shows connect prompt when tari removed"
+    },
+    {
+      "name": "Mobile viewport: home renders at 375px"
+    },
+    {
+      "name": "Mobile viewport: no horizontal overflow"
+    },
+    {
+      "name": "SPA navigation: cycled through 8 routes without page crash"
+    },
+    {
+      "name": "SPA navigation: no React error boundary triggered"
+    },
+    {
+      "name": "No __ssLastError set after reload (fix effective)"
+    },
+    {
+      "name": "RPC timeout mock: pools loaded (live indexer available, no timeout)"
+    },
+    {
+      "name": "P2P gates: XTM route panel rendered on pool detail"
+    },
+    {
+      "name": "P2P gates: cross-layer correctly shown as unavailable (no L1 capability)"
+    },
+    {
+      "name": "Quote consistency: same input gives same quote (deterministic)"
+    }
+  ],
+  "failed": [
+    {
+      "name": "tari_getCapabilities",
+      "detail": "Not connected — call tari_requestAccounts first"
+    },
+    {
+      "name": "Swap quote on /swap",
+      "detail": "Quote refused — check wallet connection"
+    },
+    {
+      "name": "Pool detail: quote",
+      "detail": "Quote refused — TESTB / TESTA\n / \nTESTA\n•\n24h —\n!\nIssuer controlled\n×\nData Unavailable\nInformational\nPRICE\n—\n24H VOL"
+    }
+  ],
+  "skipped": [
+    {
+      "name": "Wallet account tests",
+      "reason": "No connected accounts — wallet not authorized"
+    },
+    {
+      "name": "Pool detail: Reserves row",
+      "reason": "Not found in page text"
+    },
+    {
+      "name": "Pool detail: 1.5 TESTA quote",
+      "reason": "State unclear"
+    },
+    {
+      "name": "Pool detail: reverse quote",
+      "reason": "State unclear — TESTB / TESTA\n / \nTESTA\n•\n24h —\n!\nIssuer controlled\n×\nData Unavailable\nInformational\nPRICE\n—\n24H VOL"
+    }
+  ],
+  "bugs": [],
+  "screenshots": [
+    {
+      "label": "phase1-after-navigate",
+      "file": "000-phase1_after_navigate.png"
+    },
+    {
+      "label": "home-page",
+      "file": "001-home_page.png"
+    },
+    {
+      "label": "swap-page",
+      "file": "002-swap_page.png"
+    },
+    {
+      "label": "swap-after-amount",
+      "file": "003-swap_after_amount.png"
+    },
+    {
+      "label": "pools-list",
+      "file": "004-pools_list.png"
+    },
+    {
+      "label": "pool-detail-initial",
+      "file": "005-pool_detail_initial.png"
+    },
+    {
+      "label": "pool-detail-amount-1",
+      "file": "006-pool_detail_amount_1.png"
+    },
+    {
+      "label": "pool-detail-amount-1p5",
+      "file": "007-pool_detail_amount_1p5.png"
+    },
+    {
+      "label": "pool-detail-reverse-quote",
+      "file": "008-pool_detail_reverse_quote.png"
+    },
+    {
+      "label": "nft-page-collections",
+      "file": "009-nft_page_collections.png"
+    },
+    {
+      "label": "nft-holdings-tab",
+      "file": "010-nft_holdings_tab.png"
+    },
+    {
+      "label": "activity-page",
+      "file": "011-activity_page.png"
+    },
+    {
+      "label": "charts-page",
+      "file": "012-charts_page.png"
+    },
+    {
+      "label": "malformed-inputs",
+      "file": "013-malformed_inputs.png"
+    },
+    {
+      "label": "wallet-disconnect-mock",
+      "file": "014-wallet_disconnect_mock.png"
+    },
+    {
+      "label": "mobile-home",
+      "file": "015-mobile_home.png"
+    },
+    {
+      "label": "spa-nav-final",
+      "file": "016-spa_nav_final.png"
+    },
+    {
+      "label": "rpc-timeout-pools",
+      "file": "017-rpc_timeout_pools.png"
+    },
+    {
+      "label": "p2p-gates",
+      "file": "018-p2p_gates.png"
+    },
+    {
+      "label": "quote-consistency",
+      "file": "019-quote_consistency.png"
+    }
+  ]
+}
