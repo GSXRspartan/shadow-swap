@@ -248,9 +248,12 @@ function PendingApprovalPanel({
           // Refusals are computed from the LIVE session against the persisted record.
           // Every mismatch blocks, so a tampered ledger can stop a resume but can
           // never cause one.
+          // NO_LIVE_REVIEW is not a block here: the Activity page performs a pure
+          // id-based resume — tari_submitTransactionRequest takes only the requestId
+          // the wallet already approved, so there is no reconstruction to guard.
           const refusal: ResumeRefusal | undefined =
             liveAccount === undefined ? 'ACCOUNT_CHANGED' : resumeBlockReason(record, { account: liveAccount, network: liveNetwork });
-          const blocked = refusal !== undefined && refusal !== 'NOT_BLOCKING';
+          const blocked = refusal !== undefined && refusal !== 'NOT_BLOCKING' && refusal !== 'NO_LIVE_REVIEW';
           const outcome = outcomes.get(record.operationId);
           return (
             <div key={record.operationId} className="stack" style={{ gap: 'var(--s-2)', padding: 'var(--s-3)', border: '1px solid var(--border, rgba(255,255,255,.08))', borderRadius: 'var(--r-2)' }}>

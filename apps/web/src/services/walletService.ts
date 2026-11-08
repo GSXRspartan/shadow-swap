@@ -656,7 +656,13 @@ class TariBridgeWalletAdapter implements WalletBridge {
     live: ResumeBinding,
   ): Promise<{ submitted: true; transactionId: string } | { submitted: false; state: 'AWAITING_APPROVAL' | 'REJECTED' | 'FAILED' | 'UNKNOWN'; detail?: string }> {
     const refusal: ResumeRefusal | undefined = resumeBlockReason(record, live);
-    if (refusal !== undefined && refusal !== 'NOT_BLOCKING') {
+    // NO_LIVE_REVIEW is not a block here. `tari_submitTransactionRequest` takes only
+    // the wallet's own requestId — there is no payload reconstruction between the
+    // approval and the broadcast, so there is nothing the fingerprint could protect
+    // against. The check is only meaningful when the app has re-derived a transaction
+    // from a live review; on the Activity page neither the review nor its fingerprint
+    // is in scope, and the wallet is the sole authority on what it approved.
+    if (refusal !== undefined && refusal !== 'NOT_BLOCKING' && refusal !== 'NO_LIVE_REVIEW') {
       throw new TariProviderError(describeResumeRefusal(refusal), refusal === 'NETWORK_CHANGED' ? 'WRONG_NETWORK' : 'ACCOUNT_CHANGED');
     }
     this.provider = getTariProvider();

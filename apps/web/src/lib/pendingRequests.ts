@@ -406,7 +406,7 @@ export function describeResumeRefusal(refusal: ResumeRefusal): string {
     case 'REVIEW_SUBSTITUTED':
       return 'The transaction shown now is not the one that was approved, so it will not be submitted. Rebuild and review the transaction again.';
     case 'NO_LIVE_REVIEW':
-      return 'There is no reviewed transaction on screen matching this approval, so nothing can be submitted. Rebuild the transaction to continue.';
+      return 'No live review fingerprint is present — the wallet will be queried by request ID and will submit only what it already approved.';
     case 'NOT_BLOCKING':
       return 'This request is already settled.';
     default:

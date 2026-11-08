@@ -792,3 +792,244 @@ test('the connector script is shipped unconditionally and the effective CSP perm
   await page.waitForTimeout(1_000);
   expect(violations, `the CSP blocked a page resource:\n${violations.join('\n')}`).toEqual([]);
 });
+
+// ===========================================================================
+// DELAYED APPROVAL — regression for NO_LIVE_REVIEW blocking Activity-page resume
+// ===========================================================================
+
+/**
+ * A provider where `tari_getTransactionRequest` starts as "pending" and can be
+ * flipped to "approved" via `window.__tariHost.approveRequest()`.
+ *
+ * This models the realistic case: the user pressed Submit, the request was minted
+ * and stored in the durable ledger, the wallet polled PENDING, and the page threw
+ * `awaitingApproval`. The user later opens their wallet, approves, and returns to
+ * the Activity page to resume.
+ *
+ * The regression: before the fix, `resumeBlockReason` returned `NO_LIVE_REVIEW` on
+ * the Activity page (no live review fingerprint), setting `blocked = true` and
+ * disabling the "Check status in my wallet" button. The request was stuck in
+ * AWAITING_APPROVAL forever.
+ *
+ * After the fix: `NO_LIVE_REVIEW` does not block the Activity-page resume because
+ * `tari_submitTransactionRequest` takes only a requestId — there is no reconstruction
+ * and therefore nothing the fingerprint could protect against.
+ */
+function delayedApprovalProvider(): string {
+  return `
+  (() => {
+    const state = {
+      network: 'esmeralda',
+      account: 'component_account_A',
+      requestStatus: 'pending',
+      requestLog: [],
+    };
+    window.__tariProbe = state;
+    window.__tariHost = {
+      state,
+      approveRequest() { state.requestStatus = 'approved'; },
+    };
+    window.tari = {
+      isTariWallet: true,
+      async request(envelope) {
+        state.requestLog.push(JSON.parse(JSON.stringify(envelope)));
+        switch (envelope.method) {
+          case 'tari_getNetwork': return state.network;
+          case 'tari_getCapabilities': return {
+            exactInputSelection: true, stealthWithdraw: false, stealthRedeem: false,
+            stealthRedeemPrivateFee: false, htlcFund: true, scriptPathSpend: true,
+            privateSpend: false, minimumValuePromise: false, ownershipProof: false,
+            walletOwnershipProof: false, privateBalanceView: false, privateViewGranted: false,
+            transactionResultLookup: true, transactionRequests: true,
+            walletAddress: false, dryRunIsLocal: false,
+          };
+          case 'tari_requestAccounts':
+          case 'tari_getAccounts': return [state.account];
+          case 'tari_getWalletAddress': return 'otl_esm_1test';
+          case 'tari_getBalances': return [];
+          case 'tari_getTransactionResult': return { transactionId: envelope.params.transactionId, status: 'UNKNOWN' };
+          case 'tari_createTransactionRequest': return { requestId: 'req_delayed_001' };
+          case 'tari_getTransactionRequest':
+            return { requestId: 'req_delayed_001', status: state.requestStatus, note: '', createdAt: 1, expiresAt: 99999999 };
+          case 'tari_submitTransactionRequest':
+            return { transactionId: 'tx_delayed_resumed_001' };
+          case 'tari_disconnect': return null;
+          default: { const e = new Error('unsupported ' + envelope.method); e.code = 4200; throw e; }
+        }
+      },
+      on: (event, handler) => {
+        if (event === 'accountsChanged') { window.__tariAccountsChanged = handler; return () => { window.__tariAccountsChanged = undefined; }; }
+        return () => undefined;
+      },
+    };
+  })();
+  `;
+}
+
+/** Pre-seed the durable pending-request ledger so the Activity page finds it. */
+async function seedPendingRequest(
+  page: Page,
+  operationId: string,
+  requestId: string,
+  account: string,
+): Promise<void> {
+  await page.evaluate(
+    ({ opId, reqId, acct }: { opId: string; reqId: string; acct: string }) => {
+      const record = {
+        operationId: opId,
+        requestId: reqId,
+        reviewFingerprint: 'fp_regression_test_01',
+        operation: 'AMM_SWAP',
+        approvedAccount: acct,
+        approvedNetwork: 'esmeralda',
+        destination: 'component_pool_regression',
+        createdAtUnixMs: 1000000000000,
+        state: 'AWAITING_APPROVAL',
+      };
+      localStorage.setItem('ootle.pendingRequests.v1', JSON.stringify({ version: 1, requests: [record] }));
+    },
+    { opId: operationId, reqId: requestId, acct: account },
+  );
+}
+
+test('delayed approval: Activity-page "Check status" button is not blocked by NO_LIVE_REVIEW', async ({ page }) => {
+  // Open the Activity page with a "pending" provider — the request was
+  // previously created and stored in localStorage (the reload scenario).
+  await mockIndexer(page);
+  await page.route('https://universe.tari.mw/**', (route) => route.abort());
+  await page.addInitScript(delayedApprovalProvider());
+  await page.goto('/activity');
+  await page.waitForLoadState('networkidle');
+
+  // The pending-request ledger entry must already be in localStorage before the
+  // wallet connects, because the Activity page reads it on mount.
+  await seedPendingRequest(page, 'swap-regression-delay-01', 'req_delayed_001', 'component_account_A');
+
+  // Connect the wallet so account and network are known.
+  await connect(page);
+
+  // Reload so the Activity page picks up the seeded ledger entry.
+  await page.reload();
+  await page.waitForLoadState('networkidle');
+  await connect(page);
+
+  // Verify the pending-request card is visible.
+  await expect(page.getByText('swap-regression-delay-01', { exact: false })).toBeVisible({ timeout: 5_000 });
+
+  // The "Check status in my wallet" button must be ENABLED (not blocked).
+  // Before the fix, `resumeBlockReason` returned NO_LIVE_REVIEW and `blocked`
+  // was true, which disabled the button.
+  const checkBtn = page.getByRole('button', { name: 'Check status in my wallet' });
+  await expect(checkBtn).toBeEnabled({ timeout: 5_000 });
+});
+
+test('delayed approval: Activity-page resume submits by id when wallet approves late', async ({ page }) => {
+  await mockIndexer(page);
+  await page.route('https://universe.tari.mw/**', (route) => route.abort());
+  await page.addInitScript(delayedApprovalProvider());
+  await page.goto('/activity');
+  await page.waitForLoadState('networkidle');
+
+  await seedPendingRequest(page, 'swap-regression-submit-01', 'req_delayed_001', 'component_account_A');
+
+  await connect(page);
+  await page.reload();
+  await page.waitForLoadState('networkidle');
+  await connect(page);
+
+  // Flip the wallet to "approved" before clicking — simulates the user
+  // having approved in the wallet between page loads.
+  await page.evaluate(() => {
+    (window as unknown as { __tariHost: { approveRequest(): void } }).__tariHost.approveRequest();
+  });
+
+  const checkBtn = page.getByRole('button', { name: 'Check status in my wallet' });
+  await expect(checkBtn).toBeEnabled({ timeout: 5_000 });
+  await checkBtn.click();
+
+  // After clicking, `tari_submitTransactionRequest` must have been called
+  // with the correct requestId and no payload beyond it.
+  await page.waitForTimeout(2_000);
+  const log = await requestLog(page);
+  const submitCall = log.find((e) => e.method === 'tari_submitTransactionRequest');
+  expect(submitCall, 'tari_submitTransactionRequest must have been called').toBeDefined();
+  expect((submitCall?.params as { requestId?: string })?.requestId, 'must submit by id only').toBe('req_delayed_001');
+
+  // The outcome panel must report the submission, not an error.
+  await expect(page.getByText(/Submitted as|tx_delayed_resumed/i)).toBeVisible({ timeout: 5_000 });
+});
+
+test('delayed approval: approval arriving after extension worker restart cannot double-submit', async ({ page }) => {
+  // A "worker restart" looks like this: the first poll returns PENDING, the
+  // request goes into the ledger as AWAITING_APPROVAL, and when the page is
+  // restored the wallet now reports SUBMITTED (a prior page load already
+  // broadcast it). The app must accept the existing txId rather than submitting
+  // again.
+  await mockIndexer(page);
+  await page.route('https://universe.tari.mw/**', (route) => route.abort());
+  // Provider that reports the request as already SUBMITTED with an existing txId.
+  await page.addInitScript(`
+  (() => {
+    const state = { network: 'esmeralda', account: 'component_account_A', requestLog: [] };
+    window.__tariProbe = state;
+    window.tari = {
+      isTariWallet: true,
+      async request(envelope) {
+        state.requestLog.push(JSON.parse(JSON.stringify(envelope)));
+        switch (envelope.method) {
+          case 'tari_getNetwork': return state.network;
+          case 'tari_getCapabilities': return { transactionRequests: true, transactionResultLookup: true };
+          case 'tari_requestAccounts':
+          case 'tari_getAccounts': return [state.account];
+          case 'tari_getBalances': return [];
+          case 'tari_getTransactionResult': return { transactionId: envelope.params.transactionId, status: 'UNKNOWN' };
+          // Already submitted: the wallet returns the EXISTING txId.
+          case 'tari_getTransactionRequest':
+            return { requestId: 'req_already_submitted', status: 'submitted', result: { transactionId: 'tx_already_broadcast_001' }, note: '', createdAt: 1, expiresAt: 99 };
+          case 'tari_submitTransactionRequest':
+            throw Object.assign(new Error('already submitted'), { code: -32603 });
+          case 'tari_disconnect': return null;
+          default: { const e = new Error('unsupported ' + envelope.method); e.code = 4200; throw e; }
+        }
+      },
+      on: (ev, h) => { if (ev === 'accountsChanged') { window.__tariAccountsChanged = h; return () => {}; } return () => {}; },
+    };
+  })();
+  `);
+  await page.goto('/activity');
+  await page.waitForLoadState('networkidle');
+
+  // Seed a request that was pending before the "restart".
+  await page.evaluate(() => {
+    const record = {
+      operationId: 'swap-regression-restart-01',
+      requestId: 'req_already_submitted',
+      reviewFingerprint: 'fp_regression_restart',
+      operation: 'AMM_SWAP',
+      approvedAccount: 'component_account_A',
+      approvedNetwork: 'esmeralda',
+      destination: 'component_pool_regression',
+      createdAtUnixMs: 1000000000000,
+      state: 'AWAITING_APPROVAL',
+    };
+    localStorage.setItem('ootle.pendingRequests.v1', JSON.stringify({ version: 1, requests: [record] }));
+  });
+
+  await connect(page);
+  await page.reload();
+  await page.waitForLoadState('networkidle');
+  await connect(page);
+
+  const checkBtn = page.getByRole('button', { name: 'Check status in my wallet' });
+  await expect(checkBtn).toBeEnabled({ timeout: 5_000 });
+  await checkBtn.click();
+  await page.waitForTimeout(2_000);
+
+  // The existing txId must be accepted — no SECOND submit call.
+  const log = await requestLog(page);
+  const submitCalls = log.filter((e) => e.method === 'tari_submitTransactionRequest');
+  expect(submitCalls.length, 'must not call tari_submitTransactionRequest when already submitted').toBe(0);
+
+  // The outcome must reference the already-broadcast txId.
+  await expect(page.getByText(/tx_already_broadcast|Submitted/i)).toBeVisible({ timeout: 5_000 });
+});
