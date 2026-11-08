@@ -88,11 +88,14 @@ The `/market` page shows "Local Minotari wallet: Not connected". Start the Minot
 wallet with gRPC enabled:
 
 ```powershell
-tari_console_wallet --grpc-address 127.0.0.1:18142
+tari_console_wallet --grpc-address 0.0.0.0:18143
 ```
 
-The app connects to it at `http://127.0.0.1:18142` for L1 operations. No L1 operations are
-possible until this is running.
+Official Tari defaults: Minotari BASE NODE gRPC is port 18142; CONSOLE WALLET gRPC is
+port 18143 and is DISABLED by default — it must be enabled explicitly with the flag above.
+The app connects to `http://127.0.0.1:18143` for L1 operations (SendShaAtomicSwapTransaction,
+ClaimShaAtomicSwapTransaction, ClaimHtlcRefundTransaction). No L1 operations are possible
+until this is running. Never start with --grpc-address 0.0.0.0 on a network-reachable host.
 
 ### Blocker 3: `crossLayerAvailability` returns NOT_RECORDED
 
@@ -141,7 +144,7 @@ locally running Minotari wallet.
 1. User compiles and publishes `CrossLayerHtlc` template via walletd web UI
 2. Record template address in `protocolDeployment.ts`
 3. Build L2 HTLC dry_run test (this codebase can do this now once template is published)
-4. User starts `tari_console_wallet --grpc-address 127.0.0.1:18142`
+4. User starts `tari_console_wallet --grpc-address 127.0.0.1:18143`
 5. Full L2→L1 swap with real amounts: maker funds L1, user (Sapient) funds L2, maker claims L2
    (revealing preimage), user claims L1 with preimage
 

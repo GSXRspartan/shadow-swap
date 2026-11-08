@@ -427,12 +427,19 @@ export class IndexerPoolDiscovery implements PoolDiscoverySource {
               })
               .filter((c) => c.templateAddress !== '');
             if (candidates.length > 0) {
+              // The indexer was unreachable: we have registry-seed candidates but have NOT
+              // verified them on-chain through the indexer. Report the indexer as unavailable
+              // so the UI shows the correct health badge, while still surfacing the candidates
+              // for the wallet-backed authoritative read (which re-checks every candidate
+              // against the real chain before describing any pool). `PROTOCOL_AVAILABLE` is
+              // reserved for a live indexer that confirmed the deployment.
               return {
                 pools: [],
                 candidates,
                 publishedTemplates: [],
-                state: 'PROTOCOL_AVAILABLE',
+                state: 'INDEXER_UNAVAILABLE',
                 source: `${this.name}:seed-fallback`,
+                unavailableReason: result.detail ?? 'The indexer could not be reached; showing registry seed candidates only. Connect a wallet to verify on-chain.',
               };
             }
           }

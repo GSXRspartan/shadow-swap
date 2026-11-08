@@ -11,19 +11,34 @@
  * actually served, read live against the post-reset Esmeralda hosts on
  * 2026-10-01.
  *
- * ## What the v0.42.0 indexer actually serves (verified read-only)
+ * ## What the indexer actually serves — verified against v0.50.1 (2026-11-08)
+ *
+ * All five paths below are present and return HTTP 200 on esme-indexer-a.ootle.tari.com
+ * at v0.50.1 (epoch 12951). CORS is open (access-control-allow-origin: *). Two new
+ * diagnostic endpoints were added: GET /network and GET /health. GET /readiness is 404.
+ *
+ * FROM v0.48, receipt entries and substate values are base64 CBOR (`CBOR_VALUES` wire
+ * format). `classifyIndexerVersion('0.50.1')` returns wireFormat:'CBOR_VALUES', and
+ * `ootleWire.ts:normalizeBatchEntry` and `normalizeReceipt` decode them. The request
+ * shapes are UNCHANGED from v0.43.
  *
  *   GET  /info                       -> {"version","network","network_byte","current_epoch",...}
- *   GET  /network                    -> {"network","network_byte","epoch"}
+ *   GET  /network                    -> {"network","network_byte","epoch"}        (new in v0.50+)
+ *   GET  /health                     -> {"status":"ok","db_ok":true,...}          (new in v0.50+)
  *   GET  /templates/catalogue        -> {"entries":[{template_address,template_name,...}]}
  *   GET  /templates/{addr}           -> published template definition
- *   GET  /transaction-receipts       -> {"receipts":[[addr,{outcome,diff_summary:{upped,downed}}]]}
- *   POST /substates/fetch            -> batch substate read, max 20 ids.
- *        v0.43 body: {"requests":[<id>,...],"cached_only":false}
- *        v0.43 resp: {"substates":{<id>:{"version","substate":{"Component":{header,body}}}}}
- *        (v0.42 used {"substate_ids":[...]} and an array response; the live host
- *         now answers HTTP 422 to the v0.42 shape.)
+ *   GET  /transaction-receipts       -> {"receipts":[[addr,<base64 CBOR>]]}       (CBOR from v0.48)
+ *   POST /substates/fetch            -> batch substate read, max 50 ids (raised from 20 at v0.43).
+ *        body: {"requests":[<id>,...],"cached_only":false}
+ *        resp: {"substates":{<id>:{"version":N,"value":"<base64 CBOR>"}}}        (CBOR from v0.48)
+ *        (v0.42 used {"substate_ids":[...]} and an array; v0.43 used "substate" key with JSON value)
  *   GET  /substates/{substate_id}    -> {"version","substate":{"Component":{header,body}}}
+ *
+ * A 404 on GET /info means the base URL is wrong, not that the network is down. The
+ * endpoint returns JSON on HTTP 200 or an error body on 4xx; a network-layer failure
+ * (TCP refused, DNS NXDOMAIN, timeout) is distinct and reported as UNREACHABLE by
+ * `verifyIndexerIdentity`. Diagnose separately: HTTP 404 = wrong path, CORS block =
+ * fetch threw NetworkError, timeout = indexer overloaded but reachable at TCP.
  *
  * `/templates/cached` was REMOVED in v0.42.0 (the live host answers `400` to
  * it) and replaced by `/templates/catalogue`. The removed path is never sent.
