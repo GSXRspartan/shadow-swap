@@ -475,36 +475,60 @@ class TariBridgeWalletAdapter implements WalletBridge {
     const bindable = operationId !== undefined && context.reviewFingerprint !== undefined && account !== undefined;
 
     if (capabilities !== undefined && capabilities.transactionRequests === true && bindable) {
-      const outcome = await submitViaTransactionRequest(this.provider, instructionsOperation(instructions), {
-        onRequestId: (requestId) => {
-          this.requestIds.set(operationId, requestId);
-          rememberPendingRequest(this.pendingStorage, {
-            operationId,
-            requestId,
-            reviewFingerprint: context.reviewFingerprint as string,
-            operation: context.operation,
-            approvedAccount: account as string,
-            approvedNetwork: context.network,
-            destination: context.poolOrDestination,
-            createdAtUnixMs: Date.now(),
-            state: 'AWAITING_APPROVAL',
-          });
-        },
-        onSubmitted: (result) => {
-          rememberPendingRequest(this.pendingStorage, {
-            operationId,
-            requestId: this.requestIds.get(operationId) ?? '',
-            reviewFingerprint: context.reviewFingerprint as string,
-            operation: context.operation,
-            approvedAccount: account as string,
-            approvedNetwork: context.network,
-            destination: context.poolOrDestination,
-            createdAtUnixMs: Date.now(),
-            state: 'SUBMITTED',
-            transactionId: result.transactionId,
-          });
-        },
-      });
+      let outcome;
+      try {
+        outcome = await submitViaTransactionRequest(this.provider, instructionsOperation(instructions), {
+          onRequestId: (requestId) => {
+            this.requestIds.set(operationId, requestId);
+            rememberPendingRequest(this.pendingStorage, {
+              operationId,
+              requestId,
+              reviewFingerprint: context.reviewFingerprint as string,
+              operation: context.operation,
+              approvedAccount: account as string,
+              approvedNetwork: context.network,
+              destination: context.poolOrDestination,
+              createdAtUnixMs: Date.now(),
+              state: 'AWAITING_APPROVAL',
+            });
+          },
+          onSubmitted: (result) => {
+            rememberPendingRequest(this.pendingStorage, {
+              operationId,
+              requestId: this.requestIds.get(operationId) ?? '',
+              reviewFingerprint: context.reviewFingerprint as string,
+              operation: context.operation,
+              approvedAccount: account as string,
+              approvedNetwork: context.network,
+              destination: context.poolOrDestination,
+              createdAtUnixMs: Date.now(),
+              state: 'SUBMITTED',
+              transactionId: result.transactionId,
+            });
+          },
+        });
+      } catch (e) {
+        // Clear only on an EXPLICIT terminal wallet verdict.
+        //
+        // REJECTED    — the user declined the request (4001 or status "rejected").
+        // WALLET_FAILED — the wallet returned status "failed": the request is closed.
+        //
+        // INTERNAL is NOT cleared here: it covers both Sapient's -32603 code AND
+        // plain transport/network failures. A transport failure after onRequestId
+        // means the wallet request is still live — clearing it would lose the
+        // durable id and risk a duplicate approval when the user next connects.
+        // MALFORMED_REPLY and UNKNOWN are similarly ambiguous.
+        //
+        // All non-terminal cases leave the entry intact so the Activity page can
+        // poll the wallet and perform correct cleanup via resumePendingRequest.
+        const isTerminalVerdict =
+          e instanceof TariProviderError && (e.code === 'REJECTED' || e.code === 'WALLET_FAILED');
+        if (isTerminalVerdict && operationId !== undefined) {
+          this.requestIds.delete(operationId);
+          forgetPendingRequest(this.pendingStorage, operationId);
+        }
+        throw e;
+      }
       if ('pendingRequestId' in outcome) {
         // The human has not answered yet. Nothing was submitted, and this is NOT
         // a failure: the durable id is already in the ledger and the caller — and
@@ -654,13 +678,14 @@ class TariBridgeWalletAdapter implements WalletBridge {
         this.forgetPendingRequest(record.operationId);
         return { submitted: false, state: 'REJECTED', detail: (error as Error).message };
       }
-      if (code === 'INTERNAL') {
+      if (code === 'WALLET_FAILED') {
+        // The wallet confirmed a terminal FAILED verdict. Safe to retire the entry.
         this.forgetPendingRequest(record.operationId);
         return { submitted: false, state: 'FAILED', detail: (error as Error).message };
       }
-      // TIMEOUT, MALFORMED_REPLY, UNKNOWN, and anything else: the request's fate is
-      // genuinely unknown. It is reported as UNKNOWN and KEPT in the ledger, because
-      // the request may well be approvable later and must not be treated as settled.
+      // INTERNAL (transport/network error), TIMEOUT, MALFORMED_REPLY, UNKNOWN:
+      // the request's fate is genuinely unknown. Reported as UNKNOWN and KEPT so
+      // the user can retry the resume once connectivity is restored.
       return { submitted: false, state: 'UNKNOWN', detail: (error as Error).message };
     }
   }

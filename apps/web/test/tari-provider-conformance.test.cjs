@@ -755,7 +755,7 @@ test('conformance: every transaction-request status is handled, and unknown fail
       outcome = 'pendingRequestId' in result ? 'pending-request' : 'submitted';
     } catch (error) {
       if (error.code === 'REJECTED') outcome = 'rejected';
-      else if (error.code === 'INTERNAL') outcome = 'failed';
+      else if (error.code === 'WALLET_FAILED') outcome = 'failed';
       else if (error.code === 'MALFORMED_REPLY') outcome = 'unknown-status';
       else throw error;
     }

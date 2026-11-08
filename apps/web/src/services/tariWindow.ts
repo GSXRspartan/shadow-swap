@@ -105,6 +105,13 @@ export type TariProviderErrorCode =
   | 'NOT_CONNECTED'
   /** The provider answered -32603, or failed with no usable code. */
   | 'INTERNAL'
+  /**
+   * The wallet returned `status: "failed"` from `tari_getTransactionRequest`.
+   * This is a durable, explicit wallet verdict — the request is closed.
+   * Distinct from INTERNAL (which also covers transport/network failures)
+   * so callers can clear durable state only on confirmed wallet verdicts.
+   */
+  | 'WALLET_FAILED'
   | 'MALFORMED_REPLY'
   | 'WRONG_NETWORK'
   | 'ACCOUNT_CHANGED'
@@ -1069,7 +1076,9 @@ export async function resumeTransactionRequest(
       throw new TariProviderError(outcome.reason ?? 'The user declined the transaction request.', 'REJECTED');
 
     case 'FAILED':
-      throw new TariProviderError(outcome.reason ?? 'The wallet failed the transaction request.', 'INTERNAL');
+      // 'WALLET_FAILED' distinguishes a confirmed wallet verdict from INTERNAL,
+      // which also covers transport failures and network errors.
+      throw new TariProviderError(outcome.reason ?? 'The wallet failed the transaction request.', 'WALLET_FAILED');
 
     default:
       throw new TariProviderError(`The wallet reported an unrecognised transaction-request status ("${outcome.rawStatus}"); nothing was submitted.`, 'MALFORMED_REPLY');

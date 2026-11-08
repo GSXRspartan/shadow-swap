@@ -510,13 +510,23 @@ test('resume primitive: an ALREADY-submitted request is not submitted again', as
 });
 
 test('resume primitive: rejected and failed are refused without submitting', async () => {
-  for (const status of ['rejected', 'failed']) {
+  // REJECTED uses code 'REJECTED' (user declined, explicit).
+  // FAILED uses code 'WALLET_FAILED' (wallet verdict, distinct from transport INTERNAL).
+  const cases = [
+    { status: 'rejected', expectedCode: 'REJECTED' },
+    { status: 'failed',   expectedCode: 'WALLET_FAILED' },
+  ];
+  for (const { status, expectedCode } of cases) {
     const calls = [];
     const provider = providerWith(({ method }) => {
       calls.push(method);
       return { requestId: 'req-abc', status };
     });
-    await assert.rejects(() => tari.resumeTransactionRequest(provider, 'req-abc', { onRequestId() {}, onSubmitted() {} }));
+    await assert.rejects(
+      () => tari.resumeTransactionRequest(provider, 'req-abc', { onRequestId() {}, onSubmitted() {} }),
+      (error) => error.code === expectedCode,
+      `status "${status}" must throw with code "${expectedCode}"`,
+    );
     assert.equal(calls.includes('tari_submitTransactionRequest'), false, `${status} must never submit`);
   }
 });
@@ -567,4 +577,322 @@ test('resume primitive: the requestId is persisted BEFORE approval is polled', a
     onSubmitted: () => order.push('submitted'),
   });
   assert.deepEqual(order, ['tari_createTransactionRequest', 'persist', 'tari_getTransactionRequest']);
+});
+
+// ---------------------------------------------------------------------------
+// 6. SUBMITEXACT PENDING-ENTRY CLEANUP — only terminal verdicts clear the ledger
+//
+// submitExact writes an AWAITING_APPROVAL entry via onRequestId, then calls
+// submitViaTransactionRequest.  When the wallet immediately returns a verdict:
+//
+//   FAILED / REJECTED  — terminal: the wallet has closed the request.  The
+//                        ledger entry MUST be cleared so Gate 0 does not block
+//                        future submissions of the same operation forever.
+//
+//   MALFORMED_REPLY    — non-terminal: the wallet returned something
+//                        unrecognised; the request may still be live and the
+//                        entry MUST be preserved so the Activity page can resume.
+//
+//   UNKNOWN_STATUS     — non-terminal: same reasoning.
+//
+//   Network/non-TariProviderError — non-terminal: the request is definitely
+//                        still live (we never reached the wallet's reply).
+//
+// These tests simulate the hook+storage pattern that submitExact uses,
+// exercising the cleanup policy independently of the private method.
+// ---------------------------------------------------------------------------
+
+function submitExactCleanupHarness(storage, provider, operationId = 'op-cleanup-test') {
+  // Mirrors submitExact's onRequestId + catch pattern precisely.
+  return new Promise((resolve, reject) => {
+    tari.submitViaTransactionRequest(
+      provider,
+      { kind: 'instructions', instructions: [{ CallMethod: { component_address: 'x', method: 'swap', args: [] } }] },
+      {
+        onRequestId(requestId) {
+          pending.rememberPendingRequest(storage, {
+            operationId,
+            requestId,
+            reviewFingerprint: FINGERPRINT,
+            operation: 'AMM_SWAP',
+            approvedAccount: ACCOUNT_A,
+            approvedNetwork: NETWORK,
+            destination: 'component_x',
+            createdAtUnixMs: Date.now(),
+            state: 'AWAITING_APPROVAL',
+          });
+        },
+        onSubmitted() {},
+      },
+    ).then(resolve).catch((e) => {
+      // ---- The correct submitExact cleanup policy ----
+      // Only REJECTED and WALLET_FAILED are unambiguous terminal wallet verdicts.
+      // INTERNAL covers transport errors and must NOT clear the durable entry.
+      const isTerminalVerdict =
+        e && e.name === 'TariProviderError' && (e.code === 'REJECTED' || e.code === 'WALLET_FAILED');
+      if (isTerminalVerdict) pending.forgetPendingRequest(storage, operationId);
+      reject(e);
+    });
+  });
+}
+
+test('submitExact cleanup: immediate FAILED clears the pending entry (Gate 0 unblocked)', async () => {
+  // The production scenario: Sapient immediately returns status "failed" from
+  // tari_getTransactionRequest (e.g., "capability not supported").
+  // resumeTransactionRequest throws TariProviderError(reason, 'WALLET_FAILED').
+  // submitExact's catch must retire the entry so Gate 0 does not block forever.
+  const storage = memoryStorage();
+  const provider = providerWith(({ method }) => {
+    if (method === 'tari_createTransactionRequest') return { requestId: 'req-failed' };
+    // Sapient immediately returns failed — simulates the production behaviour.
+    return { requestId: 'req-failed', status: 'failed', error: 'capability not supported' };
+  });
+  await assert.rejects(() => submitExactCleanupHarness(storage, provider), (e) => e.code === 'WALLET_FAILED');
+  assert.deepEqual(
+    pending.listPendingRequests(storage),
+    [],
+    'a WALLET_FAILED verdict must retire the pending entry so Gate 0 is unblocked',
+  );
+});
+
+test('submitExact cleanup: immediate REJECTED clears the pending entry', async () => {
+  const storage = memoryStorage();
+  const provider = providerWith(({ method }) => {
+    if (method === 'tari_createTransactionRequest') return { requestId: 'req-rejected' };
+    return { requestId: 'req-rejected', status: 'rejected', error: 'User cancelled' };
+  });
+  await assert.rejects(() => submitExactCleanupHarness(storage, provider), (e) => e.code === 'REJECTED');
+  assert.deepEqual(
+    pending.listPendingRequests(storage),
+    [],
+    'a REJECTED verdict from the wallet must retire the pending entry',
+  );
+});
+
+test('submitExact cleanup: AWAITING_APPROVAL (pending) keeps the entry for Activity-page resume', async () => {
+  const storage = memoryStorage();
+  const provider = providerWith(({ method }) => {
+    if (method === 'tari_createTransactionRequest') return { requestId: 'req-pending' };
+    return { requestId: 'req-pending', status: 'pending' };
+  });
+  // submitViaTransactionRequest returns a value (not throws) for pending.
+  const outcome = await tari.submitViaTransactionRequest(
+    provider,
+    { kind: 'instructions', instructions: [{ a: 1 }] },
+    {
+      onRequestId(requestId) {
+        pending.rememberPendingRequest(storage, {
+          operationId: 'op-pending',
+          requestId,
+          reviewFingerprint: FINGERPRINT,
+          operation: 'AMM_SWAP',
+          approvedAccount: ACCOUNT_A,
+          approvedNetwork: NETWORK,
+          destination: 'component_x',
+          createdAtUnixMs: Date.now(),
+          state: 'AWAITING_APPROVAL',
+        });
+      },
+      onSubmitted() {},
+    },
+  );
+  assert.ok('pendingRequestId' in outcome, 'pending outcome must carry the requestId');
+  const records = pending.listPendingRequests(storage);
+  assert.equal(records.length, 1, 'pending entry must be preserved for Activity-page resume');
+  assert.equal(records[0].state, 'AWAITING_APPROVAL');
+});
+
+test('submitExact cleanup: MALFORMED_REPLY keeps the entry (request fate unknown)', async () => {
+  const storage = memoryStorage();
+  const provider = providerWith(({ method }) => {
+    if (method === 'tari_createTransactionRequest') return { requestId: 'req-malformed' };
+    // No status field — normaliseSummary will throw MALFORMED_REPLY.
+    return { requestId: 'req-malformed' };
+  });
+  await assert.rejects(
+    () => submitExactCleanupHarness(storage, provider, 'op-malformed'),
+    (e) => e.code === 'MALFORMED_REPLY',
+  );
+  const records = pending.listPendingRequests(storage);
+  assert.equal(records.length, 1, 'MALFORMED_REPLY must NOT clear the entry — request may still be live');
+});
+
+test('submitExact cleanup: UNKNOWN status keeps the entry (new wallet status must not disappear)', async () => {
+  const storage = memoryStorage();
+  const provider = providerWith(({ method }) => {
+    if (method === 'tari_createTransactionRequest') return { requestId: 'req-unknown-status' };
+    // A wallet that grew a new status code: must fail closed, entry preserved.
+    return { requestId: 'req-unknown-status', status: 'queued' };
+  });
+  await assert.rejects(
+    () => submitExactCleanupHarness(storage, provider, 'op-unknown'),
+    (e) => e.code === 'MALFORMED_REPLY',
+  );
+  const records = pending.listPendingRequests(storage);
+  assert.equal(records.length, 1, 'an unrecognised wallet status must preserve the entry');
+});
+
+test('submitExact cleanup: a transport/network error (INTERNAL) keeps the entry', async () => {
+  // When the provider throws a plain Error from tari_getTransactionRequest,
+  // call() wraps it as TariProviderError('The provider failed...', 'INTERNAL').
+  // INTERNAL is NOT cleared by submitExact — it cannot be distinguished from a
+  // network failure vs. a wallet -32603 response without 'WALLET_FAILED'.
+  // The durable entry must be preserved so the Activity page can resume it once
+  // connectivity is restored.
+  const storage = memoryStorage();
+  let onRequestIdCalled = false;
+  const provider = providerWith(({ method }) => {
+    if (method === 'tari_createTransactionRequest') return { requestId: 'req-network-error' };
+    throw new Error('fetch failed: ERR_CONNECTION_REFUSED');
+  });
+  await assert.rejects(
+    () => {
+      return new Promise((resolve, reject) => {
+        tari.submitViaTransactionRequest(
+          provider,
+          { kind: 'instructions', instructions: [{ a: 1 }] },
+          {
+            onRequestId(requestId) {
+              onRequestIdCalled = true;
+              pending.rememberPendingRequest(storage, {
+                operationId: 'op-network-error',
+                requestId,
+                reviewFingerprint: FINGERPRINT,
+                operation: 'AMM_SWAP',
+                approvedAccount: ACCOUNT_A,
+                approvedNetwork: NETWORK,
+                destination: 'component_x',
+                createdAtUnixMs: Date.now(),
+                state: 'AWAITING_APPROVAL',
+              });
+            },
+            onSubmitted() {},
+          },
+        ).then(resolve).catch((e) => {
+          // Transport error: code is 'UNKNOWN' (plain Error, no numeric code),
+          // NOT 'WALLET_FAILED', so must NOT clear.
+          const isTerminalVerdict =
+            e && e.name === 'TariProviderError' && (e.code === 'REJECTED' || e.code === 'WALLET_FAILED');
+          if (isTerminalVerdict) pending.forgetPendingRequest(storage, 'op-network-error');
+          reject(e);
+        });
+      });
+    },
+    // A plain Error with no numeric code: normalizeProviderError assigns 'UNKNOWN' (not 'INTERNAL').
+    // 'INTERNAL' is reserved for Sapient's -32603 JSON-RPC code.
+    (e) => e && e.name === 'TariProviderError' && e.code === 'UNKNOWN',
+  );
+  assert.ok(onRequestIdCalled, 'onRequestId must have fired before the transport error');
+  assert.equal(
+    pending.listPendingRequests(storage).length,
+    1,
+    'a transport/network error (INTERNAL) must NOT clear the entry — the wallet request is still live',
+  );
+});
+
+test('submitExact cleanup: browser reload finds the preserved entry for AWAITING_APPROVAL', () => {
+  // If submitExact leaves an AWAITING_APPROVAL entry (pending), a reload must
+  // find it intact so the Activity page can offer Resume.
+  const storage = memoryStorage();
+  pending.rememberPendingRequest(storage, {
+    operationId: 'op-reload',
+    requestId: 'req-reload',
+    reviewFingerprint: FINGERPRINT,
+    operation: 'AMM_SWAP',
+    approvedAccount: ACCOUNT_A,
+    approvedNetwork: NETWORK,
+    destination: 'component_x',
+    createdAtUnixMs: Date.now(),
+    state: 'AWAITING_APPROVAL',
+  });
+  // Simulate a reload: new storage handle over the same bytes.
+  const afterReload = memoryStorage(Object.fromEntries(storage.map));
+  const records = pending.listPendingRequests(afterReload);
+  assert.equal(records.length, 1, 'AWAITING_APPROVAL entry must survive a browser reload');
+  assert.equal(records[0].operationId, 'op-reload');
+  assert.equal(records[0].requestId, 'req-reload');
+  // Gate 0: the entry blocks a fresh submission.
+  assert.ok(
+    pending.blockingPendingRequest(records, ACCOUNT_A, NETWORK),
+    'a preserved AWAITING_APPROVAL entry must block duplicate submissions via Gate 0',
+  );
+});
+
+test('submitExact cleanup: cleanup is idempotent — forgetPendingRequest twice is safe', () => {
+  const storage = memoryStorage();
+  pending.rememberPendingRequest(storage, {
+    operationId: 'op-idempotent',
+    requestId: 'req-x',
+    reviewFingerprint: FINGERPRINT,
+    operation: 'AMM_SWAP',
+    approvedAccount: ACCOUNT_A,
+    approvedNetwork: NETWORK,
+    destination: 'component_x',
+    createdAtUnixMs: Date.now(),
+    state: 'AWAITING_APPROVAL',
+  });
+  assert.doesNotThrow(() => {
+    pending.forgetPendingRequest(storage, 'op-idempotent');
+    pending.forgetPendingRequest(storage, 'op-idempotent'); // second call must be a no-op
+  });
+  assert.deepEqual(pending.listPendingRequests(storage), []);
+});
+
+test('submitExact cleanup: error evidence preserved — TariProviderError message carries Sapient reason', () => {
+  // The cleanup must happen BEFORE rethrow, but the reason string must be in the
+  // thrown error so the UI can show it. This checks the error is not discarded.
+  const sapientReason = 'capability not supported: stealthWithdraw requires Confidential-aware account';
+  const error = new tari.TariProviderError(sapientReason, 'WALLET_FAILED');
+  assert.equal(error.message, sapientReason, 'the Sapient reason must survive in .message');
+  assert.equal(error.code, 'WALLET_FAILED', 'the TariProviderError code must be preserved');
+  assert.equal(error.name, 'TariProviderError', 'name must be TariProviderError for the instanceof check');
+});
+
+test('submitExact cleanup: successful submission does not leave a dangling AWAITING_APPROVAL', async () => {
+  const storage = memoryStorage();
+  const provider = providerWith(({ method }) => {
+    if (method === 'tari_createTransactionRequest') return { requestId: 'req-success' };
+    if (method === 'tari_getTransactionRequest') return { requestId: 'req-success', status: 'approved' };
+    if (method === 'tari_submitTransactionRequest') return { transactionId: 'tx-abc123' };
+    throw new Error(`unexpected: ${method}`);
+  });
+  const outcome = await tari.submitViaTransactionRequest(
+    provider,
+    { kind: 'instructions', instructions: [{ a: 1 }] },
+    {
+      onRequestId(requestId) {
+        pending.rememberPendingRequest(storage, {
+          operationId: 'op-success',
+          requestId,
+          reviewFingerprint: FINGERPRINT,
+          operation: 'AMM_SWAP',
+          approvedAccount: ACCOUNT_A,
+          approvedNetwork: NETWORK,
+          destination: 'component_x',
+          createdAtUnixMs: Date.now(),
+          state: 'AWAITING_APPROVAL',
+        });
+      },
+      onSubmitted(result) {
+        // Caller (submitExact) transitions state to SUBMITTED.
+        pending.rememberPendingRequest(storage, {
+          operationId: 'op-success',
+          requestId: 'req-success',
+          reviewFingerprint: FINGERPRINT,
+          operation: 'AMM_SWAP',
+          approvedAccount: ACCOUNT_A,
+          approvedNetwork: NETWORK,
+          destination: 'component_x',
+          createdAtUnixMs: Date.now(),
+          state: 'SUBMITTED',
+          transactionId: result.transactionId,
+        });
+      },
+    },
+  );
+  assert.equal(outcome.transactionId, 'tx-abc123');
+  const records = pending.listPendingRequests(storage);
+  assert.equal(records.length, 1);
+  assert.equal(records[0].state, 'SUBMITTED', 'a successful swap must transition to SUBMITTED, not remain AWAITING_APPROVAL');
+  assert.equal(records[0].transactionId, 'tx-abc123');
 });
