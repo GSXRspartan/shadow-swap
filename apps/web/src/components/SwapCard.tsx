@@ -265,7 +265,12 @@ export function SwapCard({ pool }: { pool: PoolDescriptor }) {
               value={amountDisplay}
               aria-describedby={describedBy}
               aria-invalid={amountDisplay !== '' && parsedInput === undefined}
-              onChange={(event) => setAmountDisplay(event.target.value.replace(/[^0-9.]/g, ''))}
+              onChange={(event) => {
+                const raw = event.target.value.replace(/[^0-9.]/g, '');
+                // Collapse multiple dots: keep only the first
+                const dot = raw.indexOf('.');
+                setAmountDisplay(dot === -1 ? raw : raw.slice(0, dot + 1) + raw.slice(dot + 1).replace(/\./g, ''));
+              }}
             />
             <span className="btn" style={{ minWidth: 92, cursor: 'default' }} title={from.fullAddress}>
               <span className="truncate">{from.symbol}</span>

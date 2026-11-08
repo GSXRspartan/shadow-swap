@@ -30,11 +30,11 @@ function discoveryNotice(source: MarketplaceSource): { tone: 'warn' | 'info'; ti
 
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { useApp } from '../state/AppContext.js';
+import { useApp, type WalletState } from '../state/AppContext.js';
 import { createMarketplaceSource, type MarketplaceSource } from '../services/marketplace.js';
-import { formatAddress, UNAVAILABLE } from '../lib/format.js';
+import { formatAddress, formatUnits, UNAVAILABLE } from '../lib/format.js';
 import { safeLabel } from '../lib/sanitize.js';
-import { Badge, Card, CardHeader, EmptyState, LoadingBlock, Notice, SegmentedControl } from '../components/primitives.js';
+import { Badge, Card, CardHeader, DataRow, EmptyState, LoadingBlock, Notice, SegmentedControl } from '../components/primitives.js';
 import { CollectionPanel } from '../components/CollectionPanel.js';
 import { NftDetailPanel } from '../components/NftDetailPanel.js';
 
@@ -167,13 +167,61 @@ function CollectionBrowser({
           </div>
         )
       ) : (
-        <EmptyState
-          title="Holdings view needs an indexer"
-          detail="Your NFTs are shown from discovery data only. Indexer data is never settlement-authoritative; buying, listing, and cancelling all reread the component state first."
-          action={<span className="hint">Account {wallet.account ?? UNAVAILABLE}</span>}
-        />
+        <WalletHoldings wallet={wallet} />
       )}
     </Card>
+  );
+}
+
+/**
+ * Shows NFT resources held in the connected wallet, taken from the balance list
+ * the wallet bridge already reported at connect time. Fungible and stealth
+ * resources are excluded; only non_fungible rows are shown.
+ *
+ * Individual token IDs require a substate read per vault and are not fetched
+ * here — the count and resource identity are sufficient for the user to know
+ * which NFTs they hold.
+ */
+function WalletHoldings({ wallet }: { wallet: WalletState }) {
+  const nftBalances = wallet.balances.filter((b) => b.resourceType === 'non_fungible');
+
+  if (wallet.status !== 'CONNECTED') {
+    return (
+      <EmptyState
+        title="Connect a wallet to see your holdings"
+        detail="Your NFTs are shown from your connected wallet. No data is fabricated without a live connection."
+      />
+    );
+  }
+
+  if (nftBalances.length === 0) {
+    return (
+      <EmptyState
+        title="No NFTs in connected wallet"
+        detail="The wallet reports no non-fungible token balances for the connected account."
+        action={<span className="hint">Account {wallet.account ?? UNAVAILABLE}</span>}
+      />
+    );
+  }
+
+  return (
+    <div className="stack" style={{ padding: 'var(--s-4)', gap: 'var(--s-3)' }}>
+      <p className="hint">Account {wallet.account ?? UNAVAILABLE}</p>
+      {nftBalances.map((b) => (
+        <div key={b.resourceAddress} className="card" style={{ padding: 'var(--s-3)' }}>
+          <div className="stack" style={{ gap: 'var(--s-2)' }}>
+            <div className="spread">
+              <span style={{ fontWeight: 600 }}>{b.symbol ?? 'NFT'}</span>
+              <Badge tone="neutral">{formatUnits(b.amount, 0)} token{b.amount !== '1' ? 's' : ''}</Badge>
+            </div>
+            <DataRow label="Resource" value={formatAddress(b.resourceAddress, 10, 6)} title={b.resourceAddress} />
+          </div>
+        </div>
+      ))}
+      <Notice tone="info" title="Individual token IDs">
+        Individual NFT IDs require an on-chain substate read per vault and are not shown here. Listing and buying remain available once a collection is listed.
+      </Notice>
+    </div>
   );
 }
 
