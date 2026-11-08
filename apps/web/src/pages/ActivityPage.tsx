@@ -26,6 +26,7 @@ import {
   type PendingWalletRequest,
   type ResumeRefusal,
 } from '../lib/pendingRequests.js';
+import type { TariRequestOutcome } from '../services/tariWindow.js';
 
 const STATE_TONE: Record<OperationState, BadgeTone> = {
   PENDING: 'info',
@@ -53,7 +54,9 @@ export function ActivityPage() {
   const [reconciling, setReconciling] = useState<string | undefined>(undefined);
   const [verdicts, setVerdicts] = useState<Map<string, { resubmissionAllowed: boolean; reason: string; finalState: OperationState }>>(new Map());
   const [pending, setPending] = useState<PendingWalletRequest[]>([]);
-  const [resumeBusy, setResumeBusy] = useState<string | undefined>(undefined);
+  const [checkBusy, setCheckBusy] = useState<string | undefined>(undefined);
+  const [submitBusy, setSubmitBusy] = useState<string | undefined>(undefined);
+  const [checkResults, setCheckResults] = useState<Map<string, TariRequestOutcome>>(new Map());
   const [resumeOutcome, setResumeOutcome] = useState<Map<string, string>>(new Map());
 
   const refresh = useCallback(async () => {
@@ -89,34 +92,68 @@ export function ActivityPage() {
   );
 
   /**
-   * Ask the WALLET what happened to a durable request, then act on its answer.
-   *
-   * There is deliberately no "Submit anyway" control anywhere on this panel. The
-   * button re-reads the request's real state; if the wallet says approved it
-   * submits exactly that request, by id. A request the user has not approved, or
-   * one bound to a different account/network, produces an explanation instead of a
-   * submission.
+   * Read-only status check: query the wallet for the current state of this request.
+   * Never calls tari_submitTransactionRequest. The result is shown to the user;
+   * if the wallet reports APPROVED a separate Submit button appears.
    */
-  const runResume = useCallback(
+  const runCheck = useCallback(
     async (record: PendingWalletRequest) => {
       const bridge = walletBridge();
       const account = wallet.account;
       if (bridge === undefined || account === undefined) return;
-      setResumeBusy(record.operationId);
+      setCheckBusy(record.operationId);
       try {
-        const outcome = await bridge.resumePendingRequest(record, { account, network: wallet.networkId ?? '' });
+        const outcome = await bridge.checkRequestStatus(record, { account, network: wallet.networkId ?? '' });
+        setCheckResults((existing) => {
+          const next = new Map(existing);
+          next.set(record.operationId, outcome);
+          return next;
+        });
+        // If the wallet already submitted this, surface the txId in the outcome map too.
+        if (outcome.state === 'SUBMITTED' && outcome.transactionId !== undefined) {
+          setResumeOutcome((existing) => {
+            const next = new Map(existing);
+            next.set(record.operationId, `Already submitted as ${formatAddress(outcome.transactionId!, 10, 8)}. Reconcile below to confirm it committed.`);
+            return next;
+          });
+        }
+        await refresh();
+      } catch (error) {
+        setCheckResults((existing) => {
+          const next = new Map(existing);
+          next.set(record.operationId, { state: 'FAILED', requestId: record.requestId, reason: (error as Error).message });
+          return next;
+        });
+      } finally {
+        setCheckBusy(undefined);
+      }
+    },
+    [walletBridge, wallet.account, wallet.networkId, refresh],
+  );
+
+  /**
+   * Submit the already-approved request by id — exactly once.
+   *
+   * Only reachable after runCheck returns APPROVED. Guards at the service layer
+   * prevent double-submission even if the button is clicked twice.
+   */
+  const runSubmit = useCallback(
+    async (record: PendingWalletRequest) => {
+      const bridge = walletBridge();
+      const account = wallet.account;
+      if (bridge === undefined || account === undefined) return;
+      setSubmitBusy(record.operationId);
+      try {
+        const result = await bridge.submitApprovedRequest(record, { account, network: wallet.networkId ?? '' });
         setResumeOutcome((existing) => {
           const next = new Map(existing);
-          next.set(
-            record.operationId,
-            outcome.submitted
-              ? `Submitted as ${formatAddress(outcome.transactionId, 10, 8)}. Reconcile below to confirm it committed.`
-              : outcome.state === 'AWAITING_APPROVAL'
-                ? 'Still waiting for you in the wallet. Nothing has been submitted.'
-                : outcome.state === 'UNKNOWN'
-                  ? 'The wallet did not give a definite answer. Nothing was submitted and this request is still open — check your wallet.'
-                  : outcome.detail ?? 'The wallet settled this request without submitting anything further.',
-          );
+          next.set(record.operationId, `Submitted as ${formatAddress(result.transactionId, 10, 8)}. Reconcile below to confirm it committed.`);
+          return next;
+        });
+        // Clear the check result so the submit button disappears.
+        setCheckResults((existing) => {
+          const next = new Map(existing);
+          next.delete(record.operationId);
           return next;
         });
         await refresh();
@@ -127,7 +164,7 @@ export function ActivityPage() {
           return next;
         });
       } finally {
-        setResumeBusy(undefined);
+        setSubmitBusy(undefined);
       }
     },
     [walletBridge, wallet.account, wallet.networkId, refresh],
@@ -164,11 +201,14 @@ export function ActivityPage() {
 
       <PendingApprovalPanel
         pending={pending}
-        busy={resumeBusy}
+        checkBusy={checkBusy}
+        submitBusy={submitBusy}
+        checkResults={checkResults}
         outcomes={resumeOutcome}
         liveAccount={liveAccount}
         liveNetwork={liveNetwork}
-        onResume={(record) => void runResume(record)}
+        onCheck={(record) => void runCheck(record)}
+        onSubmit={(record) => void runSubmit(record)}
       />
 
       {records.length === 0 ? (
@@ -223,38 +263,47 @@ export function ActivityPage() {
 
 function PendingApprovalPanel({
   pending,
-  busy,
+  checkBusy,
+  submitBusy,
+  checkResults,
   outcomes,
   liveAccount,
   liveNetwork,
-  onResume,
+  onCheck,
+  onSubmit,
 }: {
   pending: readonly PendingWalletRequest[];
-  busy: string | undefined;
+  checkBusy: string | undefined;
+  submitBusy: string | undefined;
+  checkResults: ReadonlyMap<string, TariRequestOutcome>;
   outcomes: ReadonlyMap<string, string>;
   liveAccount: string | undefined;
   liveNetwork: string;
-  onResume: (record: PendingWalletRequest) => void;
+  onCheck: (record: PendingWalletRequest) => void;
+  onSubmit: (record: PendingWalletRequest) => void;
 }) {
   if (pending.length === 0) return null;
   return (
     <Card className="stack">
       <CardHeader title="Wallet approvals" />
       <p className="hint">
-        These transactions are waiting in your wallet for approval or were recently actioned. Each one is tied to your wallet's own request ID — you can check its current status at any time.
+        These transactions are open in your wallet. Use <strong>Check status</strong> to query the current state without submitting anything. If the wallet confirms approval, a separate <strong>Submit approved transaction</strong> button will appear.
       </p>
       <div className="stack">
         {pending.map((record) => {
-          // Refusals are computed from the LIVE session against the persisted record.
-          // Every mismatch blocks, so a tampered ledger can stop a resume but can
-          // never cause one.
-          // NO_LIVE_REVIEW is not a block here: the Activity page performs a pure
-          // id-based resume — tari_submitTransactionRequest takes only the requestId
-          // the wallet already approved, so there is no reconstruction to guard.
+          // Safety checks against the LIVE session. Every mismatch blocks.
+          // NO_LIVE_REVIEW is not a block: id-based submit needs no live review.
           const refusal: ResumeRefusal | undefined =
             liveAccount === undefined ? 'ACCOUNT_CHANGED' : resumeBlockReason(record, { account: liveAccount, network: liveNetwork });
           const blocked = refusal !== undefined && refusal !== 'NOT_BLOCKING' && refusal !== 'NO_LIVE_REVIEW';
           const outcome = outcomes.get(record.operationId);
+          const checkResult = checkResults.get(record.operationId);
+          const anyBusy = checkBusy === record.operationId || submitBusy === record.operationId;
+
+          // Submit button: only shown when the wallet confirmed APPROVED and no
+          // outcome (submission or terminal error) has been recorded yet.
+          const showSubmit = checkResult?.state === 'APPROVED' && outcome === undefined;
+
           return (
             <div key={record.operationId} className="stack" style={{ gap: 'var(--s-2)', padding: 'var(--s-3)', border: '1px solid var(--border, rgba(255,255,255,.08))', borderRadius: 'var(--r-2)' }}>
               <div className="spread" style={{ flexWrap: 'wrap' }}>
@@ -282,6 +331,12 @@ function PendingApprovalPanel({
                     {formatAddress(record.approvedAccount, 10, 8)} on {record.approvedNetwork}
                   </span>
                 </div>
+                <div className="stack" style={{ gap: 2, minWidth: 0 }}>
+                  <span className="label">Destination</span>
+                  <span className="mono hint" style={{ wordBreak: 'break-all' }}>
+                    {formatAddress(record.destination, 10, 8)}
+                  </span>
+                </div>
               </div>
 
               {blocked && refusal !== undefined && (
@@ -290,16 +345,55 @@ function PendingApprovalPanel({
                 </Notice>
               )}
 
+              {/* Wallet status after a check — shown until submission clears it */}
+              {checkResult !== undefined && outcome === undefined && (
+                <Notice
+                  tone={checkResult.state === 'APPROVED' || checkResult.state === 'SUBMITTED' ? 'info' : 'warn'}
+                  title="Wallet status"
+                >
+                  {checkResult.state === 'PENDING'
+                    ? 'Still waiting for your approval. Nothing has been submitted.'
+                    : checkResult.state === 'APPROVED'
+                      ? 'Your wallet has approved this request. Click Submit below to broadcast it.'
+                      : checkResult.state === 'SUBMITTED'
+                        ? `Already submitted${checkResult.transactionId !== undefined ? ` as ${formatAddress(checkResult.transactionId, 10, 8)}` : ''}. Reconcile below to confirm it committed.`
+                        : checkResult.state === 'REJECTED'
+                          ? `Declined by wallet${checkResult.reason !== undefined ? `: ${checkResult.reason}` : '.'}`
+                          : checkResult.state === 'FAILED'
+                            ? `Wallet reported failure${checkResult.reason !== undefined ? `: ${checkResult.reason}` : '.'}`
+                            : `Unknown wallet status${checkResult.state === 'UNKNOWN_STATUS' && checkResult.rawStatus !== undefined ? ` (${checkResult.rawStatus})` : ''}.`}
+                </Notice>
+              )}
+
               {outcome !== undefined && (
-                <Notice tone={outcome.startsWith('Submitted') ? 'info' : 'warn'} title="Result">
+                <Notice tone={outcome.startsWith('Submitted') || outcome.startsWith('Already') ? 'info' : 'warn'} title="Result">
                   {outcome}
                 </Notice>
               )}
 
               <div className="row" style={{ gap: 'var(--s-2)', flexWrap: 'wrap' }}>
-                <button type="button" className="btn btn--sm" disabled={blocked || liveAccount === undefined || busy === record.operationId} onClick={() => onResume(record)}>
-                  {busy === record.operationId ? 'Checking with the wallet…' : 'Check status in my wallet'}
+                {/* Read-only check button — never submits */}
+                <button
+                  type="button"
+                  className="btn btn--sm"
+                  disabled={blocked || liveAccount === undefined || anyBusy}
+                  onClick={() => onCheck(record)}
+                >
+                  {checkBusy === record.operationId ? 'Querying wallet…' : 'Check status in my wallet'}
                 </button>
+
+                {/* Submit button — appears only after wallet confirms APPROVED */}
+                {showSubmit && (
+                  <button
+                    type="button"
+                    className="btn btn--sm btn--primary"
+                    disabled={blocked || liveAccount === undefined || anyBusy}
+                    onClick={() => onSubmit(record)}
+                  >
+                    {submitBusy === record.operationId ? 'Submitting…' : 'Submit approved transaction'}
+                  </button>
+                )}
+
                 {blocked && <span className="hint">This request belongs to a different account or network.</span>}
               </div>
             </div>

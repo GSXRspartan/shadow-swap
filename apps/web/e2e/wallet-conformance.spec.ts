@@ -947,7 +947,12 @@ test('delayed approval: Activity-page resume submits by id when wallet approves 
   await expect(checkBtn).toBeEnabled({ timeout: 5_000 });
   await checkBtn.click();
 
-  // After clicking, `tari_submitTransactionRequest` must have been called
+  // After the check the wallet reports APPROVED, so the Submit button appears.
+  const submitBtn = page.getByRole('button', { name: 'Submit approved transaction' });
+  await expect(submitBtn).toBeVisible({ timeout: 5_000 });
+  await submitBtn.click();
+
+  // Now `tari_submitTransactionRequest` must have been called
   // with the correct requestId and no payload beyond it.
   await page.waitForTimeout(2_000);
   const log = await requestLog(page);
@@ -956,7 +961,7 @@ test('delayed approval: Activity-page resume submits by id when wallet approves 
   expect((submitCall?.params as { requestId?: string })?.requestId, 'must submit by id only').toBe('req_delayed_001');
 
   // The outcome panel must report the submission, not an error.
-  await expect(page.getByText(/Submitted as|tx_delayed_resumed/i)).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByText(/Submitted as/i)).toBeVisible({ timeout: 5_000 });
 });
 
 test('delayed approval: approval arriving after extension worker restart cannot double-submit', async ({ page }) => {
@@ -1031,5 +1036,6 @@ test('delayed approval: approval arriving after extension worker restart cannot 
   expect(submitCalls.length, 'must not call tari_submitTransactionRequest when already submitted').toBe(0);
 
   // The outcome must reference the already-broadcast txId.
-  await expect(page.getByText(/tx_already_broadcast|Submitted/i)).toBeVisible({ timeout: 5_000 });
+  // Uses "Already submitted" prefix which is unique to the outcome notice.
+  await expect(page.getByText(/Already submitted/i)).toBeVisible({ timeout: 5_000 });
 });

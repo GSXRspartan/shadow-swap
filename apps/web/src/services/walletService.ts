@@ -38,10 +38,13 @@ import {
   readSubstate,
   readRawSubstate,
   requestAccounts,
+  pollTransactionRequest,
   resumeTransactionRequest,
   signAndSubmit,
+  submitTransactionRequest,
   submitViaTransactionRequest,
   type TariProvider,
+  type TariRequestOutcome,
   type TariSignResult,
 } from './tariWindow.js';
 import type { TariWalletCapabilities, TariWithdrawStealthAndExecuteOperation } from './tariDappTypes.js';
@@ -134,6 +137,29 @@ export interface WalletBridge extends WalletAdapter {
    */
   forgetPendingRequest(operationId: string): void;
   /**
+   * Query the wallet for the current status of a durable request WITHOUT submitting.
+   *
+   * Read-only. This is used by the Activity page "Check status" button. It never
+   * calls `tari_submitTransactionRequest`. The caller decides whether to offer a
+   * submit action based on the returned outcome.
+   *
+   * Returns the wallet's own verdict, plus the existing transaction id when the
+   * wallet reports the request is already submitted.
+   */
+  checkRequestStatus(record: PendingWalletRequest, live: ResumeBinding): Promise<TariRequestOutcome>;
+  /**
+   * Submit an already-approved request BY ID, exactly once.
+   *
+   * Guards:
+   *   - Same account / network checks as `resumePendingRequest`.
+   *   - Single-shot: a second call for the same requestId throws immediately.
+   *   - Marks the ledger entry SUBMITTED before returning, so a reload cannot
+   *     offer a second submit button.
+   *
+   * Never creates a new request. Never reconstructs a payload.
+   */
+  submitApprovedRequest(record: PendingWalletRequest, live: ResumeBinding): Promise<{ transactionId: string }>;
+  /**
    * Sign the exact request that was reviewed. Preferred over `signAndSubmit`
    * for any financial operation, because it does not re-derive the payload from
    * a preview and therefore cannot drift from what the user approved.
@@ -164,6 +190,8 @@ class TariBridgeWalletAdapter implements WalletBridge {
   private resources: ResourceInfo[] = [];
   /** Durable operation id -> wallet transaction-request id, for reload resume. */
   private readonly requestIds = new Map<string, string>();
+  /** Request ids for which tari_submitTransactionRequest has already been called this session. */
+  private readonly submittedRequestIds = new Set<string>();
   /**
    * Durable ledger backing `requestIds`.
    *
@@ -694,6 +722,54 @@ class TariBridgeWalletAdapter implements WalletBridge {
       // the user can retry the resume once connectivity is restored.
       return { submitted: false, state: 'UNKNOWN', detail: (error as Error).message };
     }
+  }
+
+  async checkRequestStatus(record: PendingWalletRequest, live: ResumeBinding): Promise<TariRequestOutcome> {
+    const refusal = resumeBlockReason(record, live);
+    if (refusal !== undefined && refusal !== 'NOT_BLOCKING' && refusal !== 'NO_LIVE_REVIEW') {
+      throw new TariProviderError(describeResumeRefusal(refusal), refusal === 'NETWORK_CHANGED' ? 'WRONG_NETWORK' : 'ACCOUNT_CHANGED');
+    }
+    this.provider = getTariProvider();
+    return pollTransactionRequest(this.provider, record.requestId);
+  }
+
+  async submitApprovedRequest(record: PendingWalletRequest, live: ResumeBinding): Promise<{ transactionId: string }> {
+    const refusal = resumeBlockReason(record, live);
+    if (refusal !== undefined && refusal !== 'NOT_BLOCKING' && refusal !== 'NO_LIVE_REVIEW') {
+      throw new TariProviderError(describeResumeRefusal(refusal), refusal === 'NETWORK_CHANGED' ? 'WRONG_NETWORK' : 'ACCOUNT_CHANGED');
+    }
+    // Single-shot guard: a second call for the same requestId is refused immediately.
+    // This covers double-clicks and multiple renders without relying on UI disable state alone.
+    if (this.submittedRequestIds.has(record.requestId)) {
+      throw new TariProviderError(
+        `Request ${record.requestId} has already been submitted in this session. Do not submit it again.`,
+        'REJECTED',
+      );
+    }
+    this.provider = getTariProvider();
+    // Mark BEFORE the network call so a concurrent second call is refused even
+    // if the first has not returned yet.
+    this.submittedRequestIds.add(record.requestId);
+    let result: TariSignResult;
+    try {
+      result = await submitTransactionRequest(this.provider, record.requestId);
+    } catch (error) {
+      // Remove the guard only on a definitive non-submission error so the user
+      // can retry on a transient network failure, but not on a logic error.
+      const code = error instanceof TariProviderError ? error.code : 'UNKNOWN';
+      if (code !== 'TIMEOUT' && code !== 'INTERNAL') {
+        this.submittedRequestIds.delete(record.requestId);
+      }
+      throw error;
+    }
+    // Persist the SUBMITTED state so a reload cannot offer a second submit button.
+    this.requestIds.set(record.operationId, record.requestId);
+    rememberPendingRequest(this.pendingStorage, {
+      ...record,
+      state: 'SUBMITTED',
+      transactionId: result.transactionId,
+    });
+    return { transactionId: result.transactionId };
   }
 
   async signAndSubmit(preview: TransactionPreview): Promise<TransactionResult> {
