@@ -125,9 +125,31 @@ Steps to execute:
 
 ---
 
-## 7. Remaining blockers for first live swap
+## 7. Walletd location (2026-11-08)
 
-1. **Connect Sapient** at `http://localhost:4173` → authoritative read runs → TESTA/TESTB labels appear, dry_run preview shows
-2. **walletd JWT token** needed only for `accounts.*` RPC calls; not needed for reserve verification (indexer suffices)
-3. **CrossLayerHtlc WASM**: building in WSL (Rust 1.99.1 updating); engine tests pending — not required for pool swap
-4. **Pool dry runs** (swap/addLiq/removeLiq): blocked on Sapient connect (uses wallet's dry_run, not walletd)
+The Ootle wallet daemon binary is at:
+
+```
+C:\Users\pdark\.tari\ootle\shadow-swap-esmeralda-live\walletd.exe
+```
+
+**Authentication: None** (confirmed from walletd-out.log). No JWT token required.
+Last run: 11/1/2026 09:08. Database last modified: 11/2/2026 03:39.
+
+To restart:
+
+```powershell
+cd C:\Users\pdark\.tari\ootle\shadow-swap-esmeralda-live
+.\walletd.exe
+```
+
+Listens on `127.0.0.1:5100`. Web UI at `http://127.0.0.1:5100`.
+
+---
+
+## 8. Remaining blockers for first live swap
+
+1. **Start walletd** — run `.\walletd.exe` from `shadow-swap-esmeralda-live`. Port 5100, auth=None.
+2. **Connect Sapient** at `http://localhost:4173` → authoritative read runs → TESTA/TESTB labels appear, dry_run preview shows
+3. **CrossLayerHtlc WASM**: building in WSL (Rust 1.99.1 installed); engine tests running — not required for pool swap
+4. **Pool dry runs** (swap/addLiq/removeLiq): blocked on Sapient connect (walletd auth=None, so no JWT needed)

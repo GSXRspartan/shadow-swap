@@ -56,7 +56,7 @@ Sources: `packages/protocol-client/src/crossLayer/walletCapabilities.ts`
 | L1_TO_L2 | LOCAL_WALLETD_GRPC (user) | SAPIENT (maker) | GRPC | SAPIENT |
 
 This pair satisfies all 8 required operations. `LOCAL_WALLETD_GRPC` needs a Minotari
-wallet running locally with gRPC enabled — `--grpc-address 127.0.0.1:18142`.
+wallet running locally with gRPC enabled — `--grpc-address 127.0.0.1:18143`.
 
 ---
 
@@ -69,33 +69,40 @@ wallet running locally with gRPC enabled — `--grpc-address 127.0.0.1:18142`.
 The template source exists at `templates/cross_layer_htlc/src/lib.rs` and is correct. It needs
 to be compiled to WASM and published via the walletd web UI.
 
-**Commands for the user (PowerShell from the repo root):**
+**Build requires WSL (not Windows)** — `wasmer-compiler-cranelift` v7.5.0 refuses to compile
+on Windows. Build in `Ubuntu-22.04-orig` (the working distro; `Ubuntu-22.04` is read-only):
 
 ```powershell
-cd templates\cross_layer_htlc
-rustup target add wasm32-unknown-unknown
-cargo build --target wasm32-unknown-unknown --release
+wsl -d "Ubuntu-22.04-orig" bash -c "cd /mnt/c/Users/pdark/.codex/worktrees/ootle-v0501-pool/rewritten-main/templates/cross_layer_htlc && CARGO_TARGET_DIR=~/build_htlc/target cargo build --target wasm32-unknown-unknown --release"
 ```
 
-WASM output: `target\wasm32-unknown-unknown\release\cross_layer_htlc.wasm`
+WASM output (inside WSL): `~/build_htlc/target/wasm32-unknown-unknown/release/cross_layer_htlc.wasm`
+Copy to Windows: `cp ~/build_htlc/target/wasm32-unknown-unknown/release/cross_layer_htlc.wasm /mnt/c/Users/pdark/cross_layer_htlc.wasm`
 
+Walletd binary: `C:\Users\pdark\.tari\ootle\shadow-swap-esmeralda-live\walletd.exe` (auth=None, port 5100)
+Start: `cd C:\Users\pdark\.tari\ootle\shadow-swap-esmeralda-live && .\walletd.exe`
 Then open `http://127.0.0.1:5100` → Publish template → upload the WASM.
 Record the returned template address in `protocolDeployment.ts:ESMERALDA_V049.crossLayerHtlcTemplates`.
 
 ### Blocker 2: No L1 Minotari wallet connected
 
 The `/market` page shows "Local Minotari wallet: Not connected". Start the Minotari console
-wallet with gRPC enabled:
+wallet with gRPC enabled on the loopback only:
 
 ```powershell
-tari_console_wallet --grpc-address 0.0.0.0:18143
+tari_console_wallet --grpc-address 127.0.0.1:18143
 ```
 
 Official Tari defaults: Minotari BASE NODE gRPC is port 18142; CONSOLE WALLET gRPC is
 port 18143 and is DISABLED by default — it must be enabled explicitly with the flag above.
 The app connects to `http://127.0.0.1:18143` for L1 operations (SendShaAtomicSwapTransaction,
 ClaimShaAtomicSwapTransaction, ClaimHtlcRefundTransaction). No L1 operations are possible
-until this is running. Never start with --grpc-address 0.0.0.0 on a network-reachable host.
+until this is running.
+
+**Note**: `tari_console_wallet` binary NOT found in PATH or standard locations (2026-11-08).
+Wallet database exists at `C:\Users\pdark\.tari\esmeralda\data\wallet.sqlite` (last: 5/19/2026).
+The binary may be in a Minotari release archive. Download from tari.com/downloads if needed.
+This is distinct from `walletd.exe` (Ootle L2 daemon at port 5100 — used for all pool operations).
 
 ### Blocker 3: `crossLayerAvailability` returns NOT_RECORDED
 
