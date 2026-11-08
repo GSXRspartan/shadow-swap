@@ -264,8 +264,8 @@ export function PoolsPage() {
                   <SortableHeader label="24h volume" sortKey="volume" sort={sort} direction={direction} onSort={toggleSort} align="right" />
                   <SortableHeader label="Liquidity" sortKey="liquidity" sort={sort} direction={direction} onSort={toggleSort} align="right" />
                   <th scope="col" className="right">24h LP fees</th>
-                  <th scope="col">Market data</th>
-                  <th scope="col">Asset safety</th>
+                  <th scope="col">Data</th>
+                  <th scope="col">Asset type</th>
                 </tr>
               </thead>
               <tbody>
@@ -275,8 +275,8 @@ export function PoolsPage() {
                       <Link to={`/pools/${encodeURIComponent(row.pool.poolComponent)}`} style={{ fontWeight: 600 }}>
                         {row.pairLabel}
                       </Link>
-                      <div className="hint mono truncate" style={{ maxWidth: 220 }}>
-                        {row.pool.poolComponent}
+                      <div className="hint mono truncate" style={{ maxWidth: 220, fontSize: 'var(--text-xs)' }} title={row.pool.poolComponent}>
+                        {row.pool.poolComponent.slice(0, 20)}…{row.pool.poolComponent.slice(-8)}
                       </div>
                     </td>
                     <td className="right num">{row.header?.currentPrice === undefined ? UNAVAILABLE : formatPrice(row.header.currentPrice)}</td>

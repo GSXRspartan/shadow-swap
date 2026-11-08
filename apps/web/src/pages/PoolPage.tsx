@@ -323,43 +323,68 @@ export function PoolPage() {
 }
 
 function PoolDetails({ pool }: { pool: PoolDescriptor }) {
+  const [expanded, setExpanded] = useState(false);
   return (
     <Card>
-      <h2 className="card__title" style={{ marginBottom: 'var(--s-3)' }}>
-        Market details
-      </h2>
-      <div className="grid-2">
-        <div className="stack" style={{ gap: 'var(--s-2)', minWidth: 0 }}>
-          <span className="label">Pool component</span>
-          <span className="mono" style={{ wordBreak: 'break-all', fontSize: 'var(--text-sm)' }}>
-            {pool.poolComponent}
-          </span>
+      <div className="spread" style={{ marginBottom: 'var(--s-3)' }}>
+        <h2 className="card__title">Pool details</h2>
+        <button
+          type="button"
+          className="btn btn--sm btn--ghost"
+          onClick={() => setExpanded((v) => !v)}
+          aria-expanded={expanded}
+        >
+          {expanded ? 'Hide addresses' : 'Show addresses'}
+        </button>
+      </div>
+
+      {/* Key metrics — always visible */}
+      <div className="grid-2" style={{ marginBottom: 'var(--s-3)' }}>
+        <div className="stack" style={{ gap: 'var(--s-1)' }}>
+          <span className="label">Base asset</span>
+          <span style={{ fontWeight: 600, color: 'var(--text-1)' }}>{pool.base.symbol ?? 'Unnamed'}</span>
+          <span className="hint">{pool.base.decimals} decimal{Number(pool.base.decimals) !== 1 ? 's' : ''}</span>
         </div>
-        <div className="stack" style={{ gap: 'var(--s-2)' }}>
+        <div className="stack" style={{ gap: 'var(--s-1)' }}>
+          <span className="label">Quote asset</span>
+          <span style={{ fontWeight: 600, color: 'var(--text-1)' }}>{pool.quote.symbol ?? 'Unnamed'}</span>
+          <span className="hint">{pool.quote.decimals} decimal{Number(pool.quote.decimals) !== 1 ? 's' : ''}</span>
+        </div>
+      </div>
+
+      <div className="grid-2">
+        <div className="stack" style={{ gap: 'var(--s-1)' }}>
           <span className="label">Fee tier</span>
-          <span className="num">{pool.feeBps === undefined ? UNAVAILABLE : `${pool.feeBps} bps`}</span>
+          <span className="num">{pool.feeBps === undefined ? UNAVAILABLE : `${pool.feeBps} bps (${(Number(pool.feeBps) / 100).toFixed(2)}%)`}</span>
+          <span className="hint">Paid to liquidity providers</span>
         </div>
       </div>
-      <hr className="divider" />
-      <div className="grid-2">
-        {[pool.base, pool.quote].map((asset, index) => (
-          <div key={asset.resourceAddress} className="stack" style={{ gap: 'var(--s-1)', minWidth: 0 }}>
-            <span className="label">{index === 0 ? 'Base asset' : 'Quote asset'}</span>
-            <span style={{ fontWeight: 600 }}>{asset.symbol ?? 'Unnamed'}</span>
-            <span className="mono muted" style={{ wordBreak: 'break-all', fontSize: 'var(--text-sm)' }}>
-              {asset.resourceAddress}
-            </span>
-            <span className="hint">
-              {index === 0 ? 'Base' : 'Quote'} · {asset.decimals} decimals · {asset.safetyClass}
-            </span>
+
+      {/* On-chain addresses — collapsed by default */}
+      {expanded && (
+        <>
+          <hr className="divider" />
+          <div className="stack" style={{ gap: 'var(--s-3)' }}>
+            <div className="stack" style={{ gap: 'var(--s-1)', minWidth: 0 }}>
+              <span className="label">Pool component address</span>
+              <span className="mono" style={{ wordBreak: 'break-all', fontSize: 'var(--text-sm)', color: 'var(--text-2)' }}>
+                {pool.poolComponent}
+              </span>
+            </div>
+            {[pool.base, pool.quote].map((asset) => (
+              <div key={asset.resourceAddress} className="stack" style={{ gap: 'var(--s-1)', minWidth: 0 }}>
+                <span className="label">{asset.symbol ?? 'Unnamed'} resource address</span>
+                <span className="mono" style={{ wordBreak: 'break-all', fontSize: 'var(--text-sm)', color: 'var(--text-2)' }}>
+                  {asset.resourceAddress}
+                </span>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
-      <hr className="divider" />
-      <p className="hint">
-        Symbols are labels, never settlement identity. Two resources can share a symbol; the addresses above are what the protocol routes, prices, and
-        settles against.
-      </p>
+          <p className="hint" style={{ marginTop: 'var(--s-3)' }}>
+            These on-chain addresses are what the protocol uses to identify each asset. The symbols above are display labels only.
+          </p>
+        </>
+      )}
     </Card>
   );
 }

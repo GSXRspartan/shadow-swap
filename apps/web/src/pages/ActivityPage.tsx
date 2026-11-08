@@ -36,24 +36,15 @@ const STATE_TONE: Record<OperationState, BadgeTone> = {
 };
 
 const STATE_EXPLANATION: Record<OperationState, string> = {
-  PENDING: 'Constructed but not yet acknowledged by the transport.',
-  SUBMITTED: 'The transport acknowledged a transaction id. Waiting for an authoritative answer.',
-  CONFIRMED: 'An authoritative lookup proved the transaction committed.',
-  FAILED: 'An authoritative lookup proved the transaction was rejected or does not exist.',
-  UNKNOWN: 'The submission outcome is unknown. It is being reconciled by durable identifier and is deliberately not retried.',
+  PENDING: 'Built and ready to send, but not yet received by the network.',
+  SUBMITTED: 'Sent to the network. Waiting for confirmation that it committed.',
+  CONFIRMED: 'The network confirmed this transaction went through.',
+  FAILED: 'The network rejected this transaction. It did not execute.',
+  UNKNOWN: 'The outcome is unclear. This app will not retry it automatically — check your wallet and reconcile below if needed.',
 };
 
-/**
- * Why a `CONFIRMED` badge read from this browser is a claim, not a fact.
- *
- * `localStorage` is fully editable by any script on this origin, so a persisted
- * `CONFIRMED` proves only that something wrote it. The record is still shown —
- * hiding it would lose the user's only pointer to a transaction they may need to
- * reconcile — but the badge is qualified and the authoritative lookup stays
- * available instead of being blocked.
- */
 const CLAIMED_EXPLANATION =
-  'Stored in this browser as CONFIRMED. Local storage can be edited by any script on this origin, so this is a claim. Reconcile it against the chain before treating it as settled.';
+  'Marked as confirmed in your browser history. Use "Verify on chain" below to get an authoritative answer directly from the network.';
 
 export function ActivityPage() {
   const { executionWallets, walletBridge, wallet } = useApp();
@@ -250,8 +241,7 @@ function PendingApprovalPanel({
     <Card className="stack">
       <CardHeader title="Wallet approvals" />
       <p className="hint">
-        Durable requests this browser created. Reopening a page does not lose them: each entry is the wallet's own request id, and checking it
-        asks your wallet what really happened rather than assuming.
+        These transactions are waiting in your wallet for approval or were recently actioned. Each one is tied to your wallet's own request ID — you can check its current status at any time.
       </p>
       <div className="stack">
         {pending.map((record) => {

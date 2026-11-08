@@ -288,10 +288,63 @@ export function CandleChart({
       {state.renderCanvas ? (
         <div ref={containerRef} style={{ position: 'relative', width: '100%', height }} role="img" aria-label={`Candlestick chart for ${baseSymbol} against ${quoteSymbol}. Latest price ${lastPrice}.`} />
       ) : (
-        <div style={{ minHeight: height, display: 'flex', alignItems: 'center' }}>
-          <EmptyState title={state.headline} detail={state.detail} />
+        <div style={{ minHeight: height, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 'var(--s-4)', padding: 'var(--s-6)' }}>
+          <ChartPlaceholder state={state.state} baseSymbol={baseSymbol} quoteSymbol={quoteSymbol} />
         </div>
       )}
+    </div>
+  );
+}
+
+function ChartPlaceholder({ state, baseSymbol, quoteSymbol }: { state: string; baseSymbol: string; quoteSymbol: string }) {
+  const isNoTrades = state === 'NO_TRADES_YET' || state === 'EMPTY_MARKET';
+  const isLoading = state === 'LOADING';
+  const isUnavailable = state === 'UNAVAILABLE' || state === 'DEGRADED';
+
+  return (
+    <div style={{ textAlign: 'center', maxWidth: 440, margin: '0 auto' }}>
+      {/* Decorative chart silhouette */}
+      <svg
+        width="200"
+        height="80"
+        viewBox="0 0 200 80"
+        fill="none"
+        aria-hidden="true"
+        style={{ marginBottom: 'var(--s-4)', opacity: 0.18 }}
+      >
+        {/* Candle sticks */}
+        <line x1="20" y1="12" x2="20" y2="68" stroke="var(--up)" strokeWidth="1" />
+        <rect x="15" y="22" width="10" height="28" rx="1" fill="var(--up)" />
+        <line x1="45" y1="20" x2="45" y2="72" stroke="var(--down)" strokeWidth="1" />
+        <rect x="40" y="30" width="10" height="32" rx="1" fill="var(--down)" />
+        <line x1="70" y1="10" x2="70" y2="55" stroke="var(--up)" strokeWidth="1" />
+        <rect x="65" y="18" width="10" height="22" rx="1" fill="var(--up)" />
+        <line x1="95" y1="18" x2="95" y2="62" stroke="var(--up)" strokeWidth="1" />
+        <rect x="90" y="26" width="10" height="20" rx="1" fill="var(--up)" />
+        <line x1="120" y1="30" x2="120" y2="68" stroke="var(--down)" strokeWidth="1" />
+        <rect x="115" y="38" width="10" height="20" rx="1" fill="var(--down)" />
+        <line x1="145" y1="14" x2="145" y2="52" stroke="var(--up)" strokeWidth="1" />
+        <rect x="140" y="22" width="10" height="18" rx="1" fill="var(--up)" />
+        <line x1="170" y1="8" x2="170" y2="45" stroke="var(--up)" strokeWidth="1" />
+        <rect x="165" y="14" width="10" height="20" rx="1" fill="var(--up)" />
+        {/* Grid lines */}
+        <line x1="10" y1="25" x2="190" y2="25" stroke="currentColor" strokeWidth="0.5" strokeDasharray="4 3" />
+        <line x1="10" y1="50" x2="190" y2="50" stroke="currentColor" strokeWidth="0.5" strokeDasharray="4 3" />
+        <line x1="10" y1="68" x2="190" y2="68" stroke="currentColor" strokeWidth="0.5" />
+      </svg>
+
+      <p style={{ fontWeight: 600, color: 'var(--text-1)', marginBottom: 'var(--s-2)' }}>
+        {isLoading ? 'Loading chart data…' : isNoTrades ? `${baseSymbol} / ${quoteSymbol} chart` : 'Chart unavailable'}
+      </p>
+      <p className="hint" style={{ lineHeight: 1.6 }}>
+        {isLoading
+          ? 'Reading candle data from the market-data source.'
+          : isNoTrades
+            ? 'No trades have been recorded in this pool yet. Make a swap and the chart will populate with live price history.'
+            : isUnavailable
+              ? 'The market-data source is not reporting for this pool. The swap and liquidity controls below are unaffected.'
+              : 'Chart data is not available for this interval.'}
+      </p>
     </div>
   );
 }
