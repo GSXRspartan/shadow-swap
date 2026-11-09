@@ -19,3 +19,6 @@ blob-report/
 
 # Local agent/IDE tool config - never project content.
 .claude/
+
+# Market indexer local ledger (runtime data, must never commit).
+tools/market-indexer/data/
