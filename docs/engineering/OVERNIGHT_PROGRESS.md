@@ -8,13 +8,14 @@ recorded as verified trade observations; the chart renders epoch-bucketed data a
 epoch-axis SVG line instead of an empty state. Web Tari Universe remains the primary
 wallet target; Cloudflare/VPS deploy need operator credentials (approved gates).
 
-## Session 2 findings (2026-11-09)
-- `f086f36fa` cohort fix + `f8b66ef97` hero/art + `7dac5c039` sidecar + `2f04eccb8`/`09068ec15` indexer refinements/commit.
-- 0.51 live TESTA/TESTB pool quote math verified against live reserves from the sidecar's public decode; template pin matched.
-- walletd 0.47 cannot parse 0.51 chain responses; v0492 DB migration broken under 0.47 (`owner_key`). Wallet-backed dry-run suite needs a 0.51-compatible walletd (out of scope without authorization).
-- Sidecar ledger dedupe verified (3 lines after two polls); trade endpoint/ candles empty (honest start); provenance labels added.
-- serde codecs confirmed: receipts decode on 0.51; vault histories unavailable beyond current version (forward-accrual only).
-- Meshy: 30/500 credits spent (1325 remaining).
+## Session 2 (final) — 05023a8ed
+- 0.52 live; cohort gate accepts 0.52 (receipt format re-verified with pinned codec).
+- CrossLayerMarketPage flagship header (poster art, honest L1 block).
+- Market indexer hardened (ledger dedupe across restart, partial aggregates, provenance, /api endpoints, docker+compose).
+- LIVE pool quote check: template pin match; 1.0 TESTA→TESTB out=1.006870; reserves 99012842/101000000 (TESTB/TESTA).
+- Wallet-backed dry-runs BLOCKED: walletd 0.47 can't parse 0.51/0.52 chain responses; v0492 DB needs migration (needs approval). Direct-indexer reads confirm everything else.
+- Tests: 663/663 web. Meshy 30/500 credits used (1325 remaining).
+
 
 
 ## Completed (verified)
