@@ -21,6 +21,13 @@
  *              official Esmeralda indexers on 2026-11-07: `/info`, template catalogue,
  *              and `/substates/fetch` all preserve their v0.49 field shapes.
  *
+ *   - v0.51.0 (2026-11-08, Esmeralda) is a same-generation engine upgrade, NOT a reset:
+ *              epoch continued (12970) and the CBOR/base64 transport is unchanged. The
+ *              cohort therefore stays V049_RESET and the wire format stays CBOR_VALUES;
+ *              only the verified-version ceiling moves. Existing V2 templates and
+ *              component addresses remain addressable (verified live against the
+ *              upgraded indexers: /info, /transaction-receipts, /substates/fetch).
+ *
  * A client that guesses the format reads a CBOR receipt (a string) as "not a receipt",
  * skips it, and reports a deployed protocol as EMPTY. That is a silent false negative,
  * and it is exactly what the pre-v0.48 discovery code did. So the format is derived
@@ -62,7 +69,7 @@ export interface IndexerCohort {
 }
 
 /** Human-readable range, used in refusals and in the documentation. */
-export const SUPPORTED_INDEXER_RANGE = '0.41.x through 0.50.x';
+export const SUPPORTED_INDEXER_RANGE = '0.41.x through 0.51.x';
 
 /** The cohort this build's templates and engine tests are pinned to. */
 export const PINNED_OOTLE_RELEASE = {
@@ -102,6 +109,9 @@ export function classifyIndexerVersion(version: unknown): CohortClassification {
     return { ok: true, cohort: { version: text, major, minor, generation: 'V049_RESET', wireFormat: 'CBOR_VALUES' } };
   }
   if (major === 0 && minor === 50) {
+    return { ok: true, cohort: { version: text, major, minor, generation: 'V049_RESET', wireFormat: 'CBOR_VALUES' } };
+  }
+  if (major === 0 && minor === 51) {
     return { ok: true, cohort: { version: text, major, minor, generation: 'V049_RESET', wireFormat: 'CBOR_VALUES' } };
   }
   if (major === 0 && minor >= 41 && minor <= 47) {
