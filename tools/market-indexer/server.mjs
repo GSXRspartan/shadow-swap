@@ -136,6 +136,23 @@ const ledger = new Ledger(DATA_DIR);
 const byVault = new Map();
 const byPool = new Map();
 
+/* Persistence-across-restart: the pool-state rows carry vault versions, so a
+ * restart seeds `byPool` and the next poll continues the version chain instead
+ * of restarting attribution from zero. */
+for (const row of ledger.rows.filter((r) => r.type === 'vault-state')) {
+  byVault.set(row.vault, row);
+}
+for (const row of ledger.rows.filter((r) => r.type === 'pool-state')) {
+  if (!byPool.has(row.pool)) byPool.set(row.pool, row);
+  else byPool.set(row.pool, row);
+}
+
+/** Idempotent ingestion: a vault version (pool + version) may ingest exactly once. */
+function ledgerHasVaultVersion(vault, version) {
+  if (version === undefined || version === null) return true; // unknown -> refuse (fail closed)
+  return ledger.rows.some((r) => r.type === 'vault-state' && r.vault === vault && r.vaultVersion === version);
+}
+
 // --- fetch -------------------------------------------------------------------
 
 async function fetchBatch(ids) {
@@ -168,6 +185,25 @@ export function deriveTrade(before, after) {
   const output = isAB ? -dB : -dA;
   if (input <= 0n || output <= 0n) return undefined;
   return { kind: 'trade', direction: isAB ? 'BASE_TO_QUOTE' : 'QUOTE_TO_BASE', inputAmount: input.toString(), outputAmount: output.toString() };
+}
+
+/**
+ * Totally-ordered chain state READ: for a fetched pool at component version V
+ * with vault versions (vA, vB), knowledge of (vA_d, vB_d) before this read
+ * gives the aggregate effect of (dA_v, dB_v) swaps starting from a state whose
+ * reserves matched those versions.
+ *
+ * A receipt scan would attribute dA_v + dB_v d trades but receipt diffs are
+ * hash-only (value bodies unavailable), so exact per-transaction amounts for
+ * historical receipts are unavailable. An aggregate row marked partial=true is
+ * the honest representation of >1 chained trades.
+ */
+export function aggregateTrade(before, after, advanceA, advanceB) {
+  const common = Math.min(advanceA, advanceB);
+  const derived = deriveTrade(before, after);
+  if (derived === undefined) return undefined;
+  if (common === 1 && advanceA === 1 && advanceB === 1) return { ...derived, partial: false, multiCount: 1 };
+  return { ...derived, partial: true, multiCount: common };
 }
 
 // --- poll ---------------------------------------------------------------------
@@ -224,31 +260,53 @@ async function pollOnce() {
       vaultVersions: versions,
     };
     byPool.set(component, state);
-    const advancedBothExactlyOnce =
-      previous !== undefined &&
-      Number(previous.vaultVersions.A) + 1 === Number(versions.A) &&
-      Number(previous.vaultVersions.B) + 1 === Number(versions.B);
-    if (advancedBothExactlyOnce) {
-      const derived = deriveTrade(
-        { reserveA: previous.reserveA, reserveB: previous.reserveB },
-        { reserveA: amountA, reserveB: amountB },
-      );
-      if (derived && derived.kind === 'trade') {
-        ledger.append({
-          type: 'trade',
-          ts: Date.now(),
-          pool: component,
-          epoch,
-          direction: derived.direction,
-          inputAmount: derived.inputAmount,
-          outputAmount: derived.outputAmount,
-          before: { reserveA: previous.reserveA, reserveB: previous.reserveB },
-          after: { reserveA: amountA, reserveB: amountB },
-          chainTxId: `derived:${epoch}:${versions.A}:${versions.B}`,
-        });
+    if (previous !== undefined) {
+      const advanceA = Number(versions.A) - Number(previous.vaultVersions?.A ?? 0);
+      const advanceB = Number(versions.B) - Number(previous.vaultVersions?.B ?? 0);
+      if (advanceA >= 1 && advanceB >= 1) {
+        // Inferred trade(s): both vaults advanced since the previous read and
+        // the movement is opposite. For >1 advances the row aggregates the
+        // window's activity and is marked partial — it is not one trade.
+        const derived = aggregateTrade(
+          { reserveA: previous.reserveA, reserveB: previous.reserveB },
+          { reserveA: amountA, reserveB: amountB },
+          advanceA,
+          advanceB,
+        );
+        if (derived !== undefined && derived.kind === 'trade') {
+          ledger.append({
+            type: 'trade',
+            ts: Date.now(),
+            pool: component,
+            epoch,
+            direction: derived.direction,
+            inputAmount: derived.inputAmount,
+            outputAmount: derived.outputAmount,
+            before: { reserveA: previous.reserveA, reserveB: previous.reserveB },
+            after: { reserveA: amountA, reserveB: amountB },
+            partial: derived.partial,
+            multiCount: derived.multiCount,
+            provenance: 'INFERRED_CONSECUTIVE_OBSERVATION',
+            verifiedByReceipt: false,
+            chainTxId: `derived:${epoch}:${versions.A}:${versions.B}`,
+          });
+        }
       }
     }
-    ledger.append({ type: 'pool-state', ts: Date.now(), ...state });
+    if (!ledgerHasVaultVersion(shape.reserveVaultA, versions.A)) {
+      ledger.append({ type: 'vault-state', ts: Date.now(), pool: component, epoch, vault: shape.reserveVaultA, vaultVersion: versions.A, vaultKind: 'A', rawAmount: amountA });
+    }
+    if (!ledgerHasVaultVersion(shape.reserveVaultB, versions.B)) {
+      ledger.append({ type: 'vault-state', ts: Date.now(), pool: component, epoch, vault: shape.reserveVaultB, vaultVersion: versions.B, vaultKind: 'B', rawAmount: amountB });
+    }
+    const previousPoolState = ledger.rows.filter((r) => r.type === 'pool-state' && r.pool === component).pop();
+    const stateChanged =
+      previousPoolState === undefined ||
+      previousPoolState.version !== state.version ||
+      previousPoolState.reserveA !== state.reserveA ||
+      previousPoolState.reserveB !== state.reserveB ||
+      previousPoolState.epoch !== state.epoch;
+    if (stateChanged) ledger.append({ type: 'pool-state', ts: Date.now(), ...state });
   }
 }
 
