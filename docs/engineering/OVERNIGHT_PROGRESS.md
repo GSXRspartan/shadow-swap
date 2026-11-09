@@ -18,7 +18,7 @@ wallet target; Cloudflare/VPS deploy need operator credentials (approved gates).
   - `SwapCard` saves the snapshot at submit (`pool.poolComponent`, before-pool, fee, freshness identity).
 - `3af115373` — `components/EpochChart.tsx` (SVG: price line + volume bars, epoch-only honest axes; tooltip from exact `baseVolumeRaw`; uses protocol `toChartSeries` display boundary).
 - `PoolPage` renders `EpochChart` when `chartTimeBasis(candles).kind === 'EPOCH_ONLY' && candles.length > 0`.
-- Tests: `apps/web/test/market-observations.test.cjs` — 6/6 pass. **Web suite 661/661**, build clean. `protocol-client` 268/268 green (inherited).
+- Tests: `apps/web/test/market-observations.test.cjs` — 6/6 pass. `apps/web/test/epoch-chart.test.cjs` — 2/2 pass. **Web suite 663/663**, build clean. `protocol-client` 268/268 green (inherited).
 
 ## Files/assumptions to remember
 - Observation attribution needs wallet-connected readback; without it, charts stay honestly empty (never fabricated).
