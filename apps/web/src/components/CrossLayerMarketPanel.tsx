@@ -246,6 +246,25 @@ export function CrossLayerMarketPanel() {
         {gaps.length > 0 && (
           <DataRow label="Operations nothing available can sign" value={gaps.join(', ')} tone="warn" />
         )}
+        <h3>Leg readiness (from your connected wallet)</h3>
+        <DataRow
+          label="L2 wallet-native HTLC (script-path)"
+          value={
+            wallet.capabilities === undefined
+              ? 'Unknown — connect a wallet to read its real capabilities.'
+              : wallet.capabilities.l2HtlcFund && wallet.capabilities.l2HtlcClaim
+                ? 'Advertised by your wallet (fund + claim).'
+                : wallet.capabilities.l2HtlcFund
+                  ? 'Fund advertised; claim not advertised — the leg cannot be armed by this wallet.'
+                  : 'Not advertised by your wallet. The L2 leg cannot sign.'
+          }
+          tone={wallet.capabilities === undefined || !(wallet.capabilities.l2HtlcFund && wallet.capabilities.l2HtlcClaim) ? 'warn' : undefined}
+        />
+        <DataRow
+          label="L1 Minotari HTLC (browser)"
+          value="Blocked upstream: no browser wallet exposes L1 hash-time-lock signing. The L1 leg needs the local companion or an upstream wallet method."
+          tone="warn"
+        />
       </Card>
 
       <Card>
