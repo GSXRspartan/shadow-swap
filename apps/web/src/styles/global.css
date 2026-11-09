@@ -935,10 +935,12 @@ textarea {
   pointer-events: none;
   background-image:
     linear-gradient(100deg, var(--surface-0) 4%, rgba(6, 8, 12, 0.86) 34%, rgba(6, 8, 12, 0.45) 62%, rgba(6, 8, 12, 0.9) 100%),
+    url('/assets/cross-chain-sculpture/thumbnail.png'),
     url('/hero-liquidity.webp');
-  background-size: cover, cover;
-  background-position: center, center right;
+  background-size: cover, auto 82%, cover;
+  background-position: center, center right 64%, center right;
   background-repeat: no-repeat;
+  background-color: #000;
   -webkit-mask-image: linear-gradient(180deg, #000 55%, transparent 96%);
   mask-image: linear-gradient(180deg, #000 55%, transparent 96%);
 }

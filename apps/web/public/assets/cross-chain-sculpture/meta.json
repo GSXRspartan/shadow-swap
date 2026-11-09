@@ -1,0 +1,60 @@
+{
+  "resource": "text-to-3d",
+  "task": {
+    "id": "01a1c07d-7c56-7248-a5cd-7f1fee02c58c",
+    "type": "text-to-3d-refine",
+    "name": "",
+    "status": "SUCCEEDED",
+    "progress": 100,
+    "preceding_tasks": 0,
+    "created_at": 1794230811756,
+    "started_at": 1794230811764,
+    "finished_at": 1794230854786,
+    "expires_at": 0,
+    "task_error": null,
+    "model_urls": {
+      "glb": "https://assets.meshy.ai/9e80466b-2639-4316-a3e8-de0428062dd0/tasks/01a1c07d-7c56-7248-a5cd-7f1fee02c58c/output/model.glb?Expires=4947782400&Signature=TcZ-~stvLQndv8koBXn6D9oS~tz7WEecWl7JwZpZ6c--7qcG~fSE5a908TihujhBvwvutiT9m~3unbdppPzOr5fmb9-YPQcaZ7ULJjrKCuc6bnRKauKV6WaSuOCOnatTYee~kZFRWHC~fekwpiSUHEWZBBH3BSF87dkwAUDnTz3S191Xyl~4h7g~e3LscIwAgvCVrGsYNe4JSJeUJs3tUP8XLShvfxYTc4bWjUd1qaQ217Ydx6Gz~ZFL5e8H7Vh-iOE2mNIz3B0D7X-zBAgxL6C7aMNLGpAJqeyXoFhxERb8raE1qCPsYwmqFXS2k31Ig9xmxFw9WO8YPXPJP6-gBQ__&Key-Pair-Id=K1VGYTHIYLM9UM"
+    },
+    "texture_urls": [
+      {
+        "base_color": "https://assets.meshy.ai/9e80466b-2639-4316-a3e8-de0428062dd0/tasks/01a1c07d-7c56-7248-a5cd-7f1fee02c58c/output/texture_0.png?Expires=4947782400&Signature=AzLyl60oBQYq49Qnv9SdDlIK6eulPR~gizUTnfEG014UVpCuyhYh8ETK3iRnWNXnB-LeTxyCrSIn5eWGucYns~yCHllnz2gGDSb8ywyO5INNVggO2jbKMJnJE9K1w9wnPCkzHNQGekK7C8CkWwmwPtfnYnJwOg~HuZ3Cxw3bVCez4LETCKcqmUfTBkUWvGDJLl0xlDMSHvW8LK9CFqL3GhXnFgBXvxgsRCpkxZ5RdYZ0rutdT9H2OQ6NDPRaOq5Rr4Icyif7HK1jXd7t702FxeDXDrcTV0ooO~2BnQ8aF5LjcubpRCnbuV7auFhdAYlkrvR4prrhZGo1kxLlpUk2xQ__&Key-Pair-Id=K1VGYTHIYLM9UM",
+        "metallic": "https://assets.meshy.ai/9e80466b-2639-4316-a3e8-de0428062dd0/tasks/01a1c07d-7c56-7248-a5cd-7f1fee02c58c/output/texture_0_metallic.png?Expires=4947782400&Signature=jSHab9S-dpu2USwn6J05UOvJbO-Cb73YtsbUlL8fyrO8KM4Xvit7evrIeYppBklUfPAfxkLtubNPtp0gT9lvxhw478hqmt-AL8XrfA8HZkoulzQYyRs5eR~J6YCWRKYvHQjCvNh52mzeuvN4ZoP3zjGyctWikVczUVGWXfZ~nBGHNHXfELctKOr~S13hKp0n9D-ZG0KV6sciLIrSo5-wNREZBUCSXsrGyt39jJ06F-WAyRck7T8AtRnem~5xKIqMNYHzQx5wkUAIqa5RT26L0CIlAF2-WgUIuKDDFNScDj5Ka86ArFY6EcPseALAnr6YsPI7oaKWZ~~f1WkdLetcZw__&Key-Pair-Id=K1VGYTHIYLM9UM",
+        "normal": "https://assets.meshy.ai/9e80466b-2639-4316-a3e8-de0428062dd0/tasks/01a1c07d-7c56-7248-a5cd-7f1fee02c58c/output/texture_0_normal.png?Expires=4947782400&Signature=bsFscHGM6pZhHiOpJ~u8wChqKrpU1syoHLE7WB5tqd13m993Oq-g7i3LBRX0gzfxT0TmPq5UaroCT1GAyWw6oTqhcZ03t2Yg~lKj5G8Dle7cbP84W6sKQJ6wBnLjjQZWL5c7DX1s0lbw7~V9-FZGMyT8xxfKdJ83wWyowo8BhNw-o~ROqWatFJhQ0AxK7xxichVNVrRRHhYzdAA63umrMTvwmgIpJI7-qnbP1zjI73gWzO~OIgh0SGBCJ47f4uTaO9s0Y8EhKp~PwLi7pdnJk7-FcNyEHODVc05pz3GF5ZqL~1UPgU8sU0c~kZ9fpoMu2rN01Hz7sdDoHySVotzb0Q__&Key-Pair-Id=K1VGYTHIYLM9UM",
+        "roughness": "https://assets.meshy.ai/9e80466b-2639-4316-a3e8-de0428062dd0/tasks/01a1c07d-7c56-7248-a5cd-7f1fee02c58c/output/texture_0_roughness.png?Expires=4947782400&Signature=M6fnaJw2biISC7eKMulHB6k-8KIjiUFLYObVHyndM2fLakW8Flhw5GK2rAMq1gwJEydccywZvfBeOT5Qh6FquiTYFGAanfCRheh2etjQgBLTfPYKOBbeNp~OLpxEwyuKG9shvG~aDQoH~B15LCjFk4V-TGTHOtm7EQM7Sfh0iezLdks-jCiScRq89hTHpGH9dzpwbK7UUTK1GY1b7QjWH8uoQntxkhbbJuylS75Ottl-wKzfCfiVr6xVhmCu~JGTYZ0gF4yUx78MRmkFCw0LcTo-n9jePSPMGiR0GFfdpouBoMRKNrX9qlwKLkY6tY-F3GiFHUuBTZlxY-x7xON-~g__&Key-Pair-Id=K1VGYTHIYLM9UM"
+      }
+    ],
+    "thumbnail_url": "https://assets.meshy.ai/9e80466b-2639-4316-a3e8-de0428062dd0/tasks/01a1c07d-7c56-7248-a5cd-7f1fee02c58c/output/preview.png?Expires=4947782400&Signature=ndwcgu4BE3XIw6DA8~Vf6NFDzOtZ83grKFRf3X1Z~bkFQhSu2YFRR3JW~s31iiA2Cls5xPH5MnJauyUod9BFudgeTyUBg9wOrIRriTEZqZ0LJqgAhb2kNA1jhAWcjbxhYFi1vTzJWH6mFs4644VqCxxg~vGTpO0ujyYNP4Oy9DAuNR3CT-IUdaI8VVUl7Qij8PiWL8N9CXJpeVlfEYJFPEY5gggVbjawuQdiB~14sZRpAvMsC3mJSrGKAZFh4fM3K4Ob8A78e26QbLverKz0LViIwhY8rmGcBsyACpEkJFY4vk2pGwfgFIgYGJWZOxRUJlRIzeErK88PPgxEp35DiQ__&Key-Pair-Id=K1VGYTHIYLM9UM",
+    "consumed_credits": 10,
+    "prompt": "elegant abstract cross-chain sculpture, two translucent crystalline orbs (one violet, one cyan) joined by an arc of golden light, dark midnight background, premium fintech poster style, studio lighting, photorealistic render, landscape composition",
+    "texture_prompt": "",
+    "texture_image_url": "",
+    "mode": "refine",
+    "model_type": "standard",
+    "seed": 2658058890,
+    "hd_texture": true,
+    "texture_resolution": "4k"
+  },
+  "saved_files": [
+    "C:\\Users\\pdark\\.codex\\worktrees\\ootle-v0501-pool\\rewritten-main\\apps\\web\\public\\assets\\cross-chain-sculpture\\model.glb",
+    "C:\\Users\\pdark\\.codex\\worktrees\\ootle-v0501-pool\\rewritten-main\\apps\\web\\public\\assets\\cross-chain-sculpture\\thumbnail.png"
+  ],
+  "skipped": [
+    {
+      "key": "texture.0.base_color",
+      "reason": "embedded_textures"
+    },
+    {
+      "key": "texture.0.metallic",
+      "reason": "embedded_textures"
+    },
+    {
+      "key": "texture.0.normal",
+      "reason": "embedded_textures"
+    },
+    {
+      "key": "texture.0.roughness",
+      "reason": "embedded_textures"
+    }
+  ],
+  "downloaded_at": "2026-11-09T13:27:41.131Z"
+}

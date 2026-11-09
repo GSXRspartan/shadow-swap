@@ -34,6 +34,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useApp } from '../state/AppContext.js';
 import { DepthField, FlowMark, WordmarkLockup } from '../components/brand.js';
+import { SculptureViewer } from '../components/SculptureViewer.js';
 
 const FEE_BPS = '30';
 const ESMERALDA_NETWORK_BYTE = '38';
@@ -296,6 +297,23 @@ export function HomePage() {
                 </Link>
               </article>
             ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ------------------------------------------- CROSS-CHAIN ARTWORK */}
+      <section style={{ padding: '0 var(--s-4) var(--s-12)' }}>
+        <div className="stack" style={{ maxWidth: 1180, margin: '0 auto', gap: 'var(--s-5)' }}>
+          <div className="stack" style={{ gap: 'var(--s-2)', maxWidth: '62ch' }}>
+            <h2 style={{ fontSize: 'var(--text-3xl)', letterSpacing: '-0.03em' }}>One swap, two chains, no bridge</h2>
+            <p className="hint">
+              The sculpture is the argument in one image: two independent networks, joined by a controlled arc of
+                            exchange — not a custodial bridge. The real mechanism is a hash-locked two-leg exchange whose
+                            claim and refund paths are tested end-to-end (see the cross-layer pages).
+            </p>
+          </div>
+          <div style={{ borderRadius: 'var(--r-xl)', border: '1px solid var(--line-1)', padding: 'var(--s-5)', background: 'var(--surface-2)' }}>
+            <SculptureViewer />
           </div>
         </div>
       </section>

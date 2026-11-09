@@ -120,6 +120,18 @@
   --info-wash: rgba(125, 211, 252, 0.12);
   --muted-wash: rgba(148, 163, 184, 0.1);
 
+  /*
+   * CROSS-CHAIN (spectral trio). Reserved for the L1↔L2 surface so it reads as
+   * its own place as distinctly as Swap/Pools/NFTs do theirs.
+   */
+  --xchain-gold: #e0a44f;
+  --xchain-magenta: #e879f9;
+  --xchain-cyan: #22d3ee;
+  --xchain-purple: #a78bfa;
+  --xchain-blue: #60a5fa;
+  --xchain-wash: rgba(224, 164, 79, 0.10);
+  --xchain-line: rgba(224, 164, 79, 0.30);
+
   /* Compatibility aliases. Existing components use the older names. */
   --accent: var(--brand);
   --accent-dim: var(--brand-deep);

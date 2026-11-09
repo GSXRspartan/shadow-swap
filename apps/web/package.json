@@ -24,13 +24,15 @@
     "lightweight-charts": "5.2.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "react-router-dom": "^7.0.0"
+    "react-router-dom": "^7.0.0",
+    "three": "^0.187.0"
   },
   "devDependencies": {
     "@playwright/test": "1.56.1",
     "@types/node": "22.10.5",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "@types/three": "^0.187.0",
     "@vitejs/plugin-react": "^4.3.0",
     "typescript": "^5.7.0",
     "vite": "^6.4.5"
