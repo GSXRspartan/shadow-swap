@@ -153,19 +153,19 @@ const ADD_LIQ = (aAmt, bAmt, deposit) => `fn main() {
   let pool = arg!["pool"];
   let bucket_a = account.withdraw(arg!["res_a"], amount!(${aAmt}));
   let bucket_b = account.withdraw(arg!["res_b"], amount!(${bAmt}));
-  let (lp, refund_a, refund_b) = pool.add_liquidity(bucket_a, bucket_b, amount!(0));
+  let lp = pool.add_liquidity(bucket_a, bucket_b);
   ${deposit}
 }`;
 
 await dryRun(
   `add_liquidity 1 TESTA + matching TESTB (expect Accept)`,
-  ADD_LIQ(depA, depB, 'account.deposit(lp); account.deposit(refund_a); account.deposit(refund_b);'),
+  ADD_LIQ(depA, depB, 'account.deposit(lp);'),
   { account: ACCOUNT, pool: POOL, res_a: testb, res_b: testa },
 );
 
 await dryRun(
   `add_liquidity unbalanced 1 TESTA + 1 TESTB (expect REJECT)`,
-  ADD_LIQ('1', '1', 'account.deposit(lp); account.deposit(refund_a); account.deposit(refund_b);'),
+  ADD_LIQ('1', '1', 'account.deposit(lp);'),
   { account: ACCOUNT, pool: POOL, res_a: testb, res_b: testa },
 );
 say('');
@@ -188,7 +188,7 @@ if (spendable > 0n) {
   let account = arg!["account"];
   let pool = arg!["pool"];
   let lp_bucket = account.withdraw(arg!["lp_res"], amount!(${burnAmount}));
-  let (bucket_a, bucket_b) = pool.remove_liquidity(lp_bucket, amount!(0), amount!(0));
+  let (bucket_a, bucket_b) = pool.remove_liquidity(lp_bucket);
   account.deposit(bucket_a);
   account.deposit(bucket_b);
 }`,
@@ -204,7 +204,7 @@ await dryRun(
   let account = arg!["account"];
   let pool = arg!["pool"];
   let lp_bucket = account.withdraw(arg!["lp_res"], amount!(0));
-  let (bucket_a, bucket_b) = pool.remove_liquidity(lp_bucket, amount!(0), amount!(0));
+  let (bucket_a, bucket_b) = pool.remove_liquidity(lp_bucket);
   account.deposit(bucket_a);
   account.deposit(bucket_b);
 }`,
