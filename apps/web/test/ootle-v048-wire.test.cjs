@@ -85,7 +85,7 @@ test('cohort: v0.48 is the reset generation with CBOR values; v0.41-v0.47 are pr
 });
 
 test('cohort: an unknown, newer, older, missing or malformed version fails closed', () => {
-  for (const v of ['0.52.0', '0.53.0', '1.0.0', '0.40.9', '', undefined, null, 48, 'latest', '0.48', '0.48.0; drop', 'x'.repeat(500)]) {
+  for (const v of ['0.53.0', '0.54.0', '1.0.0', '0.40.9', '', undefined, null, 48, 'latest', '0.48', '0.48.0; drop', 'x'.repeat(500)]) {
     const c = cohort.classifyIndexerVersion(v);
     if (v === '0.48') {
       // major.minor alone is accepted: the minor determines the format.
@@ -101,7 +101,7 @@ test('identity: a right-network endpoint on an unsupported version is refused, n
   const verified = identity.classifyIndexerIdentity('https://x.test/info', { version: '0.51.0', network: 'esmeralda', network_byte: 38 }, { network: 'esmeralda', networkName: 'esmeralda' });
   assert.equal(verified.status, 'VERIFIED');
   assert.equal(identity.isVerified(verified), true);
-  const verdict = identity.classifyIndexerIdentity('https://x.test/info', { version: '0.52.0', network: 'esmeralda', network_byte: 38 }, { network: 'esmeralda', networkName: 'esmeralda' });
+  const verdict = identity.classifyIndexerIdentity('https://x.test/info', { version: '0.53.0', network: 'esmeralda', network_byte: 38 }, { network: 'esmeralda', networkName: 'esmeralda' });
   assert.equal(verdict.status, 'UNSUPPORTED_VERSION');
   assert.equal(identity.isVerified(verdict), false);
   const missing = identity.classifyIndexerIdentity('https://x.test/info', { network: 'esmeralda', network_byte: 38 }, { network: 'esmeralda', networkName: 'esmeralda' });

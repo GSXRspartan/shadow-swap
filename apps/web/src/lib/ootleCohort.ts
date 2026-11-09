@@ -69,7 +69,7 @@ export interface IndexerCohort {
 }
 
 /** Human-readable range, used in refusals and in the documentation. */
-export const SUPPORTED_INDEXER_RANGE = '0.41.x through 0.51.x';
+export const SUPPORTED_INDEXER_RANGE = '0.41.x through 0.52.x';
 
 /** The cohort this build's templates and engine tests are pinned to. */
 export const PINNED_OOTLE_RELEASE = {
@@ -114,10 +114,13 @@ export function classifyIndexerVersion(version: unknown): CohortClassification {
   if (major === 0 && minor === 51) {
     return { ok: true, cohort: { version: text, major, minor, generation: 'V049_RESET', wireFormat: 'CBOR_VALUES' } };
   }
+  if (major === 0 && minor === 52) {
+    return { ok: true, cohort: { version: text, major, minor, generation: 'V049_RESET', wireFormat: 'CBOR_VALUES' } };
+  }
   if (major === 0 && minor >= 41 && minor <= 47) {
     return { ok: true, cohort: { version: text, major, minor, generation: 'PRE_V048_RESET', wireFormat: 'JSON_VALUES' } };
   }
-  const direction = major > 0 || minor > 50 ? 'newer than' : 'older than';
+  const direction = major > 0 || minor > 52 ? 'newer than' : 'older than';
   return {
     ok: false,
     reason: `The endpoint runs Ootle ${text}, which is ${direction} the range this build is verified against (${SUPPORTED_INDEXER_RANGE}). Its reply format is not assumed.`,
