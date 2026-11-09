@@ -280,6 +280,8 @@ async function pollOnce() {
             pool: component,
             epoch,
             direction: derived.direction,
+            inputResource: derived.direction === 'BASE_TO_QUOTE' ? state.resourceA : state.resourceB,
+            outputResource: derived.direction === 'BASE_TO_QUOTE' ? state.resourceB : state.resourceA,
             inputAmount: derived.inputAmount,
             outputAmount: derived.outputAmount,
             before: { reserveA: previous.reserveA, reserveB: previous.reserveB },
