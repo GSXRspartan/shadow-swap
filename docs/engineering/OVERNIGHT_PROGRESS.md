@@ -8,13 +8,18 @@ recorded as verified trade observations; the chart renders epoch-bucketed data a
 epoch-axis SVG line instead of an empty state. Web Tari Universe remains the primary
 wallet target; Cloudflare/VPS deploy need operator credentials (approved gates).
 
-## Session 2 (final) — 05023a8ed
+## Session 2 (final) — 05023a8ed / 55c70c617
 - 0.52 live; cohort gate accepts 0.52 (receipt format re-verified with pinned codec).
 - CrossLayerMarketPage flagship header (poster art, honest L1 block).
 - Market indexer hardened (ledger dedupe across restart, partial aggregates, provenance, /api endpoints, docker+compose).
 - LIVE pool quote check: template pin match; 1.0 TESTA→TESTB out=1.006870; reserves 99012842/101000000 (TESTB/TESTA).
 - Wallet-backed dry-runs BLOCKED: walletd 0.47 can't parse 0.51/0.52 chain responses; v0492 DB needs migration (needs approval). Direct-indexer reads confirm everything else.
 - Tests: 663/663 web. Meshy 30/500 credits used (1325 remaining).
+- QUOTE-DIRECTION CAUTION: ad-hoc quote labels were inverted (1.006870 was TESTB→TESTA, not TESTA→TESTB). Live-quotation math was correct; regression test `amm-quote-directions.test.cjs` now locks both directions at the live orientation (A=TESTB 99012842, B=TESTA 101.0). Sidecar ledger now records input/output resource identity per trade.
+- Verified-sidecar /pools decoded live with exact resource addresses mapping to TESTB/TESTA (reserveA ↔ resourceA = resource_bc2f... TESTB).
+- Live data flows at 0.52: discovery live; TESTA/TESTB pool appears (reserves wallet-tiered by design).
+- Blockers remaining: wallet-backed dry-runs (0.47 vs 0.52), template publication (SwapOffer), Cloudflare project & secrets, Unique wallet approval flows.
+
 
 
 
