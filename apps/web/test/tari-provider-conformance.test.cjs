@@ -1,4 +1,4 @@
-/**
+﻿/**
  * TARI WALLET INTEGRATION CONFORMANCE.
  *
  * The provider boundary in `services/tariWindow.ts` was originally derived by
@@ -138,7 +138,7 @@ const FULL_CAPABILITIES = Object.fromEntries(types.TARI_CAPABILITY_KEYS.map((key
 /**
  * A Sapient-shaped, NON-EMBEDDED extension provider.
  *
- * It does not publish `isEmbedded` at all — which is what the published
+ * It does not publish `isEmbedded` at all â€” which is what the published
  * `TariProvider` type says: the property is optional and "only on the embedded
  * (iframe) provider". It is described by BEHAVIOUR (which methods it answers),
  * never by name, so the test cannot pass by special-casing a brand.
@@ -291,7 +291,7 @@ test('conformance: tari_getSubstate transmits exactly { substateId } and nothing
 
 test('conformance: tari_getSubstate omits `version` so the wallet resolves what it needs', async () => {
   // The published pitfalls warn that pinning a cached substate version rejects
-  // with `Lock failure: Substate …:N is not found or DOWN`. The field is optional
+  // with `Lock failure: Substate â€¦:N is not found or DOWN`. The field is optional
   // precisely so it can be omitted, and a version is only sent when a caller
   // genuinely has one.
   const provider = strictProvider();
@@ -330,7 +330,7 @@ test('conformance: tari_disconnect accepts the documented null reply', async () 
 
 test('conformance: tari_signAndSubmitTransaction sends { instructions, maxFee?, dryRun? }', async () => {
   // The previous implementation sent `{ transaction, display }`, which is not
-  // this method's parameter shape at all — neither name is defined by the
+  // this method's parameter shape at all â€” neither name is defined by the
   // contract, and the wallet-side `instructions` array was simply absent.
   const provider = strictProvider({ handler: (envelope) => (envelope.method === 'tari_signAndSubmitTransaction' ? { transactionId: 'tx_1' } : defaultReply(envelope.method)) });
   const payload = [{ CallMethod: { call: { Address: 'component_1' }, method: 'swap', args: ['otl_res_1', '1000'] } }];
@@ -525,7 +525,7 @@ test('conformance: a codeless rejection that explicitly says the user declined i
   // in the path.
   const error = new Error('The user rejected the request');
   assert.equal(tari.normalizeProviderError(error, 'tari_requestAccounts').code, 'REJECTED');
-  // …and it must not fire on unrelated prose.
+  // â€¦and it must not fire on unrelated prose.
   assert.equal(tari.normalizeProviderError(new Error('the pool rejected the quote'), 'm').code, 'UNKNOWN');
 });
 
@@ -793,18 +793,42 @@ test('conformance: a malformed transaction-request summary is refused, not guess
   }
 });
 
-test('conformance: only "instructions" and a well-formed "withdrawStealthAndExecute" can be requested', async () => {
-  // Every other private kind (shield, private sends, HTLC, redeem) would hand the dApp a
-  // reason to ask for a stealth transfer it has no business asking for; they stay refused.
-  // withdrawStealthAndExecute is the documented way a Sapient seed account moves a
-  // Stealth-typed input into a contract call: every field is public and the WALLET builds
-  // the StealthTransfer. A malformed one is refused before the wallet sees it.
+test('conformance: only "instructions", a well-formed "withdrawStealthAndExecute" and the HTLC leg can be requested', async () => {
+  // Private-send kinds (shield, unshield, sendPrivately, the redeem-with-execute
+  // variants) would hand the dApp a reason to ask for a stealth transfer it has no
+  // business asking for; they stay refused. withdrawStealthAndExecute is the
+  // documented way a Sapient seed account moves a Stealth-typed input into a
+  // contract call: every field is public and the WALLET builds the
+  // StealthTransfer. The three HTLC kinds are the cross-layer L2 leg (see
+  // services/ootleHtlcLeg.ts): every field is public and the WALLET builds the
+  // HTLC-locked output. A malformed one of any kind is refused before the wallet
+  // sees it.
   const provider = strictProvider();
-  for (const kind of ['shield', 'unshield', 'sendPrivately', 'htlcFund', 'htlcClaim', 'htlcRefund', 'redeemStealthOutputAndExecute', 'redeemStealthOutputWithPrivateFee']) {
-    await assert.rejects(() => tari.createTransactionRequest(provider, { kind, resourceAddress: 'otl_r', amount: '1' }), /creates only "instructions" and "withdrawStealthAndExecute"/, kind);
+  for (const kind of ['shield', 'unshield', 'sendPrivately', 'redeemStealthOutputAndExecute', 'redeemStealthOutputWithPrivateFee']) {
+    await assert.rejects(() => tari.createTransactionRequest(provider, { kind, resourceAddress: 'otl_r', amount: '1' }), /creates only/, kind);
   }
   await assert.rejects(() => tari.createTransactionRequest(provider, { kind: 'withdrawStealthAndExecute', resourceAddress: 'otl_r', amount: '1' }), /resourceAddress must be resource_/);
-  assert.equal(provider.seen.filter((c) => c.method === 'tari_createTransactionRequest').length, 0, 'nothing refused ever reached the wallet');
+  // HTLC kinds: malformed shapes are refused before the wallet sees them...
+  await assert.rejects(() => tari.createTransactionRequest(provider, { kind: 'htlcFund', resourceAddress: 'otl_r', amount: '1', claimantWalletAddress: 'otl_x', hashLockHex: 'a'.repeat(64), refundEpoch: '100' }), /resourceAddress must be resource_/);
+  await assert.rejects(() => tari.createTransactionRequest(provider, { kind: 'htlcFund', resourceAddress: 'resource_' + 'a'.repeat(64), amount: '1', claimantWalletAddress: 'component_bad', hashLockHex: 'a'.repeat(64), refundEpoch: '100' }), /must be a bech32m otl_/);
+  await assert.rejects(() => tari.createTransactionRequest(provider, { kind: 'htlcClaim', resourceAddress: 'resource_' + 'a'.repeat(64), commitment: 'c'.repeat(64), conditions: [], preimageHex: 'b'.repeat(64) }), /conditions must be/);
+  await assert.rejects(() => tari.createTransactionRequest(provider, { kind: 'htlcRefund', resourceAddress: 'resource_' + 'a'.repeat(64), commitment: 'c'.repeat(64), conditions: [{ HashLock: {} }], amount: '1', outputMask: '' }), /outputMask/);
+  assert.equal(provider.seen.filter((c) => c.method === 'tari_createTransactionRequest').length, 0, 'nothing malformed ever reached the wallet');
+  // ...and a well-formed htlcFund reaches the wallet verbatim.
+  const good = strictProvider({
+    handler: (envelope) => (envelope.method === 'tari_createTransactionRequest' ? { requestId: 'req_1' } : defaultReply(envelope.method)),
+  });
+  const ok = await tari.createTransactionRequest(good, {
+    kind: 'htlcFund',
+    resourceAddress: 'resource_' + 'a'.repeat(64),
+    amount: '5000000',
+    claimantWalletAddress: 'otl_esm_1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq',
+    hashLockHex: 'd'.repeat(64),
+    refundEpoch: '12000',
+  });
+  assert.equal(ok, 'req_1');
+  const envelope = good.seen.find((call) => call.method === 'tari_createTransactionRequest');
+  assert.equal(envelope.params.kind, 'htlcFund');
 });
 
 // ===========================================================================
@@ -836,7 +860,7 @@ test('conformance: a dry run is an advisory check, never a quote and never a fai
 // ===========================================================================
 
 test('conformance: a wallet address is refused where a SubstateId is required', () => {
-  // The exact failure the reference warns about: passing an `otl_…` where a
+  // The exact failure the reference warns about: passing an `otl_â€¦` where a
   // component address belongs fails deep in deserialization as
   // `data did not match any variant of untagged enum TransactionInput`,
   // naming neither the field nor the reason.
@@ -939,7 +963,7 @@ test('conformance: an NFT leaves the account through withdraw_non_fungible with 
 
 test('conformance: an unrecognised instruction kind is refused, never skipped', () => {
   // Silently dropping an instruction would make the signed transaction differ
-  // from the reviewed one — the exact defect this repository exists to prevent.
+  // from the reviewed one â€” the exact defect this repository exists to prevent.
   assert.throws(() => instructions.buildSignableInstructions({ instructions: [{ kind: 'stealth_transfer', destination: 'otl_1x' }] }), /unrecognised instruction kind/);
   assert.throws(() => instructions.buildSignableInstructions({ instructions: [] }), /empty instruction list/);
 });
@@ -1006,3 +1030,4 @@ test('conformance: only allow-listed methods are callable', async () => {
   await assert.rejects(() => tari.call(provider, 'tari_not_a_method'), /unlisted Tari method/);
   await assert.rejects(() => tari.call(provider, 'tari_getPrivateBalances'), /unlisted Tari method/);
 });
+

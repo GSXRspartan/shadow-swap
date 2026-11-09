@@ -17,7 +17,7 @@
 
 import type { PoolPair, AssetSafetyClass, ResourceRoutingClass } from '@tari-ootle/protocol-client';
 import { safetyFromPairClass, weakestClassification, toAssetChip, type AssetChip } from '../lib/assetIdentity.js';
-import { DEFAULT_NETWORK, type FrontendNetworkId } from '../lib/networks.js';
+import { DEFAULT_NETWORK, isExecutionNetwork, type FrontendNetworkId } from '../lib/networks.js';
 import { getJson, postJson } from './net.js';
 import { describeIdentity, isVerified, verifyIndexerIdentity } from './indexerIdentity.js';
 import { TariIndexerDiscovery, CANONICAL_TARI_RESOURCE, type DiscoveredComponent, type IndexerTransport, type ProtocolDeploymentState, type TemplateCatalogueEntry } from './ootleIndexer.js';
@@ -411,7 +411,10 @@ export class IndexerPoolDiscovery implements PoolDiscoverySource {
       // gives the network generation without asking the unreachable endpoint. The
       // authoritative wallet read in AppContext still re-verifies every candidate
       // against the actual chain before it is described as a pool.
-      if (this.expected.network !== 'mainnet') {
+      // Only an outage may take this path: a WRONG_NETWORK endpoint answered and said
+      // it is a different chain, so surfacing seed candidates there would dress a
+      // chain mismatch up as an outage and hide the real verdict from the operator.
+      if (result.state === 'INDEXER_UNAVAILABLE' && isExecutionNetwork(this.expected.network)) {
         const pinnedCohort = classifyIndexerVersion(PINNED_OOTLE_RELEASE.tag);
         if (pinnedCohort.ok) {
           const lock = recordVerifiedGeneration(this.expected.network, pinnedCohort.cohort.generation);

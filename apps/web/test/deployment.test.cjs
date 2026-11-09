@@ -515,9 +515,18 @@ test('secrets: preimage names may appear only as rejection rules, never with a v
   // presence of the NAME is the defence working, not a leak. What must never
   // appear is the name together with secret MATERIAL, so the rule is checked
   // against the value rather than against the identifier.
+  //
+  // Occurrences are bounded and enumerated below. Two are denylist entries (the
+  // storage + pending-request validators). The HTLC claim path legitimately names
+  // the field in three more places, all name-only: the wallet-operation
+  // validator reads it (`assertHtlcClaimOperation`) and the leg adapter
+  // constructs the claim operation (`preimageHex: preimage`). The secret is a
+  // transient argument there — it is never persisted (the leg store drops any
+  // record carrying it, pinned by htlc-leg.test.cjs) and never assigned a literal
+  // (asserted below).
   for (const name of ['preimageHex', 'walletPreimageHex']) {
     const occurrences = text.split(name).length - 1;
-    assert.ok(occurrences <= 2, `${name} appears ${occurrences} times in the bundle; expected at most the denylist entries`);
+    assert.ok(occurrences <= 5, `${name} appears ${occurrences} times in the bundle; expected at most the 2 denylist entries + 3 claim-path references`);
   }
   // A denylist entry is a bare string. A value would be a hex secret, so no
   // 32-byte hex literal may be compiled into the artifact.
@@ -592,13 +601,31 @@ test('secrets: no secret-shaped value is written to storage or a URL', () => {
     const text = fs.readFileSync(file, 'utf8');
     const relative = path.relative(appRoot, file).split(path.sep).join('/');
     // Only the detector/inventory modules may name these fields: one strips them
-    // from error text, and the two persistence validators reject records that
-    // carry them rather than storing them.
+    // from error text, two persistence validators reject records that
+    // carry them rather than storing them, and the HTLC leg store does the same
+    // for its durable bindings.
     if (
       relative === 'src/lib/storage.ts' ||
       relative === 'src/lib/errorMessage.ts' ||
-      relative === 'src/lib/pendingRequests.ts'
+      relative === 'src/lib/pendingRequests.ts' ||
+      relative === 'src/services/ootleHtlcLeg.ts'
     ) {
+      continue;
+    }
+    if (relative === 'src/services/tariWindow.ts' || relative === 'src/services/tariDappTypes.ts') {
+      // The wallet-operation boundary validates the HTLC claim shape (it must name
+      // the field to validate it) and constructs the claim operation. The type
+      // module names the field in the contract's own spelling. The property
+      // that matters is checked instead of the word: the preimage is a transient
+      // argument, never persisted, never put in a URL and never assigned a literal.
+      const lines = text.split('\n');
+      for (const line of lines) {
+        if (/localStorage|sessionStorage|setItem|history\.|location\.|encodeInvitation|invitationFromChain/.test(line)) {
+          assert.equal(/preimage/i.test(line), false, `${relative}: a preimage must never reach storage, a URL or an invitation: ${line.trim()}`);
+        }
+      }
+      const barePreimageAssignment = /preimage\w*\s*[:=]\s*["'][0-9a-zA-Z]{16,}["']/.exec(text);
+      assert.equal(barePreimageAssignment, null, `${relative}: a preimage field must never be initialised with a literal value`);
       continue;
     }
     if (relative === 'src/components/P2POfferPanel.tsx') {

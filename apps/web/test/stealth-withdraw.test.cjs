@@ -181,5 +181,5 @@ test('transport: exactly the documented withdrawStealthAndExecute fields are sen
   await assert.rejects(tari.createTransactionRequest(provider, { ...operation, viewKey: 'x' }), /undocumented field "viewKey"/);
   await assert.rejects(tari.createTransactionRequest(provider, { ...operation, followUpInstructions: [] }), /no follow-up instructions/);
   await assert.rejects(tari.createTransactionRequest(provider, { ...operation, amount: '0' }), /positive raw integer/);
-  await assert.rejects(tari.createTransactionRequest(provider, { kind: 'sendPrivately', resourceAddress: TTARI }), /creates only "instructions" and "withdrawStealthAndExecute"/);
+  await assert.rejects(tari.createTransactionRequest(provider, { kind: 'sendPrivately', resourceAddress: TTARI }), /creates only "instructions", "withdrawStealthAndExecute", "htlcFund", "htlcClaim" and "htlcRefund"/);
 });

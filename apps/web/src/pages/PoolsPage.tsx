@@ -264,8 +264,8 @@ export function PoolsPage() {
                   <SortableHeader label="24h volume" sortKey="volume" sort={sort} direction={direction} onSort={toggleSort} align="right" />
                   <SortableHeader label="Liquidity" sortKey="liquidity" sort={sort} direction={direction} onSort={toggleSort} align="right" />
                   <th scope="col" className="right">24h LP fees</th>
-                  <th scope="col">Data</th>
-                  <th scope="col">Asset type</th>
+                  <th scope="col">Market data</th>
+                  <th scope="col">Asset safety</th>
                 </tr>
               </thead>
               <tbody>

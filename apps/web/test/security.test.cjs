@@ -76,16 +76,32 @@ test('secrets: no secret-bearing protocol field is read, logged, or rendered by 
     const text = fs.readFileSync(file, 'utf8');
     // A DETECTOR is not a USE. `errorMessage.ts` names secret-shaped patterns in
     // order to strip them, `storage.ts` names forbidden persisted fields in order
-    // to reject them, and `pendingRequests.ts` names them again for the durable
-    // wallet-request ledger, which rejects rather than stores. All three are the
-    // defence, not a leak.
+    // to reject them, `pendingRequests.ts` names them again for the durable
+    // wallet-request ledger, `ootleHtlcLeg.ts` names them to reject persisted
+    // HTLC bindings that carry any, and `tariWindow.ts` validates the wallet
+    // operation boundary where the claim path must name the field to validate
+    // and construct it. All five are the defence, not a leak.
     const relative = path.relative(appRoot, file).split(path.sep).join('/');
-    const isDetector = /^src\/lib\/(errorMessage|storage|pendingRequests)\.ts$/.test(relative);
+    const isDetector = /^src\/(lib\/(errorMessage|storage|pendingRequests)|services\/(ootleHtlcLeg|tariWindow))\.ts$/.test(relative);
+    const isHtlcClaimFile = /^src\/services\/(ootleHtlcLeg|tariWindow|tariDappTypes)\.ts$/.test(relative);
     const codeLines = text
       .split('\n')
       .filter((line) => !line.trim().startsWith('*') && !line.trim().startsWith('//') && !line.trim().startsWith('/*'))
       .join('\n');
     for (const field of forbidden) {
+      // The HTLC claim path (`tariWindow.ts` + `ootleHtlcLeg.ts` +
+      // `tariDappTypes.ts`) must name `preimageHex` to type, validate and
+      // construct the wallet request, so for those files the rule is the
+      // property, not the word: the secret is a transient argument, never
+      // persisted, never in a URL, never a literal.
+      if (isHtlcClaimFile && field === 'preimageHex') {
+        const lines = codeLines.split('\n').filter((line) => line.includes(field));
+        for (const line of lines) {
+          assert.equal(/localStorage|sessionStorage|setItem|history\.|location\.|encodeInvitation|invitationFromChain/.test(line), false, `${relative}: a preimage must never reach storage, a URL or an invitation: ${line.trim()}`);
+        }
+        assert.equal(/preimageHex\s*[:=]\s*["'][0-9a-zA-Z]{16,}["']/.test(codeLines), false, `${relative}: a preimage field must never be initialised with a literal value`);
+        continue;
+      }
       if (isDetector) {
         // Permitted only on a regex-literal line or a quoted list entry, i.e.
         // inside a detection pattern.

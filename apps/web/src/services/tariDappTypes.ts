@@ -109,11 +109,12 @@ export interface TariSignAndSubmitParams {
  * builds itself (AMM, marketplace, P2P offers).
  *
  * The published union also has `shield`, `unshield`, `sendPrivately`,
- * `redeemStealthOutputAndExecute`, `redeemStealthOutputWithPrivateFee` and the HTLC kinds.
- * They are deliberately NOT transcribed here: a stealth transfer needs a balance proof and
- * per-input one-time authorisations only the wallet's own signer can produce, and this app
- * has no reason to ask for a private send. `createTransactionRequest` refuses every kind
- * other than the two below at runtime, and the type means no other kind is expressible.
+ * `redeemStealthOutputAndExecute`, `redeemStealthOutputWithPrivateFee`. They are
+ * deliberately NOT transcribed here: a stealth transfer needs a balance proof and
+ * per-input one-time authorisations only the wallet's own signer can produce, and this
+ * app has no reason to ask for a private send. `createTransactionRequest` refuses every
+ * kind other than the five below at runtime, and the type means no other kind is
+ * expressible.
  */
 export interface TariInstructionsTransactionRequestOperation {
   kind: 'instructions';
@@ -148,7 +149,72 @@ export interface TariWithdrawStealthAndExecuteOperation {
   maxFee?: string;
 }
 
-export type TariTransactionRequestOperation = TariInstructionsTransactionRequestOperation | TariWithdrawStealthAndExecuteOperation;
+/**
+ * `{ kind: 'htlcFund', … }` — the L2 leg of a cross-layer HTLC. Transcribed verbatim
+ * from the published contract (`https://universe.tari.mw/integration/llms-full.txt`).
+ *
+ * The wallet moves `amount` of `resourceAddress` from its own revealed balance into a
+ * new stealth output locked by `conditions` (a HashLock on `hashLockHex` = SHA256(S)
+ * plus an AfterEpoch at `refundEpoch`), payable to `claimantWalletAddress`. The wallet
+ * builds the StealthTransfer and the conditions itself — the dApp supplies only public
+ * terms. Requires `capabilities.htlcFund`.
+ *
+ * Result: `{ transactionId, conditions, ownCommitment, outputMask }`. The
+ * `ownCommitment` is the funded output's identity (the substate id later reads and
+ * claim/refund calls name), `conditions` is returned verbatim for claim/refund, and
+ * `outputMask` is required by `htlcRefund` for the recovery. None is secret.
+ */
+export interface TariHtlcFundOperation {
+  kind: 'htlcFund';
+  resourceAddress: string;
+  amount: string;
+  /** Bech32m `otl_…` address the HTLC-locked output is payable to (the claimant). */
+  claimantWalletAddress: string;
+  /** SHA256(S) the claim must reveal — 32-byte hex, matching the L1 leg's hash. */
+  hashLockHex: string;
+  /** Absolute L2 epoch after which the funder may refund. */
+  refundEpoch: string;
+  maxFee?: string;
+}
+
+/**
+ * `{ kind: 'htlcClaim', … }` — spend an htlcFund output by revealing the preimage.
+ * Requires `capabilities.scriptPathSpend`. `commitment` + `conditions` are the exact
+ * values `htlcFund` returned; `preimageHex` is S (the secret holder only, after
+ * CLAIM_ARMED). Result: `{ transactionId }`.
+ */
+export interface TariHtlcClaimOperation {
+  kind: 'htlcClaim';
+  resourceAddress: string;
+  commitment: string;
+  conditions: unknown[];
+  preimageHex: string;
+  maxFee?: string;
+}
+
+/**
+ * `{ kind: 'htlcRefund', … }` — recover an expired htlcFund output to the funder's own
+ * private balance. Requires `capabilities.scriptPathSpend`. `commitment` + `conditions`
+ * are the exact values `htlcFund` returned; `amount` is the funded amount and
+ * `outputMask` is the value `htlcFund` returned. Result: `{ transactionId }`.
+ */
+export interface TariHtlcRefundOperation {
+  kind: 'htlcRefund';
+  resourceAddress: string;
+  commitment: string;
+  conditions: unknown[];
+  amount: string;
+  outputMask: string;
+  maxFee?: string;
+}
+
+/**
+ * The full expressible operation set. Shield/unshield/sendPrivately and the
+ * redeem-with-private-fee kinds remain deliberately untranscribed (private-send
+ * surface this app never needs); the three HTLC kinds below are the cross-layer
+ * L2 leg and are constructed only by `services/ootleHtlcLeg.ts`.
+ */
+export type TariTransactionRequestOperation = TariInstructionsTransactionRequestOperation | TariWithdrawStealthAndExecuteOperation | TariHtlcFundOperation | TariHtlcClaimOperation | TariHtlcRefundOperation;
 
 export type TariTransactionRequestStatus = 'pending' | 'approved' | 'submitting' | 'submitted' | 'rejected' | 'failed';
 

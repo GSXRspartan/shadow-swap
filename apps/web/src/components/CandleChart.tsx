@@ -18,7 +18,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { createChart, CandlestickSeries, HistogramSeries, ColorType, CrosshairMode, LineStyle, type IChartApi, type ISeriesApi, type UTCTimestamp } from 'lightweight-charts';
 import type { ChartCandleDisplay, ChartStateResolution } from '../lib/chartData.js';
 import { formatNumber, UNAVAILABLE } from '../lib/format.js';
-import { Badge, EmptyState, SegmentedControl } from './primitives.js';
+import { Badge, SegmentedControl } from './primitives.js';
 import type { CandleInterval } from '@tari-ootle/protocol-client';
 
 /**

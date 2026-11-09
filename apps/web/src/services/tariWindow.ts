@@ -38,6 +38,9 @@ import {
   type TariInstructionsTransactionRequestOperation,
   type TariTransactionRequestOperation,
   type TariWithdrawStealthAndExecuteOperation,
+  type TariHtlcFundOperation,
+  type TariHtlcClaimOperation,
+  type TariHtlcRefundOperation,
   type TariTransactionRequestStatus,
   type TariTransactionRequestSummary,
   type TariWalletCapabilities,
@@ -876,10 +879,97 @@ export function assertStealthWithdrawOperation(operation: TariWithdrawStealthAnd
   if (operation.maxFee !== undefined && !/^[1-9]\d*$/.test(operation.maxFee)) throw new TariProviderError('withdrawStealthAndExecute.maxFee must be a positive raw integer.', 'REJECTED');
 }
 
+function assertMaxFeeHexField(value: string, field: string, kind: string): void {
+  if (value !== undefined && !/^[1-9]\d*$/.test(value)) throw new TariProviderError(`${kind}.${field} must be a positive raw integer.`, 'REJECTED');
+}
+
+/**
+ * Strict shape check for `htlcFund`. Exactly the documented fields; anything else is
+ * refused before the wallet sees it. `claimantWalletAddress` must be a bech32m
+ * `otl_…` wallet address (never a component address — the wrong kind of address here
+ * pays the wrong party). `hashLockHex` is the coordinator's SHA256(S) binding both
+ * legs, never a hash the wallet is asked to invent.
+ */
+export function assertHtlcFundOperation(operation: TariHtlcFundOperation): void {
+  const allowed = new Set(['kind', 'resourceAddress', 'amount', 'claimantWalletAddress', 'hashLockHex', 'refundEpoch', 'maxFee']);
+  for (const key of Object.keys(operation)) {
+    if (!allowed.has(key)) throw new TariProviderError(`Refusing an htlcFund request with undocumented field "${key}".`, 'REJECTED');
+  }
+  if (!/^resource_[0-9a-f]{64}$/.test(operation.resourceAddress)) throw new TariProviderError('htlcFund.resourceAddress must be resource_<64 hex>.', 'REJECTED');
+  if (!/^[1-9]\d*$/.test(operation.amount)) throw new TariProviderError('htlcFund.amount must be a positive raw integer.', 'REJECTED');
+  if (typeof operation.claimantWalletAddress !== 'string' || !/^otl_[0-9a-z_]+$/.test(operation.claimantWalletAddress)) {
+    throw new TariProviderError('htlcFund.claimantWalletAddress must be a bech32m otl_… wallet address, not a component address.', 'REJECTED');
+  }
+  if (!/^[0-9a-f]{64}$/.test(operation.hashLockHex)) throw new TariProviderError('htlcFund.hashLockHex must be 64 lowercase hex characters (SHA256).', 'REJECTED');
+  if (!/^[1-9]\d*$/.test(operation.refundEpoch)) throw new TariProviderError('htlcFund.refundEpoch must be a positive raw integer (absolute L2 epoch).', 'REJECTED');
+  assertMaxFeeHexField(operation.maxFee as string, 'maxFee', 'htlcFund');
+}
+
+/**
+ * Strict shape check for `htlcClaim`. `commitment` + `conditions` are the exact values
+ * `htlcFund` returned (never re-derived locally — a wrong reconstruction strands the
+ * claim). `preimageHex` is the secret S and must be 64 hex chars; the caller (the
+ * coordinator) is responsible for only revealing it after CLAIM_ARMED, and this check
+ * never logs it.
+ */
+export function assertHtlcClaimOperation(operation: TariHtlcClaimOperation): void {
+  const allowed = new Set(['kind', 'resourceAddress', 'commitment', 'conditions', 'preimageHex', 'maxFee']);
+  for (const key of Object.keys(operation)) {
+    if (!allowed.has(key)) throw new TariProviderError(`Refusing an htlcClaim request with undocumented field "${key}".`, 'REJECTED');
+  }
+  if (!/^resource_[0-9a-f]{64}$/.test(operation.resourceAddress)) throw new TariProviderError('htlcClaim.resourceAddress must be resource_<64 hex>.', 'REJECTED');
+  if (typeof operation.commitment !== 'string' || operation.commitment === '' || operation.commitment.length > 512) throw new TariProviderError('htlcClaim.commitment must be the non-empty commitment htlcFund returned.', 'REJECTED');
+  if (!Array.isArray(operation.conditions) || operation.conditions.length === 0) throw new TariProviderError('htlcClaim.conditions must be the non-empty conditions array htlcFund returned.', 'REJECTED');
+  if (!/^[0-9a-f]{64}$/.test(operation.preimageHex)) throw new TariProviderError('htlcClaim.preimageHex must be 64 lowercase hex characters.', 'REJECTED');
+  assertMaxFeeHexField(operation.maxFee as string, 'maxFee', 'htlcClaim');
+}
+
+/**
+ * Strict shape check for `htlcRefund`. Recovery path: the funder reclaims the funded
+ * output after `refundEpoch`. `outputMask` is the value `htlcFund` returned — without
+ * it the wallet cannot reconstruct the output, so refusal (not guessing) is correct.
+ */
+export function assertHtlcRefundOperation(operation: TariHtlcRefundOperation): void {
+  const allowed = new Set(['kind', 'resourceAddress', 'commitment', 'conditions', 'amount', 'outputMask', 'maxFee']);
+  for (const key of Object.keys(operation)) {
+    if (!allowed.has(key)) throw new TariProviderError(`Refusing an htlcRefund request with undocumented field "${key}".`, 'REJECTED');
+  }
+  if (!/^resource_[0-9a-f]{64}$/.test(operation.resourceAddress)) throw new TariProviderError('htlcRefund.resourceAddress must be resource_<64 hex>.', 'REJECTED');
+  if (typeof operation.commitment !== 'string' || operation.commitment === '' || operation.commitment.length > 512) throw new TariProviderError('htlcRefund.commitment must be the non-empty commitment htlcFund returned.', 'REJECTED');
+  if (!Array.isArray(operation.conditions) || operation.conditions.length === 0) throw new TariProviderError('htlcRefund.conditions must be the non-empty conditions array htlcFund returned.', 'REJECTED');
+  if (!/^[1-9]\d*$/.test(operation.amount)) throw new TariProviderError('htlcRefund.amount must be a positive raw integer.', 'REJECTED');
+  if (typeof operation.outputMask !== 'string' || operation.outputMask === '') throw new TariProviderError('htlcRefund.outputMask must be the outputMask htlcFund returned.', 'REJECTED');
+  assertMaxFeeHexField(operation.maxFee as string, 'maxFee', 'htlcRefund');
+}
+
 /** `{ kind: 'instructions', instructions, maxFee? }` — the exact reviewed operation. */
 export function instructionsOperation(instructions: readonly unknown[], maxFee?: string): TariInstructionsTransactionRequestOperation {
   const operation: TariInstructionsTransactionRequestOperation = { kind: 'instructions', instructions: [...instructions] };
   if (maxFee !== undefined) operation.maxFee = maxFee;
+  return Object.freeze(operation);
+}
+
+/** `{ kind: 'htlcFund', … }` — the reviewed cross-layer L2 funding. Frozen so what the user approved is exactly what submits. */
+export function htlcFundOperation(input: { resourceAddress: string; amount: string; claimantWalletAddress: string; hashLockHex: string; refundEpoch: string; maxFee?: string }): TariHtlcFundOperation {
+  const operation: TariHtlcFundOperation = { kind: 'htlcFund', resourceAddress: input.resourceAddress, amount: input.amount, claimantWalletAddress: input.claimantWalletAddress, hashLockHex: input.hashLockHex, refundEpoch: input.refundEpoch };
+  if (input.maxFee !== undefined) operation.maxFee = input.maxFee;
+  assertHtlcFundOperation(operation);
+  return Object.freeze(operation);
+}
+
+/** `{ kind: 'htlcClaim', … }` — the reviewed cross-layer L2 claim. `preimageHex` is S; never logged. */
+export function htlcClaimOperation(input: { resourceAddress: string; commitment: string; conditions: unknown[]; preimageHex: string; maxFee?: string }): TariHtlcClaimOperation {
+  const operation: TariHtlcClaimOperation = { kind: 'htlcClaim', resourceAddress: input.resourceAddress, commitment: input.commitment, conditions: [...input.conditions], preimageHex: input.preimageHex };
+  if (input.maxFee !== undefined) operation.maxFee = input.maxFee;
+  assertHtlcClaimOperation(operation);
+  return Object.freeze(operation);
+}
+
+/** `{ kind: 'htlcRefund', … }` — the reviewed cross-layer L2 refund. */
+export function htlcRefundOperation(input: { resourceAddress: string; commitment: string; conditions: unknown[]; amount: string; outputMask: string; maxFee?: string }): TariHtlcRefundOperation {
+  const operation: TariHtlcRefundOperation = { kind: 'htlcRefund', resourceAddress: input.resourceAddress, commitment: input.commitment, conditions: [...input.conditions], amount: input.amount, outputMask: input.outputMask };
+  if (input.maxFee !== undefined) operation.maxFee = input.maxFee;
+  assertHtlcRefundOperation(operation);
   return Object.freeze(operation);
 }
 
@@ -897,8 +987,14 @@ export async function createTransactionRequest(provider: TariProvider, operation
     }
   } else if (operation.kind === 'withdrawStealthAndExecute') {
     assertStealthWithdrawOperation(operation);
+  } else if (operation.kind === 'htlcFund') {
+    assertHtlcFundOperation(operation);
+  } else if (operation.kind === 'htlcClaim') {
+    assertHtlcClaimOperation(operation);
+  } else if (operation.kind === 'htlcRefund') {
+    assertHtlcRefundOperation(operation);
   } else {
-    throw new TariProviderError(`Refusing to create a "${(operation as { kind?: unknown }).kind}" transaction request: this app creates only "instructions" and "withdrawStealthAndExecute".`, 'REJECTED');
+    throw new TariProviderError(`Refusing to create a "${(operation as { kind?: unknown }).kind}" transaction request: this app creates only "instructions", "withdrawStealthAndExecute", "htlcFund", "htlcClaim" and "htlcRefund".`, 'REJECTED');
   }
   const reply = await call<unknown>(provider, TARI_METHODS.createTransactionRequest, operation);
   const bag = typeof reply === 'object' && reply !== null ? (reply as Record<string, unknown>) : {};

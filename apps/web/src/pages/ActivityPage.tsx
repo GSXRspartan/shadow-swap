@@ -41,7 +41,7 @@ const STATE_EXPLANATION: Record<OperationState, string> = {
   SUBMITTED: 'Sent to the network. Waiting for confirmation that it committed.',
   CONFIRMED: 'The network confirmed this transaction went through.',
   FAILED: 'The network rejected this transaction. It did not execute.',
-  UNKNOWN: 'The outcome is unclear. This app will not retry it automatically — check your wallet and reconcile below if needed.',
+  UNKNOWN: 'The outcome is unclear. This app will not submit it again automatically — check your wallet and reconcile below; operations are being reconciled by durable identifier, never by resubmission.',
 };
 
 const CLAIMED_EXPLANATION =
