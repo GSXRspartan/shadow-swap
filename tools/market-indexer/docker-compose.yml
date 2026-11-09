@@ -1,0 +1,43 @@
+# Shadow Swap market indexer — read-only VPS service (example).
+#
+# Service isolation: its own compose project, network, read-only rootfs, non-root,
+# loopback-only port (reached via the existing reverse proxy / CF Tunnel, never
+# directly public). No wallet, no secrets, no walletd — public indexer reads only.
+#
+#   docker compose -p shadow-swap-mkt -f docker-compose.yml up -d
+name: shadow-swap-mkt
+services:
+  indexer:
+    build: .
+    restart: unless-stopped
+    read_only: true
+    user: "1000:1000"
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    ports:
+      - "127.0.0.1:8089:8080"
+    environment:
+      INDEXER_URL: "https://esme-indexer-a.ootle.tari.com"
+      POLL_MS: "30000"
+      POOLS: "component_5c554ab71fa912da3f92f932cc79db4af2ecb21bbec657480a97b5017704b2c6"
+      PORT: "8080"
+      DATA_DIR: "/app/data"
+    volumes:
+      - indexer-data:/app/data
+    deploy:
+      resources:
+        limits: { cpus: "0.30", memory: 128M, pids: 32 }
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+    networks: [mkt_isolated]
+volumes:
+  indexer-data:
+networks:
+  mkt_isolated:
+    name: mkt_isolated

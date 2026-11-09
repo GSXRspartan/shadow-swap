@@ -1,0 +1,19 @@
+{
+  "name": "market-indexer",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Shadow Swap read-only market-data indexer for Tari Ootle Esmeralda (VPS sidecar). Observes pool vault versions via the public indexer and derives trade observations from consecutive states. No signing, no custody, no walletd — public read access only.",
+  "scripts": {
+    "start": "node server.mjs",
+    "start:dev": "node server.mjs --dev",
+    "smoke": "node smoke.mjs",
+    "test": "node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "@tari-project/ootle-wasm-bor": "0.49.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
