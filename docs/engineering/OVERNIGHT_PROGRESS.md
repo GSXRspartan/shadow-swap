@@ -8,6 +8,15 @@ recorded as verified trade observations; the chart renders epoch-bucketed data a
 epoch-axis SVG line instead of an empty state. Web Tari Universe remains the primary
 wallet target; Cloudflare/VPS deploy need operator credentials (approved gates).
 
+## Session 2 findings (2026-11-09)
+- `f086f36fa` cohort fix + `f8b66ef97` hero/art + `7dac5c039` sidecar + `2f04eccb8`/`09068ec15` indexer refinements/commit.
+- 0.51 live TESTA/TESTB pool quote math verified against live reserves from the sidecar's public decode; template pin matched.
+- walletd 0.47 cannot parse 0.51 chain responses; v0492 DB migration broken under 0.47 (`owner_key`). Wallet-backed dry-run suite needs a 0.51-compatible walletd (out of scope without authorization).
+- Sidecar ledger dedupe verified (3 lines after two polls); trade endpoint/ candles empty (honest start); provenance labels added.
+- serde codecs confirmed: receipts decode on 0.51; vault histories unavailable beyond current version (forward-accrual only).
+- Meshy: 30/500 credits spent (1325 remaining).
+
+
 ## Completed (verified)
 - `ff465c6aa` — `docs/UPSTREAM_L1_DAPP_BRIDGE.md` (8 new `tari_l1*` methods spec; upstream shape verified from live `tari-connector.js`).
 - `3af115373` — `services/marketObservations.ts`:
