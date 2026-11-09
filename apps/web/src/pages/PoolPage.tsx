@@ -19,6 +19,7 @@ import { ChartBasisError, chartTimeBasis, resolveChartState, toChartCandles, che
 import { formatPrice, UNAVAILABLE } from '../lib/format.js';
 import { presentHealth, type HealthPresentation } from '../lib/health.js';
 import { CandleChart } from '../components/CandleChart.js';
+import { EpochChart } from '../components/EpochChart.js';
 import { SwapCard } from '../components/SwapCard.js';
 import { LiquidityPanel } from '../components/LiquidityPanel.js';
 import { RecentTrades } from '../components/RecentTrades.js';
@@ -268,18 +269,22 @@ export function PoolPage() {
 
       <div className="market-layout">
         <div className="stack" style={{ order: 2, gap: 'var(--s-4)' }}>
-          <CandleChart
-            candles={chartCandles}
-            interval={interval}
-            onIntervalChange={setInterval}
-            intervals={intervals.map((entry) => ({ interval: entry.interval, supported: entry.supported, reason: entry.reason }))}
-            state={chartState}
-            baseSymbol={identity.base.symbol}
-            quoteSymbol={identity.quote.symbol}
-            lastPrice={header?.currentPrice === undefined ? UNAVAILABLE : formatPrice(header.currentPrice)}
-            priceDirection={header?.priceChange24h.direction ?? 'UNAVAILABLE'}
-            height={380}
-          />
+          {basis.kind === 'EPOCH_ONLY' && candles.length > 0 ? (
+            <EpochChart candles={candles} baseSymbol={identity.base.symbol} quoteSymbol={identity.quote.symbol} interval={interval} height={380} />
+          ) : (
+            <CandleChart
+              candles={chartCandles}
+              interval={interval}
+              onIntervalChange={setInterval}
+              intervals={intervals.map((entry) => ({ interval: entry.interval, supported: entry.supported, reason: entry.reason }))}
+              state={chartState}
+              baseSymbol={identity.base.symbol}
+              quoteSymbol={identity.quote.symbol}
+              lastPrice={header?.currentPrice === undefined ? UNAVAILABLE : formatPrice(header.currentPrice)}
+              priceDirection={header?.priceChange24h.direction ?? 'UNAVAILABLE'}
+              height={380}
+            />
+          )}
           {basisError !== undefined && (
             <Notice tone="info" title="Epoch-bucketed series">
               {basisError}

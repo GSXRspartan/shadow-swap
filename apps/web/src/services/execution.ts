@@ -275,18 +275,85 @@ export async function confirmOperation(record: OperationRecord, lookup: Transact
  * There is deliberately no "retry" here. The protocol decides
  * `resubmissionAllowed` from an authoritative lookup, and the UI surfaces that
  * verdict.
+ *
+ * When a caller supplies `settle`, a CONFIRMED AMM swap additionally turns the
+ * recorded pre-settlement snapshot into a verified market-data observation. The
+ * sink is best-effort data plumbing — a failed observation never changes the
+ * reconciliation outcome.
  */
-export async function reconcile(record: OperationRecord, lookup: TransactionLookup): Promise<{ record: OperationRecord; finalState: OperationRecord['state']; resubmissionAllowed: boolean; reason: string }> {
+export async function reconcile(
+  record: OperationRecord,
+  lookup: TransactionLookup,
+  settle?: {
+    before: import('./marketObservations.js').PrePoolSnapshot;
+    readback: import('@tari-ootle/protocol-client').PoolReadbackProvider;
+    ingest: (observation: import('@tari-ootle/protocol-client').TradeObservation) => Promise<void>;
+  },
+): Promise<{ record: OperationRecord; finalState: OperationRecord['state']; resubmissionAllowed: boolean; reason: string }> {
   const outcome = await reconcileOperation(record, lookup);
   // `reconcileOperation` does not persist; doing so here is the caller's job in
   // the protocol-client and the most common integration bug, so we do it once.
   await historyStore.save(outcome.record);
+  if (settle !== undefined && outcome.finalState === 'CONFIRMED') {
+    try {
+      await settleConfirmedSwap(outcome.record, settle);
+    } catch {
+      /* best-effort: market data must never block settlement presentation */
+    }
+  }
   return {
     record: outcome.record,
     finalState: outcome.finalState,
     resubmissionAllowed: outcome.resubmissionAllowed,
     reason: outcome.reason,
   };
+}
+
+/**
+ * Turn the pre-settlement pool snapshot + a fresh post-commit readback into one
+ * verified trade observation, and hand it to the market-data store. Attributable
+ * only when the pool's identity proves no other transaction touched it between
+ * the two reads — otherwise nothing is recorded.
+ */
+async function settleConfirmedSwap(
+  record: OperationRecord,
+  settle: {
+    before: import('./marketObservations.js').PrePoolSnapshot;
+    readback: import('@tari-ootle/protocol-client').PoolReadbackProvider;
+    ingest: (observation: import('@tari-ootle/protocol-client').TradeObservation) => Promise<void>;
+  },
+): Promise<void> {
+  const { before, readback, ingest } = settle;
+  const pulled = record.amounts[fromResourceKey(record)];
+  if (pulled === undefined || !/^\d+$/.test(pulled)) return;
+  const read = await readback.readPool(before.poolComponent);
+  if (read.status !== 'FOUND') return;
+  const after = read.value;
+  const attributes = attributesToOurSwap(
+    { substateVersion: (before as { substateVersion?: string }).substateVersion, producingTxHash: (before as { producingTxHash?: string }).producingTxHash },
+    { substateVersion: read.freshness.identity?.substateVersion, producingTxHash: read.freshness.identity?.producingTxHash },
+    record.transactionId,
+  );
+  if (!attributes) return;
+  const observation = settledObservation({
+    record: { pulledAmount: pulled, pulledResource: record.resources?.[0] },
+    before,
+    after: {
+      reserveA: after.reserveA,
+      reserveB: after.reserveB,
+      epoch: read.freshness.identity?.epoch,
+      feeBps: after.feeBps,
+    },
+    transactionId: record.transactionId ?? '',
+  });
+  if (observation !== undefined) await ingest(observation);
+}
+
+import { settledObservation, attributesToOurSwap } from './marketObservations.js';
+
+function fromResourceKey(record: OperationRecord): string {
+  // AMM_SWAP records: amounts is keyed by the input resource address.
+  return record.resources?.[0] ?? '';
 }
 
 export { requireFreshSubmissionAllowed };

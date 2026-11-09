@@ -23,6 +23,7 @@ import { ammSwapIntentBuilder, toAmmPreview, type AmmTransactionIntent } from '@
 import { useApp } from '../state/AppContext.js';
 import type { PoolDescriptor } from '../services/pools.js';
 import { executeSwap, newOperationId, IdentityChangedError, ReviewMismatchError, type ExecutionWallets } from '../services/execution.js';
+import { savePrePoolSnapshot } from '../services/marketObservations.js';
 import { reviewFromAmmIntent } from '../lib/review.js';
 import { stealthInputFor } from '../services/stealthWithdraw.js';
 import { normalizeError, type NormalizedError } from '../lib/errorMessage.js';
@@ -195,6 +196,23 @@ export function SwapCard({ pool }: { pool: PoolDescriptor }) {
         minOutputRaw: resolved.quote.minOutput,
         maxEpochRaw: MAX_EPOCH,
         ...(stealthInput !== undefined ? { stealthInput } : {}),
+      });
+      // Pre-settlement pool snapshot for the market-data observation sink. Saved
+      // under the review's operationId so the settlement reconciler can diff this
+      // before-state against the post-commit readback and record a verified trade.
+      savePrePoolSnapshot({
+        operationId: review.operationId,
+        poolComponent: pool.poolComponent,
+        resourceA: pool.base.resourceAddress,
+        resourceB: pool.quote.resourceAddress,
+        baseDecimals: pool.base.decimals,
+        quoteDecimals: pool.quote.decimals,
+        reserveA: resolved.pool.reserveA,
+        reserveB: resolved.pool.reserveB,
+        feeBps: resolved.pool.feeBps,
+        substateVersion: resolved.freshness.identity?.substateVersion,
+        producingTxHash: resolved.freshness.identity?.producingTxHash,
+        savedAtUnixMs: Date.now(),
       });
       const result = await executeSwap<AmmTransactionIntent>(wallets as ExecutionWallets, {
         resolvedIntent: resolved.builderIntent,

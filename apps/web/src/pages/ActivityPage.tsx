@@ -18,6 +18,7 @@ import { createTransactionLookup, reconcile } from '../services/execution.js';
 import { useApp } from '../state/AppContext.js';
 import { explorerUrl } from '../lib/sanitize.js';
 import { formatAddress, UNAVAILABLE } from '../lib/format.js';
+import { takePrePoolSnapshot } from '../services/marketObservations.js';
 import { Badge, Card, CardHeader, EmptyState, Notice, type BadgeTone } from '../components/primitives.js';
 import {
   describeResumeRefusal,
@@ -48,7 +49,7 @@ const CLAIMED_EXPLANATION =
   'Marked as confirmed in your browser history. Use "Verify on chain" below to get an authoritative answer directly from the network.';
 
 export function ActivityPage() {
-  const { executionWallets, walletBridge, wallet } = useApp();
+  const { executionWallets, walletBridge, wallet, market, bundleFor } = useApp();
   const [records, setRecords] = useState<OperationRecord[]>([]);
   const [integrity, setIntegrity] = useState<{ ok: boolean; reason?: string; count: number }>({ ok: true, count: 0 });
   const [reconciling, setReconciling] = useState<string | undefined>(undefined);
@@ -77,7 +78,19 @@ export function ActivityPage() {
       if (wallets === undefined) return;
       setReconciling(record.operationId);
       try {
-        const outcome = await reconcile(record, createTransactionLookup(wallets as never));
+        const snapshot = takePrePoolSnapshot(record.operationId);
+        const bridge = walletBridge();
+        const pool = market.pools.find((p) => snapshot !== undefined && p.poolComponent === snapshot.poolComponent);
+        const outcome = await reconcile(record, createTransactionLookup(wallets as never), snapshot === undefined || bridge === undefined || pool === undefined
+          ? undefined
+          : {
+              before: snapshot,
+              readback: bridge.readbackProvider(),
+              ingest: async (observation) => {
+                const bundle = bundleFor(pool.poolComponent, pool);
+                await bundle?.ingest(observation);
+              },
+            });
         setVerdicts((existing) => {
           const next = new Map(existing);
           next.set(record.operationId, { resubmissionAllowed: outcome.resubmissionAllowed, reason: outcome.reason, finalState: outcome.finalState });
@@ -88,7 +101,7 @@ export function ActivityPage() {
         setReconciling(undefined);
       }
     },
-    [executionWallets, refresh],
+    [executionWallets, refresh, walletBridge, market.pools, bundleFor],
   );
 
   /**
