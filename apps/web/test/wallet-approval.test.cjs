@@ -896,3 +896,84 @@ test('submitExact cleanup: successful submission does not leave a dangling AWAIT
   assert.equal(records[0].state, 'SUBMITTED', 'a successful swap must transition to SUBMITTED, not remain AWAITING_APPROVAL');
   assert.equal(records[0].transactionId, 'tx-abc123');
 });
+
+test('audit EIGHT-PASS P4-L1: a non-definitive submit failure durably records UNKNOWN, so a reload cannot offer a fresh submit', async () => {
+  const storage = memoryStorage();
+  pending.rememberPendingRequest(storage, {
+    operationId: 'op-unknown-submit',
+    requestId: 'req-unknown-submit',
+    reviewFingerprint: FINGERPRINT,
+    operation: 'AMM_SWAP',
+    approvedAccount: ACCOUNT_A,
+    approvedNetwork: NETWORK,
+    destination: 'component_x',
+    createdAtUnixMs: Date.now(),
+    state: 'APPROVED',
+  });
+  const previousTari = globalThis.tari;
+  // The realistic "RPC returned an error after the submit may have landed": the
+  // provider throws a plain error, which normalizeProviderError codes as UNKNOWN.
+  globalThis.tari = {
+    isTariWallet: true,
+    request: async ({ method }) => {
+      if (method === 'tari_submitTransactionRequest') throw new Error('the connection was lost mid-submit');
+      throw new Error(`unexpected method: ${method}`);
+    },
+  };
+  try {
+    const serviceMod = require('../build-test/services/walletService.js');
+    const svc = serviceMod.createWalletService('esmeralda', storage);
+    const bridge = svc.bridge();
+    assert.ok(bridge, 'a provider is injected, so the bridge resolves');
+    const record = pending.listPendingRequests(storage)[0];
+    const live = { account: ACCOUNT_A, network: NETWORK, reviewFingerprint: FINGERPRINT };
+    await assert.rejects(() => bridge.submitApprovedRequest(record, live), /failed tari_submitTransactionRequest/);
+    const after = pending.listPendingRequests(storage);
+    assert.equal(after.length, 1, 'the entry is kept, not forgotten');
+    assert.equal(after[0].state, 'UNKNOWN', 'the durable record must not still claim APPROVED after an unknown-outcome submit');
+    assert.ok(pending.needsAttention(after[0]), 'UNKNOWN keeps blocking a fresh submission');
+    assert.equal(after[0].requestId, 'req-unknown-submit', 'the wallet remains the only authority: resume polls by requestId');
+  } finally {
+    globalThis.tari = previousTari;
+  }
+});
+
+test('audit EIGHT-PASS P4-L1: a definitive wallet verdict still clears the guard without an UNKNOWN record', async () => {
+  const storage = memoryStorage();
+  pending.rememberPendingRequest(storage, {
+    operationId: 'op-rejected-submit',
+    requestId: 'req-rejected-submit',
+    reviewFingerprint: FINGERPRINT,
+    operation: 'AMM_SWAP',
+    approvedAccount: ACCOUNT_A,
+    approvedNetwork: NETWORK,
+    destination: 'component_x',
+    createdAtUnixMs: Date.now(),
+    state: 'APPROVED',
+  });
+  const previousTari = globalThis.tari;
+  globalThis.tari = {
+    isTariWallet: true,
+    request: async ({ method }) => {
+      if (method === 'tari_submitTransactionRequest') throw new tari.TariProviderError('the user declined this request', 'REJECTED');
+      throw new Error(`unexpected method: ${method}`);
+    },
+  };
+  try {
+    const serviceMod = require('../build-test/services/walletService.js');
+    const svc = serviceMod.createWalletService('esmeralda', storage);
+    const bridge = svc.bridge();
+    const record = pending.listPendingRequests(storage)[0];
+    const live = { account: ACCOUNT_A, network: NETWORK, reviewFingerprint: FINGERPRINT };
+    await assert.rejects(() => bridge.submitApprovedRequest(record, live), /declined/);
+    const after = pending.listPendingRequests(storage);
+    assert.equal(after.length, 1, 'REJECTED keeps the entry for the UI to explain');
+    assert.equal(after[0].state, 'APPROVED', 'a definitive REJECTED verdict must not be recorded as UNKNOWN');
+    // A definitive REJECTED verdict cleared the in-session guard: a second submit
+    // attempt re-asks the wallet, which refuses again with the same terminal verdict.
+    const secondRecord = pending.listPendingRequests(storage)[0];
+    await assert.rejects(() => bridge.submitApprovedRequest(secondRecord, live), /declined/);
+  } finally {
+    globalThis.tari = previousTari;
+  }
+});

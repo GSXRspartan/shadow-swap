@@ -754,12 +754,26 @@ class TariBridgeWalletAdapter implements WalletBridge {
     try {
       result = await submitTransactionRequest(this.provider, record.requestId);
     } catch (error) {
-      // Remove the guard only on a definitive non-submission error so the user
-      // can retry on a transient network failure, but not on a logic error.
+      // Remove the guard only on a DEFINITIVE verdict from the wallet — REJECTED
+      // (the user declined) or WALLET_FAILED (a terminal wallet verdict). Every
+      // other code (TIMEOUT, INTERNAL, UNKNOWN, MALFORMED_REPLY) leaves the
+      // submission's fate genuinely unknown.
       const code = error instanceof TariProviderError ? error.code : 'UNKNOWN';
-      if (code !== 'TIMEOUT' && code !== 'INTERNAL') {
+      if (code === 'REJECTED' || code === 'WALLET_FAILED') {
         this.submittedRequestIds.delete(record.requestId);
+        throw error;
       }
+      // EIGHT-PASS AUDIT P4-L1: for every non-definitive error the request may
+      // already be broadcasting. Record that durably so a reload cannot present
+      // a fresh submit button for a request that may be in flight; the resume
+      // path polls the wallet and the wallet's word decides. (The in-session
+      // guard above already refuses a second submit in THIS session; this makes
+      // the unknown survive a reload.)
+      rememberPendingRequest(this.pendingStorage, {
+        ...record,
+        state: 'UNKNOWN',
+        detail: `submission outcome unknown (${code}): ${(error as Error).message}`.slice(0, 1024),
+      });
       throw error;
     }
     // Persist the SUBMITTED state so a reload cannot offer a second submit button.

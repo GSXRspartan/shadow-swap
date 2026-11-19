@@ -1033,4 +1033,50 @@ test('31.1 the route result is explicitly non-composable and never carries a sec
   assert.throws(() => routeResult({ request: { source: 'XTM', destination: 'TARI', amountRaw: '1', network: 'localnet' }, ad, quote }), /mismatch|MAINNET|approved/);
 });
 
+// ===========================================================================
+// EIGHT-PASS AUDIT — P3-M1 regression: cross-leg deadline ordering
+// ===========================================================================
+
+test('P3-M1: a quote with a zero leg deadline is refused before anything is reserved', async () => {
+  for (const zero of [
+    { l1RefundDeadlineHeight: '0' },
+    { l2RefundDeadlineEpoch: '0' },
+  ]) {
+    const ports = makePorts();
+    await assert.rejects(
+      () => coord.acceptQuote({ request: { sessionId: 'sessZero1', reservationId: 'resZero1', quote: makeQuote(zero), nowUnixMs: 1000 }, ports }),
+      /positive/,
+    );
+    assert.equal(await ports.sessions.get('sessZero1'), undefined, 'nothing durable for a zero deadline');
+  }
+});
+
+test('P3-M1: the deadline authority refuses a quote whose second leg outlives its first, before reservation', async () => {
+  // The hostile quote makes the L2 escrow effectively never-ending relative to the L1
+  // refund height: the preimage could appear with no time left to use it.
+  const hostile = makeQuote({ l1RefundDeadlineHeight: '16000', l2RefundDeadlineEpoch: '99999999' });
+  const authority = {
+    async remainingMargins() {
+      throw new Error('not used at accept time');
+    },
+    async deadlineOrdering({ l1RefundDeadlineHeight, l2RefundDeadlineEpoch }) {
+      // Same comparison shape as crossLayer/atomicSwap.checkProposedTimeouts, in the
+      // authority's own (authoritative) units.
+      const l1Remaining = BigInt(l1RefundDeadlineHeight) - 9000n; // tip from makeL1().obs
+      const l2Remaining = BigInt(l2RefundDeadlineEpoch) - 1000n; // epoch
+      return { ok: l2Remaining < l1Remaining, reason: l2Remaining < l1Remaining ? undefined : 'second leg outlives the first' };
+    },
+  };
+  const ports = makePorts({ deadlineAuthority: authority });
+  await assert.rejects(
+    () => coord.acceptQuote({ request: { sessionId: 'sessOrder1', reservationId: 'resOrder1', quote: hostile, nowUnixMs: 1000 }, ports }),
+    /Cross-leg deadline ordering refused/,
+  );
+  assert.equal(await ports.sessions.get('sessOrder1'), undefined, 'nothing reserved for an order-violating quote');
+  // And a well-ordered quote passes the same authority.
+  const okPorts = makePorts({ deadlineAuthority: authority });
+  const ok = await coord.acceptQuote({ request: { sessionId: 'sessOrder2', reservationId: 'resOrder2', quote: makeQuote(), nowUnixMs: 1000 }, ports: okPorts });
+  assert.equal(ok.session.state, 'RESERVED');
+});
+
 module.exports = {};

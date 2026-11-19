@@ -68,6 +68,16 @@ export interface CoordinatorPorts {
 /** Reads authoritative chain heights/epochs and converts them to remaining margins. */
 export interface DeadlineAuthority {
   remainingMargins(input: { sessionId: string; phase: IrreversiblePhase }): Promise<{ l1RemainingMarginMs: string; l2RemainingMarginMs: string }>;
+  /**
+   * EIGHT-PASS AUDIT P3-M1: verify the cross-leg deadline-ORDERING invariant from
+   * authoritative chain reads — the SECOND-funded leg's deadline must expire strictly
+   * BEFORE the first-funded leg's, by at least the claim margin, so the counterparty
+   * still has time to claim the first leg after the preimage is revealed. The two
+   * deadlines live in different domains (L1 block height, L2 epoch) and can only be
+   * compared against live chain readings, which only this authority has. When provided,
+   * acceptQuote refuses any quote whose pair fails it BEFORE reserving anything.
+   */
+  deadlineOrdering?(input: { sessionId: string; l1RefundDeadlineHeight: string; l2RefundDeadlineEpoch: string }): Promise<{ ok: boolean; reason?: string }>;
 }
 
 export type DeadlineSafetyInput = {
@@ -148,6 +158,20 @@ export async function acceptQuote(input: { request: AcceptQuoteRequest; ports: C
   }
   // Capability negotiation: fail BEFORE inventory is reserved.
   requireLegCapabilities(q.direction, input.ports.l1.capabilities?.(), input.ports.l2.capabilities?.());
+  // EIGHT-PASS AUDIT P3-M1: the cross-leg deadline-ordering invariant is enforced by the
+  // configured authority BEFORE anything is reserved. A quote whose second leg outlives
+  // its first would let the preimage appear with no time left to use it — the exact
+  // loss shape `crossLayer/atomicSwap.ts::checkProposedTimeouts` refuses for its own path.
+  if (input.ports.deadlineAuthority?.deadlineOrdering !== undefined) {
+    const ordering = await input.ports.deadlineAuthority.deadlineOrdering({
+      sessionId: input.request.sessionId,
+      l1RefundDeadlineHeight: q.l1RefundDeadlineHeight,
+      l2RefundDeadlineEpoch: q.l2RefundDeadlineEpoch,
+    });
+    if (!ordering.ok) {
+      throw new CoordinatorRefusal(`Cross-leg deadline ordering refused: ${ordering.reason ?? 'the second-funded leg does not expire strictly before the first'}`);
+    }
+  }
   await input.ports.reservations.reserve({
     reservationId: input.request.reservationId,
     quoteId: q.quoteId,
@@ -218,6 +242,18 @@ export function validateQuoteView(q: CrossChainQuoteView, nowUnixMs: number): vo
   }
   if (nowUnixMs >= q.quoteExpiresAtUnixMs) {
     throw new CoordinatorRefusal(`Quote ${q.quoteId} already expired at ${nowUnixMs} (expires ${q.quoteExpiresAtUnixMs}) — refusing acceptance`);
+  }
+  // EIGHT-PASS AUDIT P3-M1: a zero deadline would make the leg never-ending. The L1
+  // refund height is fixed by the Minotari wallet (tip + 720 blocks) and the L2 escrow
+  // refuses to fund against an already-past epoch, so a legitimate quote carries both
+  // positive. The CROSS-LEG ORDERING invariant ("the second-funded leg expires strictly
+  // first") is checked by the configured deadline authority in acceptQuote — these two
+  // domains cannot be compared without chain reads.
+  if (requirePositiveAmount(q.l1RefundDeadlineHeight, 'quote.l1RefundDeadlineHeight') === 0n) {
+    throw new CoordinatorRefusal('quote.l1RefundDeadlineHeight must be positive (a height of 0 means the first leg could never expire)');
+  }
+  if (requirePositiveAmount(q.l2RefundDeadlineEpoch, 'quote.l2RefundDeadlineEpoch') === 0n) {
+    throw new CoordinatorRefusal('quote.l2RefundDeadlineEpoch must be positive (an epoch of 0 means the second leg could outlive the first)');
   }
 }
 
