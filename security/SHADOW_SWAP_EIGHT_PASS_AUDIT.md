@@ -66,7 +66,7 @@ arithmetic; no metadata-based settlement anywhere. No findings above LOW.
 
 | ID | Sev | Conf | Status | Summary |
 |---|---|---|---|---|
-| P3-M1 | MEDIUM | CONFIRMED (code path) | MITIGATED (fix below) | `crosschain/coordinator.ts::validateQuoteView` validates every untrusted-quote field EXCEPT the cross-leg deadline-ordering invariant ("the second-funded leg must expire strictly before the first"). The invariant IS enforced in the `crossLayer` path (`atomicSwap.ts deriveTimeouts`/`checkProposedTimeouts`) but not in the coordinator path, which stores `l1RefundDeadlineHeight`/`l2RefundDeadlineEpoch` from the quote and never compares them. A quote violating the ordering creates a leg pair where the preimage can appear with no time left to use it (double-take shape). Server-side only (frontend bundle excludes coordinator, FI-R9); deadline authority rechecks margins at each irreversible phase but never the ordering. |
+| P3-M1 | MEDIUM | CONFIRMED (code path) | MITIGATED | `crosschain/coordinator.ts::validateQuoteView` validated every untrusted-quote field EXCEPT the cross-leg deadline-ordering invariant ("the second-funded leg must expire strictly before the first"). The invariant IS enforced in the `crossLayer` path (`atomicSwap.ts deriveTimeouts`/`checkProposedTimeouts`) but was not in the coordinator path, which stores `l1RefundDeadlineHeight`/`l2RefundDeadlineEpoch` from the quote and never compared them. Fixed: zero deadlines are refused outright, and `acceptQuote` consults a new optional `DeadlineAuthority.deadlineOrdering` hook BEFORE reserving anything (the two time domains cannot be compared without chain reads, which only the authority has). |
 
 Verified-secure: L2 HTLC template mirrors the real Minotari script (`HashSha256 PushHash Equal
 IfThen claim / CheckHeightVerify refund`); strictly disjoint claim/refund epochs (L1 has no race);
@@ -82,7 +82,7 @@ in swap records (`assertRecordIsSafe`).
 
 | ID | Sev | Conf | Status | Summary |
 |---|---|---|---|---|
-| P4-L1 | LOW | CONFIRMED (code path) | MITIGATED (fix below) | `submitApprovedRequest` keeps its in-session double-submit guard on TIMEOUT/INTERNAL errors but does not durably mark the ledger entry UNKNOWN; after a reload the entry still reads APPROVED and a user-initiated resubmit of the same requestId is offered. The wallet's own requestId authority bounds the damage, and the resume path re-polls the wallet, but the durable record should reflect the unknown outcome. |
+| P4-L1 | LOW | CONFIRMED (code path) | MITIGATED | `submitApprovedRequest` kept its in-session double-submit guard only on TIMEOUT/INTERNAL; a plain transport failure (the realistic mid-submit connection loss, normalized code `UNKNOWN`) deleted the guard and left the durable ledger entry claiming APPROVED, so a reload could offer a fresh submit for a request that may already be broadcasting. Fixed: only definitive wallet verdicts (REJECTED, WALLET_FAILED) clear the guard; every other error durably records `UNKNOWN` so the resume path polls the wallet, whose word alone decides. |
 
 Verified-secure: historical NO_LIVE_REVIEW guard fixed (submit-by-requestId needs no payload
 reconstruction); resume refusals are deny-only (tampered storage can refuse but never authorise);
@@ -118,7 +118,8 @@ record nothing). No findings above LOW.
 
 | ID | Sev | Conf | Status | Summary |
 |---|---|---|---|---|
-| P7-M1 | MEDIUM | CONFIRMED | UNVERIFIED (build-env evidence) | Locally-built `cross_layer_htlc.wasm` hash (`b88b3889…`) does not match the pinned `WASM_SHA256SUMS.v0501` (`d0916869…`). The build script documents that plain dev builds embed host paths, so a mismatch is expected for dev builds; the pinned manifest can only be validated by `tools/build-templates.sh --check` (Linux, Rust 1.97.1). NOT an attempted attack: CI runs `--check` on every push to main/security/feat branches. |
+| P7-M1 | MEDIUM | CONFIRMED | OPEN | **The pinned template-WASM manifest does not reproduce in a second environment.** `tools/build-templates.sh --check` was executed on Linux (WSL Ubuntu-22.04) with the exact pinned toolchain (rustc 1.97.1 `8bab26f4f`, wasm32 target installed, `--locked`, converted script byte-for-byte): ALL SEVEN template hashes differ systematically from `templates/WASM_SHA256SUMS.v0501` (e.g. fungible_pool built `686dcd9e…` vs pinned `8882d8c1…`; cross_layer_htlc built `3ecb80c8…` vs pinned `d0916869…`), and the script exits `error: template hashes differ`. Template sources are byte-identical to the manifest-generation commit (`git diff 39778af79..HEAD -- templates` shows only the unrelated `test_token_minter`). Root cause is environmental and unresolved (uniform shift across all templates suggests a rustc/flag/environment delta, not source drift). Consequence: "this published template is this source" is NOT currently verifiable outside the machine that generated the manifest. |
+| P7-M2 | MEDIUM | CONFIRMED | OPEN | **The reproducibility CI gate does not cover the active integration branch naming.** `security-engine-tests.yml` triggers on push to `main`, `security/**`, `feat/**` and on PRs — the current `codex/ootle-v0501-pool` branch triggers NO CI on push. A manifest/source drift on such a branch would be invisible until a PR. |
 | P7-L1 | LOW | CONFIRMED | OPEN | `security-engine-tests.yml` comments + cache key still say cohort v0.49.2 (aa7b0c8) while `audit_engine_tests/Cargo.toml` pins v0.50.1 (0b3f364d). Documentation drift only; the pins themselves are consistent. |
 | P7-L2 | LOW | CONFIRMED | OPEN | Production build ships source maps (`vite.config.ts sourcemap: true`) → published `.map` files on the Pages host. No secrets are embedded (verified: VITE_* are public by design; no secret-shaped constants found in src), but maps expand the reviewable attack surface of the public bundle. |
 
@@ -146,21 +147,35 @@ Cross-component scenarios examined (details in per-pass sections):
 
 | Commit | Fixes |
 |---|---|
-| (local, this branch) | P1-H1: client joins funded pools via `add_liquidity_exact` with the quote hint as on-chain `min_lp_out`; refunds deposited; review binds `min_lp_out` via the same args[2] channel as swap min_output. Tests: wallet-adapter (2 new), protocol-client (2 new), web wire test pinning the exact-method shape to the engine-executed `revealed_add_liquidity` fixture. |
+| `18a642f24` | P1-H1: client joins funded pools via `add_liquidity_exact` with the quote hint as on-chain `min_lp_out`; refunds deposited; review binds `min_lp_out` via the same args[2] channel as swap min_output. Tests: wallet-adapter (2 new), protocol-client (2 new), web wire test pinning the exact-method shape to the engine-executed `revealed_add_liquidity` fixture. |
+| `30ed44e5d` | P3-M1: zero leg deadlines refused; `acceptQuote` consults `DeadlineAuthority.deadlineOrdering` before reserving anything (cross-leg ordering invariant). P4-L1: only definitive wallet verdicts clear the submit guard; non-definitive errors durably record UNKNOWN. Tests: hostile_crosschain (2 new), wallet-approval (2 new). |
 
 ## 4. Test evidence (this session)
 
-- `packages/wallet-adapter` amm.test.cjs: 8/8 pass (2 new).
-- `packages/protocol-client` targeted suites (amm, amm_model, amm_parity, amm_router, lp_position,
-  donations, marketplace, marketplace_substate, pool_substate, history, packaging,
-  route_immutability, crosschain, hostile_crosschain, cross_layer_atomic_swap, multihop_hostile,
-  hostile_fuzz): 248/248 pass (2 new).
-- `apps/web` instruction-wire-v048.test.cjs: 27/27 pass (1 new). lib.test.cjs: 25/25.
-- Rust engine suites (`pool_engine`, `pool_adversarial`, `pool_economics`, `revealed_asset_pool`,
-  `marketplace_engine`, `item_offer_engine`, `collection_bid_engine`, `p2p_offer_routes`,
-  `cross_layer_htlc`, `multihop_routes`): running on Linux (WSL Ubuntu-22.04, Rust 1.97.1,
-  pinned cohort) — Windows cannot compile the engine (Wasmer Cranelift), matching CI's design.
-- Typecheck/build of `protocol-client`, `wallet-adapter`, web build:test: pass.
+JS suites run locally this session (all with the two fixes in place):
+
+- `packages/wallet-adapter`: amm 8/8 (2 new), marketplace+adapter_honesty+routes 25/25.
+- `packages/protocol-client`: 248 targeted + 129 cross-layer + 19 networks/directions +
+  4 multihop_fuzz + 19 marketdata_hostile + 6 marketdata_fuzz (100k-insertion property test,
+  17.6 min on this machine) — all pass.
+- `apps/web`: instruction-wire-v048 27/27 (1 new), wallet-approval 49/49 (2 new),
+  lib 25/25, tari-provider-conformance 64/64, security+hostile-frontend+boundary+
+  market-observations+deployment 162/162, marketplace+nft+pool+swapoffer+maker 97/97,
+  htlc-leg+cross-layer+network-isolation+cohort+routes+stealth+outage+history 119/119,
+  assets+render+charts+inventory+args 59/59, catalog+qr+identity 23/23, v048-wire+
+  v042 36/36, routes-wire 5/5.
+- `pnpm audit --prod` + `--audit-level high`: no known vulnerabilities.
+
+Rust engine suites (`pool_engine`, `pool_adversarial`, `pool_economics`, `revealed_asset_pool`,
+`marketplace_engine`, `item_offer_engine`, `collection_bid_engine`, `p2p_offer_routes`,
+`cross_layer_htlc`, `multihop_routes`): executed on Linux (WSL Ubuntu-22.04, Rust 1.97.1,
+pinned tari-ootle v0.50.1 cohort rev 0b3f364d) — Windows cannot compile the engine (Wasmer
+Cranelift), matching CI's design. Results recorded in section 4a.
+
+Reproducible-template gate: `tools/build-templates.sh --check` executed on Linux with the
+pinned toolchain (section 4a).
+
+Typecheck/build of `protocol-client`, `wallet-adapter`, web build:test: pass.
 
 ## 5. Remaining unverified assumptions
 
