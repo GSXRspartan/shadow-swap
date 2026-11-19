@@ -191,6 +191,17 @@ test('audit EIGHT-PASS P1-H1: a funded-pool deposit resolves through add_liquidi
   assert.equal(captured[0].minLpOut, '10000000', 'the hint becomes the on-chain min_lp_out');
 });
 
+test('audit EIGHT-PASS P1-H1 (self-review): a deposit too small to mint any share is a typed refusal, not a throw', async () => {
+  const builder = { addLiquidity: () => { throw new Error('must not be called'); }, removeLiquidity: () => { throw new Error('must not be called'); } };
+  // reserves 4e9/4e9 against supply 1e9 → 1 unit floors to 0 shares on BOTH sides.
+  const result = await resolveAddLiquidity(
+    { poolComponent: 'pool_comp', rawAmountA: '1', rawAmountB: '1', maxEpoch: '200' },
+    { readback: { readPool: async () => ({ status: 'FOUND', value: poolState({ reserveA: '4000000000', reserveB: '4000000000', totalLpSupply: '1000000000' }), freshness: { source: 'WALLET_PROVIDER', identity: { substateVersion: '7', epoch: '100', readAtUnixMs: 1 } } }) }, builder },
+  );
+  assert.equal(result.status, 'UNAVAILABLE');
+  assert.match(result.reason, /too small/);
+});
+
 test('audit EIGHT-PASS P1-H1: an imbalanced deposit still mints the weaker side, never above it', async () => {
   const captured = [];
   const builder = { addLiquidity: (i) => { captured.push(i); return i; }, removeLiquidity: () => ({}) };

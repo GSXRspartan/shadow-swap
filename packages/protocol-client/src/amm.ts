@@ -317,6 +317,14 @@ export async function resolveAddLiquidity<TIntent>(
   const total = BigInt(pool.totalLpSupply);
   const hintA = (BigInt(request.rawAmountA) * total) / BigInt(pool.reserveA);
   const hintB = (BigInt(request.rawAmountB) * total) / BigInt(pool.reserveB);
+  const hint = hintA < hintB ? hintA : hintB;
+  // EIGHT-PASS AUDIT P1-H1 (self-review): the exact method REQUIRES a positive on-chain
+  // minimum, so a deposit too small to mint even one share (min-side hint floors to 0)
+  // must be refused HERE as a typed outcome, not thrown by the builder below — the old
+  // legacy path built the transaction and let the chain abort it.
+  if (hint === 0n) {
+    return { status: 'UNAVAILABLE', reason: 'Contribution too small relative to reserves to mint any LP shares' };
+  }
   const builderIntent = deps.builder.addLiquidity({
     poolComponent: request.poolComponent,
     resourceA: pool.resourceA,
@@ -329,15 +337,14 @@ export async function resolveAddLiquidity<TIntent>(
     // amounts and the reserve ratio at execution time is donated to existing LPs and there
     // is no bound on the loss (engine tests e07d characterise the donation, e07/b/c prove
     // the exact method). The hint is computed against PRE-deposit reserves above.
-    minLpOut: (hintA < hintB ? hintA : hintB).toString(),
+    minLpOut: hint.toString(),
   });
-  const expectedLpMintHint = (hintA < hintB ? hintA : hintB).toString();
   return {
     status: 'ACTIVE',
     resolved: {
       request,
       pool,
-      expectedLpMintHint,
+      expectedLpMintHint: hint.toString(),
       freshness: read.freshness,
       builderIntent,
       builderOperation: 'add_liquidity_exact',
