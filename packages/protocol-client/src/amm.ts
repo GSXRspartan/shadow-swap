@@ -257,7 +257,7 @@ export interface AddLiquidityRequest {
 }
 
 export interface LiquidityIntentBuilder<TIntent> {
-  addLiquidity(intent: { poolComponent: string; resourceA: string; resourceB: string; rawAmountA: string; rawAmountB: string; maxEpoch: string }): TIntent;
+  addLiquidity(intent: { poolComponent: string; resourceA: string; resourceB: string; rawAmountA: string; rawAmountB: string; maxEpoch: string; /** Set for a FUNDED pool: the on-chain minimum LP from this resolver's quote. Omitted only for a first deposit. */ minLpOut?: string }): TIntent;
   removeLiquidity(intent: { poolComponent: string; lpResource: string; rawLpAmount: string; maxEpoch: string }): TIntent;
 }
 
@@ -268,7 +268,13 @@ export interface AddLiquidityResolution<TIntent> {
   expectedLpMintHint: string;
   freshness: Freshness;
   builderIntent: TIntent;
-  builderOperation: 'add_liquidity';
+  /**
+   * `add_liquidity_exact` for a funded pool (the quote's hint becomes the on-chain
+   * `min_lp_out`, so a ratio move between quote and execution aborts instead of
+   * donating the imbalance to existing LPs), and legacy `add_liquidity` only where the
+   * exact method cannot go: a first deposit.
+   */
+  builderOperation: 'add_liquidity' | 'add_liquidity_exact';
 }
 
 export type AddLiquidityOutcome<TIntent> =
@@ -318,16 +324,23 @@ export async function resolveAddLiquidity<TIntent>(
     rawAmountA: request.rawAmountA,
     rawAmountB: request.rawAmountB,
     maxEpoch: request.maxEpoch,
+    // SECURITY: a funded pool is joined through `add_liquidity_exact`, with the quote's
+    // min-side hint as the ON-CHAIN minimum. Without it, any imbalance between the caller's
+    // amounts and the reserve ratio at execution time is donated to existing LPs and there
+    // is no bound on the loss (engine tests e07d characterise the donation, e07/b/c prove
+    // the exact method). The hint is computed against PRE-deposit reserves above.
+    minLpOut: (hintA < hintB ? hintA : hintB).toString(),
   });
+  const expectedLpMintHint = (hintA < hintB ? hintA : hintB).toString();
   return {
     status: 'ACTIVE',
     resolved: {
       request,
       pool,
-      expectedLpMintHint: (hintA < hintB ? hintA : hintB).toString(),
+      expectedLpMintHint,
       freshness: read.freshness,
       builderIntent,
-      builderOperation: 'add_liquidity',
+      builderOperation: 'add_liquidity_exact',
     },
   };
 }

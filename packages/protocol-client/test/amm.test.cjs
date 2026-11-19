@@ -176,6 +176,34 @@ test('resolver refuses the bootstrap path (first deposit) for add liquidity', as
   assert.match(result.reason, /bootstrap/i);
 });
 
+test('audit EIGHT-PASS P1-H1: a funded-pool deposit resolves through add_liquidity_exact with the quote hint as the on-chain minimum', async () => {
+  const captured = [];
+  const builder = { addLiquidity: (i) => { captured.push(i); return { ...i, kind: 'add_liquidity_exact' }; }, removeLiquidity: () => ({}) };
+  // reserves 1e9/2e9, supply 1e9 → deposit 10_000_000/30_000_000 mints the A-side 10_000_000.
+  const result = await resolveAddLiquidity(
+    { poolComponent: 'pool_comp', rawAmountA: '10000000', rawAmountB: '30000000', maxEpoch: '200' },
+    { readback: { readPool: async () => ({ status: 'FOUND', value: poolState(), freshness: { source: 'WALLET_PROVIDER', identity: { substateVersion: '7', epoch: '100', readAtUnixMs: 1 } } }) }, builder },
+  );
+  assert.equal(result.status, 'ACTIVE');
+  assert.equal(result.resolved.builderOperation, 'add_liquidity_exact');
+  assert.equal(result.resolved.expectedLpMintHint, '10000000');
+  assert.equal(captured.length, 1);
+  assert.equal(captured[0].minLpOut, '10000000', 'the hint becomes the on-chain min_lp_out');
+});
+
+test('audit EIGHT-PASS P1-H1: an imbalanced deposit still mints the weaker side, never above it', async () => {
+  const captured = [];
+  const builder = { addLiquidity: (i) => { captured.push(i); return i; }, removeLiquidity: () => ({}) };
+  // reserves 1e9/1e9, supply 1e9 → 10M/30M deposits are capped by the A side at 10M.
+  const result = await resolveAddLiquidity(
+    { poolComponent: 'pool_comp', rawAmountA: '10000000', rawAmountB: '30000000', maxEpoch: '200' },
+    { readback: { readPool: async () => ({ status: 'FOUND', value: poolState(), freshness: { source: 'WALLET_PROVIDER', identity: { substateVersion: '7', epoch: '100', readAtUnixMs: 1 } } }) }, builder },
+  );
+  assert.equal(result.status, 'ACTIVE');
+  assert.equal(captured[0].minLpOut, '10000000');
+  assert.ok(BigInt(captured[0].minLpOut) * BigInt('1000000000') <= BigInt('10000000') * BigInt('1000000000'));
+});
+
 test('remove liquidity floors are computed exactly and dust redemptions refuse', async () => {
   const deps = { readback: { readPool: async () => ({ status: 'FOUND', value: poolState(), freshness: { source: 'WALLET_PROVIDER', identity: { substateVersion: '7', epoch: '100', readAtUnixMs: 1 } } }) }, builder: { addLiquidity: () => ({}), removeLiquidity: () => ({}) } };
   const ok = await resolveRemoveLiquidity({ poolComponent: 'pool_comp', rawLpAmount: '999000000', maxEpoch: '200' }, deps);

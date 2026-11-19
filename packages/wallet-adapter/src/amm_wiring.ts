@@ -1,5 +1,5 @@
 import type { SwapIntentBuilder, SwapQuote, LiquidityIntentBuilder, MultiHopIntentBuilder } from '@tari-ootle/protocol-client';
-import { AmmTransactionIntent, buildSwapIntent, buildAddLiquidityIntent, buildRemoveLiquidityIntent, buildMultiHopSwapIntent, buildRevealedSwapIntent, SwapIntentEvidenceQuote, type PoolVenue } from './amm.js';
+import { AmmTransactionIntent, buildSwapIntent, buildAddLiquidityIntent, buildAddLiquidityExactIntent, buildRemoveLiquidityIntent, buildMultiHopSwapIntent, buildRevealedSwapIntent, SwapIntentEvidenceQuote, type PoolVenue } from './amm.js';
 
 /**
  * Wires the protocol-client AMM resolvers (which perform the authoritative reread and
@@ -33,6 +33,22 @@ export function ammSwapIntentBuilder(accountAddress: string, operationId: () => 
 export function ammLiquidityIntentBuilder(accountAddress: string, operationId: () => string): LiquidityIntentBuilder<AmmTransactionIntent> {
   return {
     addLiquidity(input) {
+      // A funded pool must be joined through `add_liquidity_exact` (min_lp_out + refunds);
+      // the donating legacy method is kept ONLY for the first deposit, which the exact
+      // method cannot serve (engine test e07e) and which the resolver refuses anyway.
+      if (input.minLpOut !== undefined) {
+        return buildAddLiquidityExactIntent({
+          poolComponent: input.poolComponent,
+          accountAddress,
+          resourceA: input.resourceA,
+          resourceB: input.resourceB,
+          rawAmountA: input.rawAmountA,
+          rawAmountB: input.rawAmountB,
+          minLpOut: input.minLpOut,
+          maxEpoch: input.maxEpoch,
+          operationId: operationId(),
+        });
+      }
       return buildAddLiquidityIntent({
         poolComponent: input.poolComponent,
         accountAddress,

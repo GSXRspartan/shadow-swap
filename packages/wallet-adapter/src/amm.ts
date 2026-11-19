@@ -18,6 +18,8 @@ export type AmmArgType = 'Bucket' | 'ResourceAddress' | 'Amount' | 'u16';
 export const SWAP_ARG_TYPES: readonly AmmArgType[] = ['Bucket', 'ResourceAddress', 'Amount'];
 /** Pool::add_liquidity(a_bucket: Bucket, b_bucket: Bucket) -> Bucket */
 export const ADD_LIQUIDITY_ARG_TYPES: readonly AmmArgType[] = ['Bucket', 'Bucket'];
+/** Pool::add_liquidity_exact(a_bucket: Bucket, b_bucket: Bucket, min_lp_out: Amount) -> (Bucket, Bucket, Bucket) */
+export const ADD_LIQUIDITY_EXACT_ARG_TYPES: readonly AmmArgType[] = ['Bucket', 'Bucket', 'Amount'];
 /** Pool::remove_liquidity(lp_bucket: Bucket) -> (Bucket, Bucket) */
 export const REMOVE_LIQUIDITY_ARG_TYPES: readonly AmmArgType[] = ['Bucket'];
 /** Pool::new(a_addr: ResourceAddress, b_addr: ResourceAddress, fee_bps: u16) -> Component */
@@ -311,6 +313,79 @@ export function buildAddLiquidityIntent(input: AddLiquidityIntentInput): AmmTran
         feeBps: '0',
         quotedOutput: input.rawAmountB,
         minOutput: '0',
+        slippageBps: '0',
+        effectiveInput: input.rawAmountA,
+      },
+    },
+  };
+}
+
+export interface AddLiquidityExactIntentInput extends AddLiquidityIntentInput {
+  /**
+   * On-chain minimum LP, from the authoritative quote against PRE-deposit reserves.
+   * A reserve-ratio move between quote and execution (an honest trade or a deliberate
+   * front-run) can no longer silently donate the imbalance to existing LPs: the template
+   * takes only the balanced amounts, refunds the remainder of BOTH buckets and aborts
+   * when the mint would fall below this bound. Never '0' here — a first deposit must go
+   * through `buildAddLiquidityIntent`/`buildCreatePoolIntent` (the exact method's
+   * first-deposit branch cannot serve an empty pool: engine test e07e).
+   */
+  minLpOut: string;
+}
+
+/**
+ * `withdraw a, withdraw b -> add_liquidity_exact -> deposit lp, refund_a, refund_b`.
+ *
+ * All THREE tuple outputs are deposited; the refunds may be empty, which deposits fine.
+ * The operation NAME stays `add_liquidity` so reviews, history and the UI keep their
+ * existing classification; the leg's METHOD in the review is what distinguishes it.
+ */
+export function buildAddLiquidityExactIntent(input: AddLiquidityExactIntentInput): AmmTransactionIntent {
+  assertPositiveComponent(input.poolComponent, 'poolComponent');
+  assertPositiveComponent(input.accountAddress, 'accountAddress');
+  assertPositiveComponent(input.resourceA, 'resourceA');
+  assertPositiveComponent(input.resourceB, 'resourceB');
+  if (input.resourceA === input.resourceB) throw new Error('add_liquidity requires two distinct resources');
+  assertPositiveRawAmount(input.rawAmountA, 'rawAmountA');
+  assertPositiveRawAmount(input.rawAmountB, 'rawAmountB');
+  assertPositiveRawAmount(input.minLpOut, 'minLpOut');
+  const a = bucket('add_liquidity_a');
+  const b = bucket('add_liquidity_b');
+  const out = bucket('add_liquidity_exact_out');
+  const call: AmmCall = {
+    componentAddress: input.poolComponent,
+    method: 'add_liquidity_exact',
+    args: [a, b, input.minLpOut],
+    argTypes: ADD_LIQUIDITY_EXACT_ARG_TYPES,
+    resourcesInvolved: [input.resourceA, input.resourceB],
+    output: out,
+  };
+  return {
+    operation: 'add_liquidity',
+    poolComponent: input.poolComponent,
+    calls: [call],
+    instructions: [
+      { kind: 'withdraw_fungible', accountAddress: input.accountAddress, resourceAddress: input.resourceA, amount: input.rawAmountA, output: a },
+      { kind: 'withdraw_fungible', accountAddress: input.accountAddress, resourceAddress: input.resourceB, amount: input.rawAmountB, output: b },
+      { kind: 'call_method', ...call },
+      { kind: 'deposit_all', accountAddress: input.accountAddress, bucket: { ...out, offset: 0 } },
+      { kind: 'deposit_all', accountAddress: input.accountAddress, bucket: { ...out, offset: 1 } },
+      { kind: 'deposit_all', accountAddress: input.accountAddress, bucket: { ...out, offset: 2 } },
+    ],
+    requiredReadbacks: ['pool'],
+    privacyDisclosure: 'PUBLIC_AMM_BOUNDARY',
+    settlement: { accountAddress: input.accountAddress, outputBuckets: [out.name] },
+    evidence: {
+      operationId: input.operationId,
+      poolComponent: input.poolComponent,
+      maxEpoch: input.maxEpoch,
+      quote: {
+        inputResource: input.resourceA,
+        outputResource: input.resourceB,
+        rawInputAmount: input.rawAmountA,
+        feeBps: '0',
+        quotedOutput: input.rawAmountB,
+        minOutput: input.minLpOut,
         slippageBps: '0',
         effectiveInput: input.rawAmountA,
       },

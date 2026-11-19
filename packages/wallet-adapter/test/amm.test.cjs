@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { buildSwapIntent, toAmmPreview, buildAddLiquidityIntent, buildRemoveLiquidityIntent } = require('../dist/amm.js');
+const { buildSwapIntent, toAmmPreview, buildAddLiquidityIntent, buildAddLiquidityExactIntent, buildRemoveLiquidityIntent } = require('../dist/amm.js');
 const { ammSwapIntentBuilder, ammLiquidityIntentBuilder } = require('../dist/amm_wiring.js');
 const { marketplaceRouteBuilder, toWiredMarketplacePreview } = require('../dist/marketplace_wiring.js');
 
@@ -81,6 +81,36 @@ test('liquidity wiring produces both withdrawals with exact amounts (BigInt boun
   assert.equal(BigInt(add.instructions[0].amount) > Number.MAX_SAFE_INTEGER, true);
   const remove = b.removeLiquidity({ poolComponent: 'p', lpResource: 'lp', rawLpAmount: '18446744073709551615', maxEpoch: '9' });
   assert.equal(remove.instructions[0].amount, '18446744073709551615');
+});
+
+test('audit EIGHT-PASS P1-H1: a funded-pool deposit builds add_liquidity_exact with an on-chain min_lp_out and three deposited outputs', () => {
+  const intent = buildAddLiquidityExactIntent({
+    poolComponent: 'p', accountAddress: 'a', resourceA: 'r1', resourceB: 'r2',
+    rawAmountA: '10000000', rawAmountB: '30000000', minLpOut: '5000000', maxEpoch: '9', operationId: 'op_exact',
+  });
+  assert.equal(intent.operation, 'add_liquidity', 'review classification stays AMM_ADD_LIQUIDITY');
+  const call = intent.calls[0];
+  assert.equal(call.method, 'add_liquidity_exact');
+  assert.deepEqual(call.argTypes, ['Bucket', 'Bucket', 'Amount']);
+  assert.equal(call.args[2], '5000000', 'the quote hint is the on-chain minimum');
+  // (lp, refund_a, refund_b) — all three tuple elements deposited, nothing left on the workspace.
+  const deposits = intent.instructions.filter((i) => i.kind === 'deposit_all');
+  assert.deepEqual(deposits.map((d) => d.bucket.offset), [0, 1, 2]);
+  assert.equal(deposits.every((d) => d.accountAddress === 'a'), true);
+  assert.equal(intent.evidence.quote.minOutput, '5000000');
+  // Refusals: the guard must be positive (a '0' minimum would disable the protection).
+  assert.throws(() => buildAddLiquidityExactIntent({ poolComponent: 'p', accountAddress: 'a', resourceA: 'r1', resourceB: 'r2', rawAmountA: '1', rawAmountB: '1', minLpOut: '0', maxEpoch: '9', operationId: 'op' }), /positive/);
+  assert.throws(() => buildAddLiquidityExactIntent({ poolComponent: 'p', accountAddress: 'a', resourceA: 'r1', resourceB: 'r2', rawAmountA: '1', rawAmountB: '1', minLpOut: '-2', maxEpoch: '9', operationId: 'op' }), /non-negative integer/);
+});
+
+test('audit EIGHT-PASS P1-H1: the wiring picks add_liquidity_exact only when a minimum is supplied', () => {
+  const b = ammLiquidityIntentBuilder('acct_1', () => 'op_liq_exact');
+  const exact = b.addLiquidity({ poolComponent: 'p', resourceA: 'r1', resourceB: 'r2', rawAmountA: '10', rawAmountB: '10', maxEpoch: '9', minLpOut: '7' });
+  assert.equal(exact.calls[0].method, 'add_liquidity_exact');
+  assert.equal(exact.calls[0].args[2], '7');
+  const legacy = b.addLiquidity({ poolComponent: 'p', resourceA: 'r1', resourceB: 'r2', rawAmountA: '10', rawAmountB: '10', maxEpoch: '9' });
+  assert.equal(legacy.calls[0].method, 'add_liquidity');
+  assert.equal(legacy.calls[0].args.length, 2);
 });
 
 test('marketplace wiring constructs from authoritative readback objects only', () => {

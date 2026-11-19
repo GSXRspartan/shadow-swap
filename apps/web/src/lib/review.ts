@@ -320,10 +320,11 @@ const AMM_OPERATION: Record<AmmIntentLike['operation'], ReviewOperation> = {
 /**
  * The swap call whose `min_output` is the user's bound. For one hop it is the only swap;
  * for a route it is the LAST hop (intermediate hops carry min_output = 1, which must never
- * be shown to a signer as their protection).
+ * be shown to a signer as their protection). `add_liquidity_exact` takes its on-chain
+ * `min_lp_out` at the same argument position, so the exact-method deposit binds here too.
  */
 function finalSwapCall(intent: AmmIntentLike): AmmIntentLike['calls'][number] | undefined {
-  const swaps = intent.calls.filter((call) => call.method === 'swap');
+  const swaps = intent.calls.filter((call) => call.method === 'swap' || call.method === 'add_liquidity_exact');
   return swaps[swaps.length - 1];
 }
 

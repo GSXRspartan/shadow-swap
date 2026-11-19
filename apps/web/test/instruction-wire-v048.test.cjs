@@ -56,6 +56,36 @@ test('probe: bare-hex CallFunction address, integer workspace keys, Address call
   assert.deepEqual(fixture.probe[1], { PutLastInstructionOutputOnWorkspace: { key: 0 } });
 });
 
+test('audit EIGHT-PASS P1-H1: add_liquidity_exact serialises to the engine-proven (Bucket, Bucket, Amount) -> 3-deposit shape', () => {
+  // The revealed_add_liquidity fixture was EXECUTED by the pinned engine with the same
+  // instruction shape (two withdrawals, a (Bucket, Bucket, Amount) call, three tuple
+  // deposits). Pool v2's `add_liquidity_exact` must produce byte-identical wire modulo
+  // the method name and the min_lp_out argument, so the new deposit path is tied to an
+  // engine-executed shape rather than to a hand-written expectation.
+  const { params, instructions } = scenario('revealed_add_liquidity');
+  const intent = w.buildAddLiquidityExactIntent({
+    ...params,
+    minLpOut: params.minLpOut,
+    maxEpoch: '10',
+    operationId: 'op',
+  });
+  const actual = wire(intent);
+  assert.equal(actual.length, instructions.length, 'identical instruction count');
+  for (let i = 0; i < instructions.length; i += 1) {
+    const expected = JSON.parse(JSON.stringify(instructions[i]));
+    const got = JSON.parse(JSON.stringify(actual[i]));
+    if (expected.CallMethod && expected.CallMethod.method === 'add_liquidity') {
+      assert.equal(got.CallMethod.method, 'add_liquidity_exact', 'the pool-v2 exact method is called');
+      assert.deepEqual(got.CallMethod.args[0], expected.CallMethod.args[0], 'bucket a identical');
+      assert.deepEqual(got.CallMethod.args[1], expected.CallMethod.args[1], 'bucket b identical');
+      assert.equal(got.CallMethod.args[2].Literal, encodeLiteral('Amount', params.minLpOut), 'min_lp_out encoded exactly as the engine encodes Amount');
+      assert.equal(got.CallMethod.call.Address, expected.CallMethod.call.Address, 'the resolved pool component is called');
+    } else {
+      assert.deepEqual(got, expected, `instruction ${i} identical to the engine-executed list`);
+    }
+  }
+});
+
 test('wire == engine: create_pool (Pool::new by template hash, add_liquidity on the workspace component)', () => {
   const { params, instructions } = scenario('create_pool');
   const intent = w.buildCreatePoolIntent({ ...params, maxEpoch: '10', operationId: 'op' });
