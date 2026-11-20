@@ -19,11 +19,14 @@
  *
  *   * Minotari **L1** mainnet is live. It is where the XTM donation address receives, and that
  *     path needs no execution authorization because this application never spends on L1.
- *   * Ootle **L2** mainnet has not launched. Upstream's SDK has no mainnet indexer URL —
- *     `default_indexer_url(Network::MainNet)` is `unimplemented!()` at cohort `6a25dbc` — and
- *     upstream's own guide says "Ootle mainnet has not launched yet". So `mainnet`'s indexer list
- *     below is EMPTY, and a build pointed at it can read nothing. That is the truth, not a
- *     placeholder, and no URL is invented to fill the gap.
+ *   * Ootle **L2** mainnet is LIVE upstream — CORRECTED 2026-11-20: the earlier claim that it
+ *     "has not launched" is stale. `https://indexer-a.ootle.tari.com/info` answers version
+ *     0.55.0, network "mainnet", network_byte 0, epoch 39096, and upstream v0.55.0 ships
+ *     `default_indexer_url(Network::MainNet) = "https://indexer-a.ootle.tari.com/"`. What has
+ *     NOT changed is this build's hold: `mainnet`'s indexer list below stays EMPTY (onboarding
+ *     that URL is a reviewed change to this table AND the deployment CSP together), and
+ *     `MAINNET_EXECUTION_AUTHORIZED` stays false, so every mainnet wallet connection and
+ *     transaction is refused. A successful read must never move that constant.
  *
  * The authoritative identity table lives in `@tari-ootle/protocol-client`'s `chainIdentity`,
  * read from upstream source. This module re-exports from it rather than keeping a second copy,
@@ -161,10 +164,12 @@ export const FRONTEND_NETWORKS: Readonly<Record<FrontendNetworkId, FrontendNetwo
     id: 'mainnet',
     displayName: 'Mainnet',
     badge: 'MAINNET',
-    // Empty because no Ootle mainnet indexer has been published. See this module's header.
-    indexerUrls: [],
-    indexerReason:
-      'Ootle L2 mainnet has not launched and no public indexer has been published for it. This build will not guess an endpoint for a network carrying real value.',
+    // Empty because this build has deliberately not onboarded the mainnet read endpoint (it is
+    // published upstream and verified live; onboarding is a reviewed change to this table AND the
+    // deployment CSP together). See this module's header.
+      indexerUrls: [],
+      indexerReason:
+        'Ootle L2 mainnet is live upstream (0.55.0, verified 2026-11-20), but this build has not onboarded its read endpoint and refuses every mainnet wallet connection and transaction (MAINNET_EXECUTION_AUTHORIZED = false). Endpoint onboarding is a reviewed change; execution is a further one.',
     allowsLocalEndpoints: false,
     realValue: true,
   },

@@ -77,9 +77,10 @@ export const XTM_DONATION_ADDRESSES: Readonly<Partial<Record<TariNetwork, string
 /**
  * TARI destinations per Ootle L2 network. NONE are configured.
  *
- * Mainnet is absent because the operator has not supplied one and Ootle mainnet has not launched.
- * Esmeralda is absent because a testnet donation is not a donation. Both are explicitly listed as
- * `undefined` rather than omitted, so the table itself records that the gap is intentional.
+ * Mainnet is absent because the operator has not supplied an address (mainnet itself is live
+ * upstream, verified 2026-11-20). Esmeralda is absent because a testnet donation is not a donation.
+ * Both are explicitly listed as `undefined` rather than omitted, so the table itself records that
+ * the gap is intentional.
  */
 export const OOTLE_DONATION_ADDRESSES: Readonly<Partial<Record<TariNetwork, string | undefined>>> = {
   mainnet: undefined,
@@ -89,7 +90,7 @@ export const OOTLE_DONATION_ADDRESSES: Readonly<Partial<Record<TariNetwork, stri
 /** Why a destination is unavailable, per network. Shown verbatim; never a generic message. */
 export const OOTLE_DONATION_UNAVAILABLE_REASON: Readonly<Partial<Record<TariNetwork, string>>> = {
   mainnet:
-    'No Ootle mainnet donation address has been supplied yet, and Ootle mainnet has not launched. A placeholder would be worse than nothing: a donation sent to a guessed address is gone. This will be enabled by a reviewed configuration change once the operator provides a permanent address.',
+    'No Ootle mainnet donation address has been supplied yet (mainnet is live upstream, 0.55.0, verified 2026-11-20). A placeholder would be worse than nothing: a donation sent to a guessed address is gone. This will be enabled by a reviewed configuration change once the operator provides a permanent address.',
   esmeralda:
     'There is no Esmeralda donation address, and there will not be one: Esmeralda TARI is test currency with no value, so sending it would cost the donor effort and give nothing.',
 };

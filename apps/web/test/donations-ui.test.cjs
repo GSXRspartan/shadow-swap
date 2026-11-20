@@ -89,12 +89,13 @@ test('THE OOTLE SECTION IS DISABLED WITH ITS REASON, and shows no other network\
 });
 
 test('switching the configured L2 network changes which unavailable reason is shown', () => {
-  // §10: mainnet and Esmeralda are distinct entries. A mainnet build must not be told the
-  // Esmeralda reason, because the remedies are different — one waits for a launch, the other
-  // never gets an address at all.
+  // A10: mainnet and Esmeralda are distinct entries. A mainnet build must not be told the
+  // Esmeralda reason, because the remedies are different — one waits for the operator's address
+  // (mainnet is live upstream, 0.55.0 verified 2026-11-20), the other never gets an address.
   assert.match(panel('esmeralda'), /test currency with no value/);
   const mainnet = panel('mainnet');
-  assert.match(mainnet, /has not launched/);
+  assert.match(mainnet, /No Ootle mainnet donation address has been supplied/);
+  assert.doesNotMatch(mainnet, /has not launched/);
   assert.match(mainnet, /A placeholder would be worse than nothing/);
   assert.equal(/test currency with no value/.test(mainnet), false);
   // A network with no entry at all still refuses rather than inheriting.

@@ -5,21 +5,28 @@ and what is blocked. Every row says which, with no aspirational entries.
 
 ## 0. The finding that reorders everything below
 
-**Ootle L2 mainnet has not launched.** Two independent sources, both upstream:
+**CORRECTED 2026-11-20: Ootle L2 mainnet is LIVE.** The previous revision of this section recorded
+"mainnet has not launched" from two upstream sources, both of which were accurate when written:
 
 * `crates/wallet/ootle-rs/src/helpers.rs` at cohort `6a25dbc` (v0.48.0):
   `Network::MainNet => unimplemented!("MainNet indexer URL is not set")`.
-* Upstream's exchange-integration guide: *"Ootle mainnet has not launched yet"*, with MainNet
-  (prefix `otl_`) listed as "Not launched yet", and a note that public indexer URLs and fee tables
-  are placeholders that will change before launch.
+* Upstream's exchange-integration guide, which then said *"Ootle mainnet has not launched yet"*.
 
-A launch date of **2026-11-11** has been announced publicly. As of this commit it is in the future.
+The publicly announced launch date of **2026-11-11** has since passed, verified live:
 
-Minotari **L1** mainnet, by contrast, is live — which is why the XTM donation address works today.
+* `https://indexer-a.ootle.tari.com/info` answers
+  `{"version":"0.55.0","network":"mainnet","network_byte":0,"current_epoch":39096}`.
+* Upstream v0.55.0 ships `default_indexer_url(Network::MainNet) = "https://indexer-a.ootle.tari.com/"`.
 
-So the honest readiness picture is asymmetric: the L1 side of everything has a real network, and
-the L2 side — where every pool, every LP position and every trade lives — does not yet. No amount
-of work in this repository changes that row.
+What has NOT changed: **this build refuses every mainnet wallet connection and transaction**
+(`MAINNET_EXECUTION_AUTHORIZED = false`, deliberately not an env var), and has deliberately not
+onboarded the mainnet read endpoint — that is a reviewed change to the network table AND the
+deployment CSP together. Minotari **L1** mainnet was always live, which is why the XTM donation
+address works today.
+
+So the readiness picture is no longer "the L2 side does not exist": **both** mainnet layers are
+live, and this build's refusal to act on them is a hold held in place by reviewed constants —
+which is exactly what every row below still assumes.
 
 ## 1. The readiness ladder
 

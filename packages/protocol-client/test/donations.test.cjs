@@ -114,7 +114,9 @@ test('both destinations are returned in display order, with the L2 one network-s
   // An Esmeralda build asks about Esmeralda's L2 entry, and a mainnet build about mainnet's. The
   // two give different reasons, which is the point of keeping them separate.
   const [, mainnetTari] = pc.donationDestinations('mainnet', 'mainnet');
-  assert.match(mainnetTari.reason, /has not launched/);
+  assert.match(mainnetTari.reason, /No Ootle mainnet donation address has been supplied/);
+  // Corrected 2026-11-20: mainnet is live upstream; the absence is the operator's missing address.
+  assert.doesNotMatch(mainnetTari.reason, /has not launched/);
 });
 
 test('the required disclosures are in the reviewed module, beside the addresses they describe', () => {

@@ -38,7 +38,8 @@ const NETWORK = (args.find((a) => a.startsWith('--network='))?.split('=')[1] ?? 
 const NETWORK_BYTES = { mainnet: 0x00, stagenet: 0x01, nextnet: 0x02, localnet: 0x10, igor: 0x24, esmeralda: 0x26 };
 const NETWORK_INDEXERS = {
   esmeralda: ['https://esme-indexer-a.ootle.tari.com', 'https://esme-indexer-b.ootle.tari.com'],
-  // Ootle mainnet has not launched and publishes no indexer; see apps/web/src/lib/networks.ts.
+  // Ootle mainnet is live upstream (0.55.0, verified 2026-11-20), but this build has not
+  // onboarded its read endpoint; see apps/web/src/lib/networks.ts.
   mainnet: [],
   localnet: ['http://127.0.0.1:9113'],
 };

@@ -59,8 +59,9 @@ read path, so the refusal happens before anything is displayed.
 
 ## 3. The Ootle destination, which does not exist yet
 
-**Not configured on any network.** The operator has not supplied a permanent Ootle address, and
-Ootle mainnet has not launched. The UI shows an unavailable state with the reason, and both the
+**Not configured on any network.** The operator has not supplied a permanent Ootle address. (Ootle
+mainnet is live upstream — 0.55.0, verified 2026-11-20 — which is exactly why no placeholder is
+tolerated.) The UI shows an unavailable state with the reason, and both the
 copy and QR controls are disabled.
 
 What the code deliberately does **not** do:
@@ -73,11 +74,12 @@ What the code deliberately does **not** do:
   the fallback would look like a feature.
 
 Mainnet and Esmeralda are **distinct entries** with **distinct reasons**, because the remedies
-differ — one waits for a launch, the other never gets an address at all:
+differ — one waits for the operator's address (mainnet is live upstream), the other never gets an
+address at all:
 
 | Network | Reason shown |
 |---|---|
-| mainnet | No address supplied yet, and Ootle mainnet has not launched. A placeholder would be worse than nothing. |
+| mainnet | No address supplied yet. Mainnet is live upstream (0.55.0, verified 2026-11-20), so a placeholder would be worse than nothing. |
 | esmeralda | There is no Esmeralda donation address and there will not be one: Esmeralda TARI is test currency with no value. |
 | anything else | No address is configured, and no other network's address is ever used in its place. |
 

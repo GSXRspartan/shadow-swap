@@ -69,7 +69,7 @@ an L2 donation destination can be validated for its network with no chain read a
 | L2 | esmeralda | `esme-indexer-a.ootle.tari.com`, `esme-indexer-b.ootle.tari.com` | The v0.48.0 defaults, from the config presets and `default_indexer_url` |
 | L2 | esmeralda (pre-reset) | `ootle-indexer-a.tari.com`, `ootle-indexer-b.tari.com` | Not a default. Kept permitted so a build can be pointed at the pre-reset network while it is served |
 | L2 | localnet | `http://127.0.0.1:9113` | Development builds only |
-| L2 | **mainnet** | **none** | **Ootle mainnet has not launched.** `default_indexer_url(Network::MainNet)` is `unimplemented!("MainNet indexer URL is not set")`, and upstream's guide says *"Ootle mainnet has not launched yet"*. No URL is invented here |
+| L2 | **mainnet** | **none onboarded** | **Live upstream (verified 2026-11-20):** `indexer-a.ootle.tari.com` answers 0.55.0 / `mainnet` / byte 0 / epoch 39096, and upstream v0.55.0 ships `default_indexer_url(Network::MainNet) = https://indexer-a.ootle.tari.com/`. This build has deliberately not onboarded that URL: adding it is a reviewed change to this table AND the deployment CSP together, and mainnet execution remains refused regardless |
 | L1 | all | **none** | A Minotari wallet is reachable only over local gRPC. Every L1 read and signature needs a wallet beside the user |
 
 `connect-src` is derived from the same table that configures the indexer, so an origin added in

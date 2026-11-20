@@ -143,11 +143,12 @@ const MAINNET: ProtocolDeployment = {
   offerTemplates: [],
   revealedPoolTemplates: [],
   // Empty like the rest, and for the same reason the whole row exists. Worth noting that the
-  // cross-layer market needs BOTH legs, and Ootle L2 mainnet has not launched — so even a
-  // published template here would not make the feature usable on mainnet.
+  // cross-layer market needs BOTH legs plus authorization: Ootle L2 mainnet is live upstream
+  // (0.55.0, verified 2026-11-20), but this build refuses mainnet execution and has no Shadow
+  // Swap template published there — so the feature stays unavailable on mainnet.
   crossLayerHtlcTemplates: [],
   status:
-    'No Shadow Swap template is published on mainnet, and Ootle L2 mainnet has not launched. Every feature reports unavailable here, which is the truthful state rather than a placeholder.',
+    'No Shadow Swap template is published on mainnet, and this build refuses mainnet execution (MAINNET_EXECUTION_AUTHORIZED = false; mainnet itself is live upstream at 0.55.0, verified 2026-11-20). Every feature reports unavailable here, which is the truthful state rather than a placeholder.',
 };
 
 const LOCALNET: ProtocolDeployment = {

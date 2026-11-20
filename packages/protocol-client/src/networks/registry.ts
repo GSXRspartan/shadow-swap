@@ -4,31 +4,34 @@
  *
  * THE FINDING THAT SHAPES THIS WHOLE FILE
  *
- * **Ootle L2 mainnet does not exist yet.** This is not an inference. Upstream's own SDK says so
- * in code — `crates/wallet/ootle-rs/src/helpers.rs` at cohort `6a25dbc`:
+ * **CORRECTED 2026-11-20: Ootle L2 mainnet is LIVE.** The previous revision of this file recorded
+ * "mainnet does not exist yet" from upstream's SDK at cohort `6a25dbc`
+ * (`Network::MainNet => unimplemented!("MainNet indexer URL is not set")`) and upstream's then-current
+ * guide ("Ootle mainnet has not launched yet"), with a publicly announced launch date of 2026-11-11.
+ * That date has passed and the claim is now stale, verified live:
  *
- *     Network::MainNet => unimplemented!("MainNet indexer URL is not set"),
+ *     https://indexer-a.ootle.tari.com/info answers
+ *     {"version":"0.55.0","network":"mainnet","network_byte":0,"current_epoch":39096,...}
  *
- * and upstream's exchange-integration guide says it in prose: *"Ootle mainnet has not launched
- * yet"*, listing MainNet (prefix `otl_`) as "Not launched yet" and noting that public indexer
- * URLs and fee tables are placeholders that will change before launch. A launch date of
- * 2026-11-11 has been announced publicly; as of this commit it is in the future.
+ * and upstream v0.55.0 ships `default_indexer_url(Network::MainNet) = "https://indexer-a.ootle.tari.com/"`
+ * (`crates/wallet/ootle-rs/src/helpers.rs` at tag v0.55.0). Mainnet's IDENTITY was already known here
+ * (byte 0x00, prefix `otl_`); what changed is that the network now runs and publishes an indexer.
  *
- * So the honest representation of Ootle mainnet is a network whose IDENTITY is fully known (its
- * byte is 0x00, its address prefix is `otl_`) and whose ENDPOINTS do not exist. This registry
- * says exactly that, and `l2Endpoints` returns an empty list rather than a guess. No URL is
- * invented here, and when one is published it becomes a reviewed one-line addition — not a code
- * change.
+ * What has NOT changed, and is not a policy choice: this build has deliberately NOT onboarded the
+ * mainnet indexer as a read endpoint, and refuses every mainnet wallet connection and transaction
+ * (`MAINNET_EXECUTION_AUTHORIZED = false` in apps/web, the readiness ladder in `readiness.ts`, and the
+ * cross-chain gates). Onboarding a mainnet read endpoint is a reviewed change that must add the URL to
+ * this table AND the deployment CSP together; execution on mainnet is a further reviewed change on top.
  *
- * Minotari **L1** mainnet, by contrast, is live. That asymmetry is the central fact about
- * Shadow Swap's mainnet readiness: the L1 side of a cross-layer trade has a real network to
- * settle on, and the L2 side does not yet.
+ * Minotari **L1** mainnet was always live. The central fact about Shadow Swap's cross-layer readiness
+ * is no longer an asymmetry of existence: BOTH mainnet layers exist, and this build's refusal to act on
+ * either is the hold.
  *
  * WHAT THIS REGISTRY IS NOT
  *
- * It is not an authorization to execute. A profile existing means "this build knows what this
- * network is", never "trading is on". That decision lives in `readiness.ts`, which requires
- * evidence this file cannot provide.
+ * It is not an authorization to execute. A profile existing — or `launched: true` meaning "verified
+ * reachable and running" — never means "trading is on". That decision lives in `readiness.ts`, which
+ * requires evidence this file cannot provide.
  */
 
 import { NETWORK_BYTES, OOTLE_ADDRESS_HRP, type TariNetwork, isTestnet } from './chainIdentity.js';
@@ -70,9 +73,9 @@ export interface LayerProfile {
   readonly displayName: string;
   readonly isTestnet: boolean;
   /**
-   * Public read endpoints. EMPTY means no endpoint is published for this network and nothing may
-   * be read from it — which is the state of Ootle mainnet, and of L1 on every network, because
-   * a Minotari wallet is reachable only over local gRPC.
+   * Public read endpoints. EMPTY means this build has not onboarded an endpoint for this network —
+   * which is the state of Ootle mainnet in this build even though upstream now publishes one, and
+   * of L1 on every network, because a Minotari wallet is reachable only over local gRPC.
    */
   readonly endpoints: readonly string[];
   /** Why the endpoint list is empty, when it is. Shown verbatim in a refusal. */
@@ -203,9 +206,9 @@ export const LAYER_PROFILES: Readonly<Record<Layer, Readonly<Partial<Record<Tari
       'mainnet',
       'Ootle Mainnet',
       [],
-      false,
-      'NOT LAUNCHED. Upstream\'s SDK has no mainnet indexer URL — `default_indexer_url(Network::MainNet)` is `unimplemented!("MainNet indexer URL is not set")` at cohort 6a25dbc — and upstream\'s exchange-integration guide states "Ootle mainnet has not launched yet". A launch date of 2026-11-11 has been announced publicly. This build therefore knows mainnet\'s identity and has no endpoint for it.',
-      'No public Ootle mainnet indexer has been published. This build will not guess one: a wrong endpoint for a mainnet with real value is worse than no endpoint.',
+      true,
+      'LIVE UPSTREAM, verified 2026-11-20: https://indexer-a.ootle.tari.com/info answers version 0.55.0, network "mainnet", network_byte 0, epoch 39096; upstream v0.55.0 ships default_indexer_url(Network::MainNet) = https://indexer-a.ootle.tari.com/. This build still refuses every mainnet wallet connection and transaction (MAINNET_EXECUTION_AUTHORIZED = false), and has deliberately not onboarded the mainnet read endpoint: that is a separate reviewed change adding the URL to this table AND the deployment CSP together.',
+      'Ootle L2 mainnet is live upstream (0.55.0, verified 2026-11-20). This build has not onboarded its read endpoint: adding https://indexer-a.ootle.tari.com is a reviewed change to this table AND the deployment CSP together. Execution on mainnet remains refused regardless of reads.',
     ),
     esmeralda: l2Profile('esmeralda', 'Ootle Esmeralda Testnet', ESMERALDA_L2_ENDPOINTS, true, 'Live testnet, and the only Ootle network this build has ever read. Reset at v0.48.0.'),
     localnet: l2Profile('localnet', 'Ootle Localnet', ['http://127.0.0.1:9113'], true, 'A network the developer runs with tari_swarm_daemon. Only a development build may reach it.'),
@@ -280,7 +283,7 @@ export const SUPPORTED_CHAIN_PAIRS: readonly ChainPair[] = [
     l2: 'mainnet',
     label: 'Minotari Mainnet ⇄ Ootle Mainnet',
     usable: false,
-    reason: 'Minotari L1 mainnet is live, but Ootle L2 mainnet has not launched and has no published indexer. A cross-layer trade needs both legs, so this pair cannot settle.',
+    reason: 'Both layers are live upstream (Ootle L2 mainnet verified 2026-11-20 at 0.55.0), but this build refuses every mainnet execution (MAINNET_EXECUTION_AUTHORIZED = false) and has not onboarded a mainnet read endpoint. A cross-layer trade needs both legs plus authorization, so this pair cannot settle in this build.',
   },
 ];
 

@@ -31,7 +31,7 @@ test('A MAINNET SESSION IS NEVER HANDED A TESTNET DEPLOYMENT', () => {
   assert.equal(mainnet.marketplaceTemplates, undefined);
   assert.deepEqual(mainnet.offerTemplates, []);
   assert.deepEqual(mainnet.revealedPoolTemplates, []);
-  assert.match(mainnet.status, /has not launched/);
+  assert.match(mainnet.status, /refuses mainnet execution/);
   // The registry key is distinct, so no cache entry is shared with a testnet.
   assert.notEqual(mainnet.registryKey, esmeralda.registryKey);
   assert.match(deployment.deploymentFor('mainnet', 'V048_RESET').registryKey, /^mainnet$/);

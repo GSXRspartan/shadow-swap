@@ -2,11 +2,13 @@
  * The registry, manifests and readiness: the machinery that turns "which network is this" into
  * "may I act".
  *
- * The finding these tests pin down is that **Ootle L2 mainnet does not exist yet.** Upstream's
- * SDK has no mainnet indexer URL (`unimplemented!("MainNet indexer URL is not set")` at cohort
- * `6a25dbc`) and upstream's exchange-integration guide says "Ootle mainnet has not launched yet".
- * So the registry must know mainnet's identity and have no endpoint for it, and every layer above
- * must behave correctly in that state rather than treating an empty endpoint list as a bug.
+ * CORRECTED 2026-11-20: Ootle L2 mainnet is LIVE upstream — `indexer-a.ootle.tari.com` answers
+ * 0.55.0 / network "mainnet" / byte 0 / epoch 39096, and upstream v0.55.0 ships
+ * `default_indexer_url(Network::MainNet) = https://indexer-a.ootle.tari.com/` (verified live).
+ * The earlier "has not launched" finding was accurate at cohort 6a25dbc and is now stale.
+ * The registry therefore knows mainnet's identity, records it launched, and STILL has no
+ * onboarded endpoint (onboarding is a reviewed change) — and every layer above must behave
+ * correctly in that state rather than treating an empty endpoint list as a bug.
  */
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -34,7 +36,7 @@ const observed = (over = {}) => ({
   ...over,
 });
 
-test('MINOTARI L1 MAINNET IS LIVE AND OOTLE L2 MAINNET IS NOT, which is the central asymmetry', () => {
+test('BOTH MAINNET LAYERS ARE LIVE UPSTREAM, and this build holds execution on both', () => {
   const l1 = pc.profileFor('L1_MINOTARI', 'mainnet');
   assert.equal(l1.ok, true);
   assert.equal(l1.profile.launched, true);
@@ -47,12 +49,14 @@ test('MINOTARI L1 MAINNET IS LIVE AND OOTLE L2 MAINNET IS NOT, which is the cent
 
   const l2 = pc.profileFor('L2_OOTLE', 'mainnet');
   assert.equal(l2.ok, true, 'mainnet is a KNOWN network; its identity is not hidden');
-  assert.equal(l2.profile.launched, false);
+  // Verified live 2026-11-20: indexer-a.ootle.tari.com answers 0.55.0 / mainnet / byte 0.
+  assert.equal(l2.profile.launched, true);
   assert.equal(l2.profile.nativeAsset, 'TARI');
-  assert.deepEqual(l2.profile.endpoints, [], 'no mainnet indexer is published, and none is invented');
-  assert.match(l2.profile.endpointReason, /will not guess one/);
-  assert.match(l2.profile.launchNote, /has not launched yet/);
-  assert.match(l2.profile.launchNote, /unimplemented/);
+  assert.deepEqual(l2.profile.endpoints, [], 'the upstream URL exists but is deliberately NOT onboarded by this build');
+  assert.match(l2.profile.endpointReason, /live upstream/);
+  assert.match(l2.profile.endpointReason, /reviewed change/);
+  assert.match(l2.profile.launchNote, /LIVE UPSTREAM, verified 2026-11-20/);
+  assert.match(l2.profile.launchNote, /MAINNET_EXECUTION_AUTHORIZED = false/);
   // Ootle is BFT-final, not confirmation-counted. The two layers settle differently.
   assert.deepEqual(l2.profile.finality, { kind: 'BFT_COMMITTED' });
   assert.equal(l2.profile.addressForm, 'bech32m, prefix otl_');
@@ -68,10 +72,12 @@ test('a mixed-value chain pair is refused with its own reason', () => {
   assert.equal(pc.checkChainPair('esmeralda', 'esmeralda').ok, true);
   assert.equal(pc.checkChainPair('localnet', 'localnet').ok, true);
 
-  // Both mainnet: a recorded pair, correctly unusable, because the L2 leg has nowhere to settle.
+  // Both mainnet: a recorded pair, correctly unusable — both layers are live upstream, but this
+  // build refuses mainnet execution and has not onboarded the L2 read endpoint.
   const both = pc.checkChainPair('mainnet', 'mainnet');
   assert.equal(both.ok, false);
-  assert.match(both.reason, /Ootle L2 mainnet has not launched/);
+  assert.match(both.reason, /refuses every mainnet execution/);
+  assert.match(both.reason, /live upstream/);
 
   // One side real, one side not: the worst case, and it gets its own message.
   const mixed = pc.checkChainPair('mainnet', 'esmeralda');
@@ -244,8 +250,9 @@ test('the readiness ladder cannot be skipped: a later piece of evidence never co
   assert.equal(wrongWallet.canExecute, false);
   assert.ok(wrongWallet.blockers.some((line) => /rejected at best and misdirected at worst/.test(line)));
 
-  // Ootle mainnet: identity known, nothing readable, so it never leaves NETWORK_CONFIGURED even
-  // with authorization set.
+  // Ootle mainnet: identity known, network live upstream (0.55.0, verified 2026-11-20), but no
+  // endpoint onboarded by this build — so it never leaves NETWORK_CONFIGURED even with
+  // authorization set, and the blocker names the hold rather than a stale launch claim.
   const mainnet = pc.assessReadiness({
     layer: 'L2_OOTLE',
     network: 'mainnet',
@@ -257,7 +264,9 @@ test('the readiness ladder cannot be skipped: a later piece of evidence never co
   assert.equal(mainnet.stage, 'NETWORK_CONFIGURED');
   assert.equal(mainnet.canExecute, false);
   assert.equal(mainnet.realValue, true);
-  assert.ok(mainnet.blockers.some((line) => /has not launched/.test(line)));
+  assert.ok(mainnet.blockers.some((line) => /live upstream/.test(line)));
+  assert.ok(mainnet.blockers.some((line) => /reviewed change/.test(line)));
+  assert.ok(mainnet.blockers.every((line) => !/has not launched/.test(line)), 'the stale launch claim is gone');
 
   // An unknown network is the floor, and says so.
   const unknown = pc.assessReadiness({
@@ -327,8 +336,10 @@ test('A TESTNET RESET DOES NOT CORRUPT MAINNET SETTINGS', () => {
   // And the reset Esmeralda generation cannot use the pre-reset one's entries.
   const preReset = pc.validateManifest(manifest({ generation: 'PRE_V048_RESET' }), observed({ generation: 'V048_RESET' }));
   assert.equal(preReset.rejection, 'UNSUPPORTED_NETWORK_GENERATION');
-  // Mainnet's profile is unaffected by anything Esmeralda did.
-  assert.equal(pc.profileFor('L2_OOTLE', 'mainnet').profile.launched, false);
+  // Mainnet's profile is unaffected by anything Esmeralda did (mainnet is live upstream,
+  // verified 2026-11-20; its identity and hold are independent of testnet state).
+  assert.equal(pc.profileFor('L2_OOTLE', 'mainnet').profile.launched, true);
+  assert.deepEqual(pc.profileFor('L2_OOTLE', 'mainnet').profile.endpoints, []);
 });
 
 test('MAINNET LP OPERATIONS CANNOT USE TESTNET POOL ADDRESSES', () => {
