@@ -33,7 +33,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useApp } from '../state/AppContext.js';
-import { DepthField, FlowMark, WordmarkLockup } from '../components/brand.js';
+import { FlowMark, WordmarkLockup } from '../components/brand.js';
 import { SculptureViewer } from '../components/SculptureViewer.js';
 
 const FEE_BPS = '30';
@@ -193,17 +193,16 @@ export function HomePage() {
             )}
           </div>
 
-          {/* Depth field: the product's one honest metaphor, drawn as data. */}
+          {/* Compact, optional product artwork — never presented as market data. */}
           <div className="stack" style={{ gap: 'var(--s-4)', minWidth: 0 }}>
-            <div className="ss-card ss-glass ss-card--lit" style={{ padding: 'var(--s-5)' }}>
+            <div className="ss-card ss-hero-sculpture" style={{ padding: 'var(--s-4)' }}>
               <div className="spread" style={{ marginBottom: 'var(--s-4)', alignItems: 'center' }}>
-                <span className="label">Market depth</span>
-                <span className="ss-chip ss-chip--teal">authoritative reserves</span>
+                <span className="label">Cross-layer routes</span>
+                <Link className="ss-chip ss-chip--teal" to="/market">Open market →</Link>
               </div>
-              <DepthField />
+              <SculptureViewer />
               <p className="hint" style={{ marginTop: 'var(--s-3)' }}>
-                Illustrative geometry. Every number this app shows a user is read from the chain first — the diagram above carries no
-                price, because there is no honest one to put on a landing page.
+                Interactive artwork only. Live pricing, reserves and execution details appear in the relevant market and pool views.
               </p>
             </div>
 
@@ -264,7 +263,7 @@ export function HomePage() {
       </section>
 
       {/* ----------------------------------------------------------- FEATURES */}
-      <section style={{ padding: '0 var(--s-4) var(--s-12)' }}>
+      <section className="ss-home-sculpture-section" style={{ padding: '0 var(--s-4) var(--s-12)' }}>
         <div className="stack" style={{ maxWidth: 1180, margin: '0 auto', gap: 'var(--s-6)' }}>
           <div className="stack" style={{ gap: 'var(--s-2)', maxWidth: '62ch' }}>
             <h2 style={{ fontSize: 'var(--text-3xl)', letterSpacing: '-0.03em' }}>Three things you can do</h2>

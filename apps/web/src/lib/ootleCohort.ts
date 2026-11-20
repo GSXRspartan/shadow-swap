@@ -28,6 +28,22 @@
  *              component addresses remain addressable (verified live against the
  *              upgraded indexers: /info, /transaction-receipts, /substates/fetch).
  *
+ *   - v0.52.x was accepted the same way (same generation, live-verified).
+ *
+ *   - v0.55.0 (2026-11-20, Esmeralda) is likewise a SAME-GENERATION upgrade, NOT a reset:
+ *              both official indexers report version 0.55.0, network "esmeralda",
+ *              network_byte 38, epoch 13268; `/substates/fetch` still answers
+ *              `{ version, value: "<base64 CBOR>" }`; and the receipt-verified Pool v2
+ *              component (`component_5c554ab7…`, the esmeralda@v049 registry seed) still
+ *              exists at substate version 0 with the SAME ABI method list decoded from
+ *              its own state (add_liquidity, add_liquidity_exact, get_pool_balance(s),
+ *              locked_lp_supply, lp_resource, lp_total_supply, remove_liquidity, swap).
+ *              The wire format stays CBOR_VALUES and the generation stays V049_RESET.
+ *              0.53.x and 0.54.x were never observed by this build and stay REFUSED.
+ *              Per-entry shape enforcement below still refuses any value whose encoding
+ *              disagrees with this cohort, so this acceptance authorises READS ONLY —
+ *              it changes no signing path and no template ABI assumption.
+ *
  * A client that guesses the format reads a CBOR receipt (a string) as "not a receipt",
  * skips it, and reports a deployed protocol as EMPTY. That is a silent false negative,
  * and it is exactly what the pre-v0.48 discovery code did. So the format is derived
@@ -69,7 +85,7 @@ export interface IndexerCohort {
 }
 
 /** Human-readable range, used in refusals and in the documentation. */
-export const SUPPORTED_INDEXER_RANGE = '0.41.x through 0.52.x';
+export const SUPPORTED_INDEXER_RANGE = '0.41.x through 0.52.x, plus 0.55.x (same-generation, verified live 2026-11-20)';
 
 /** The cohort this build's templates and engine tests are pinned to. */
 export const PINNED_OOTLE_RELEASE = {
@@ -115,6 +131,11 @@ export function classifyIndexerVersion(version: unknown): CohortClassification {
     return { ok: true, cohort: { version: text, major, minor, generation: 'V049_RESET', wireFormat: 'CBOR_VALUES' } };
   }
   if (major === 0 && minor === 52) {
+    return { ok: true, cohort: { version: text, major, minor, generation: 'V049_RESET', wireFormat: 'CBOR_VALUES' } };
+  }
+  // v0.55.0: verified same-generation on 2026-11-20 (see the module comment for the
+  // live evidence). 0.53/0.54 were never observed and remain refused.
+  if (major === 0 && minor === 55) {
     return { ok: true, cohort: { version: text, major, minor, generation: 'V049_RESET', wireFormat: 'CBOR_VALUES' } };
   }
   if (major === 0 && minor >= 41 && minor <= 47) {

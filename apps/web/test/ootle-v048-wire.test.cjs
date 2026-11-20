@@ -85,7 +85,7 @@ test('cohort: v0.48 is the reset generation with CBOR values; v0.41-v0.47 are pr
 });
 
 test('cohort: an unknown, newer, older, missing or malformed version fails closed', () => {
-  for (const v of ['0.53.0', '0.54.0', '1.0.0', '0.40.9', '', undefined, null, 48, 'latest', '0.48', '0.48.0; drop', 'x'.repeat(500)]) {
+  for (const v of ['0.53.0', '0.54.0', '0.56.0', '1.0.0', '0.40.9', '', undefined, null, 48, 'latest', '0.48', '0.48.0; drop', 'x'.repeat(500)]) {
     const c = cohort.classifyIndexerVersion(v);
     if (v === '0.48') {
       // major.minor alone is accepted: the minor determines the format.
@@ -94,6 +94,13 @@ test('cohort: an unknown, newer, older, missing or malformed version fails close
     }
     assert.equal(c.ok, false, `refused: ${String(v).slice(0, 20)}`);
   }
+  // v0.55.0 was verified same-generation live on 2026-11-20 (both official indexers,
+  // /substates/fetch CBOR shape unchanged, seeded Pool v2 component intact). 0.53/0.54
+  // were never observed and stay refused.
+  const accepted = cohort.classifyIndexerVersion('0.55.0');
+  assert.equal(accepted.ok, true);
+  assert.equal(accepted.cohort.generation, 'V049_RESET');
+  assert.equal(accepted.cohort.wireFormat, 'CBOR_VALUES');
 });
 
 test('identity: a right-network endpoint on an unsupported version is refused, not read', () => {

@@ -882,13 +882,28 @@ textarea {
 
 .ss-hero {
   position: relative;
-  padding: var(--s-16) var(--s-5) var(--s-12);
+  padding: var(--s-10) var(--s-5) var(--s-8);
   overflow: hidden;
 }
 @media (min-width: 900px) {
   .ss-hero {
-    padding: var(--s-20) var(--s-10) var(--s-16);
+    padding: var(--s-12) var(--s-10) var(--s-10);
   }
+}
+
+.ss-hero-sculpture {
+  overflow: hidden;
+  min-height: 0;
+}
+.ss-hero-sculpture canvas,
+.ss-hero-sculpture .ss-sculpture {
+  max-height: 250px;
+}
+
+/* The sculpture belongs beside the trading entry points, not as a second full-page
+   interruption below them. Keep the dedicated route content focused on markets. */
+.ss-home-sculpture-section {
+  display: none;
 }
 
 .ss-hero__grid {
