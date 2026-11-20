@@ -149,6 +149,33 @@ Cross-component scenarios examined (details in per-pass sections):
 |---|---|
 | `18a642f24` | P1-H1: client joins funded pools via `add_liquidity_exact` with the quote hint as on-chain `min_lp_out`; refunds deposited; review binds `min_lp_out` via the same args[2] channel as swap min_output. Tests: wallet-adapter (2 new), protocol-client (2 new), web wire test pinning the exact-method shape to the engine-executed `revealed_add_liquidity` fixture. |
 | `30ed44e5d` | P3-M1: zero leg deadlines refused; `acceptQuote` consults `DeadlineAuthority.deadlineOrdering` before reserving anything (cross-leg ordering invariant). P4-L1: only definitive wallet verdicts clear the submit guard; non-definitive errors durably record UNKNOWN. Tests: hostile_crosschain (2 new), wallet-approval (2 new). |
+| `09b09e399` | P1-H1 self-review: a deposit too small to mint any share (min-side hint floors to 0) is a typed UNAVAILABLE from `resolveAddLiquidity`, not a builder throw. |
+| `cdd4bc096` | P7-M1 confirmed: the pinned template-WASM manifest does not reproduce in a second environment; ledger updated. |
+
+## 4a. Rust engine-test results (executed, bounded single-binary runs, `-j 1`)
+
+Real-engine runs against the pinned tari-ootle v0.50.1 cohort (rev `0b3f364d`), Linux
+(WSL Ubuntu-22.04, rustc 1.97.1), each suite compiled the real template WASM at test time:
+
+| Suite | Result |
+|---|---|
+| `pool_engine` | **13/13 passed** (includes e07/e07b/e07c `add_liquidity_exact` proofs and e07e first-deposit refusal) |
+| `pool_adversarial` | **11/11 passed** |
+| `cross_layer_htlc` | **10/10 passed** |
+| `marketplace_engine` | **6/6 passed** |
+| `item_offer_engine` | **5/5 passed** |
+| `collection_bid_engine` | **3/3 passed** |
+| `pool_economics` | **4/4 passed** |
+| `revealed_asset_pool` | NOT EXECUTED (run aborted mid-compile in the constrained sandbox; no result claimed) |
+| `p2p_offer_routes` | NOT EXECUTED |
+| `multihop_routes` | NOT EXECUTED |
+
+Executed total: **52/52 passed across 7 suites**. The three unexecuted suites remain gated on
+CI's `security-engine-tests.yml` (identical pinned cohort, ubuntu-latest) — no local pass/fail
+claim is made for them.
+
+Reproducible-template gate: `tools/build-templates.sh --check` executed on Linux with the
+pinned toolchain — FAILED as described in P7-M1 (all 7 hashes differ; root cause unresolved).
 
 ## 4. Test evidence (this session)
 
@@ -179,19 +206,56 @@ Typecheck/build of `protocol-client`, `wallet-adapter`, web build:test: pass.
 
 ## 5. Remaining unverified assumptions
 
-- Pinned WASM manifest reproducibility must be re-proven by `tools/build-templates.sh --check` on
-  Linux before any template publication (P7-M1).
-- Wallet-side idempotency of `tari_submitTransactionRequest` for a repeated requestId could not be
-  verified from this repository (external wallet behavior); the app treats wallet-reported status
-  as authoritative and never auto-resubmits.
+- The pinned WASM manifest does NOT reproduce in a second environment (P7-M1, confirmed). Root
+  cause unresolved; must be resolved and the manifest regenerated in a known-good, recorded
+  environment before any template publication. Until then, the "this WASM is this source"
+  guarantee rests on CI's own `--check`, which only runs on main, `security/**`, `feat/**` and
+  PRs (P7-M2 — extend to `codex/**`).
+- The Rust engine suites listed in section 4a were executed with bounded single-binary runs;
+  `revealed_asset_pool`, `p2p_offer_routes` and `multihop_routes` were NOT executed in the
+  sandbox (memory-constrained VM, concurrent unrelated Private Ballot build, upstream
+  builtin-template generation chain) and remain gated on CI's identical suite.
+- Wallet-side idempotency of `tari_submitTransactionRequest` for a repeated requestId could not
+  be verified from this repository (external wallet behavior); the app treats wallet-reported
+  status as authoritative and never auto-resubmits.
 - The cross-chain coordinator's real-submission path remains gated OFF; its deadline-ordering
   check (P3-M1 fix) is validated at the quote-validation layer, not against a live chain.
+- issuer recall/freeze authority of foreign fungibles remains invisible to templates (OPUS-08,
+  engine ABI limitation) — accepted, disclosed; only UI-level screening exists.
 
 ## 6. Readiness verdicts (separate decisions)
 
-- READ-ONLY PUBLIC PREVIEW: acceptable (read-only paths, header policy, no fabrication of market data).
-- WALLET-CONNECTED TESTNET: acceptable with P1-H1 fix deployed; keep the real-crosschain gate OFF.
-- LIVE TESTNET FINANCIAL OPERATIONS: only after (a) pinned-WASM reproducibility re-verified, (b)
-  engine suite green on the pinned v0.50.1 cohort, (c) LP add/remove flows re-verified live via
-  dry runs, (d) P3-M1 fix present if the coordinator is ever enabled.
-- MAINNET: NOT ready (deliberately disabled in code; requires the full mainnet checklist).
+- READ-ONLY PUBLIC PREVIEW: **ACCEPTABLE** — read-only paths only, coherent header policy,
+  version-gated indexer reads, no fabrication of market data.
+- WALLET-CONNECTED TESTNET: **ACCEPTABLE** with the P1-H1/P4-L1 fixes deployed — signing paths
+  are review-bound, unknown outcomes never auto-resubmit, real-crosschain gate stays OFF.
+- LIVE TESTNET FINANCIAL OPERATIONS: **CONDITIONAL** — require (a) P7-M1 resolved and the
+  manifest regenerated/verified in a recorded environment, (b) engine suite green on the pinned
+  v0.50.1 cohort (CI), (c) LP add/remove and swap flows re-verified live via non-submitting dry
+  runs, (d) P3-M1 fix present before enabling the coordinator gate.
+- MAINNET: **NOT READY** (deliberately disabled in code; requires the full mainnet checklist and
+  an independent audit of the cross-layer paths).
+
+## 7. Issues that must be fixed before mainnet
+
+1. P7-M1 (template WASM reproducibility) — root-caused and re-verified byte-exact.
+2. P7-M2 (CI branch coverage) — reproducibility + engine gates on every active branch naming.
+3. P7-L2 — decide source-map publication policy for production builds.
+4. P3-M1 — deadline-ordering authority hook implemented by any production deadline authority
+   (and tested against live chain reads).
+5. P4-L1 — verified live once against the real wallet extension (submit-timeout reconciliation).
+6. OPUS-08 residual — an engine API or documented off-chain screening for issuer recall/freeze
+   before foreign fungibles are pooled.
+7. p2p_offer / cross_layer_htlc / revealed pool remain UNPUBLISHED — their acceptance evidence
+   must be re-run on the cohort they will be published on.
+
+## 8. Next independent audit recommendations
+
+1. Live-time reconciliation attack testing with a real wallet extension (Pass 4 scenarios):
+   approve-after-timeout, reload between approve and submit, provider replacement mid-session.
+2. Deterministic cross-environment template build (Docker with recorded digest) to close P7-M1.
+3. Fuzz the wire codec (`apps/web` instructions/args CBOR) against the v0.50.1 engine's decoder.
+4. Hostile-market simulation for the LP deposit front-run class across concurrent pool versions
+   (add-liquidity + swap interleavings at engine level).
+5. Review the upstream Minotari `send_sha_atomic_swap` refund-path custody (wallet one-sided key)
+   against the coordinator's assumptions once the L1 leg goes past its provider-assertion gate.
