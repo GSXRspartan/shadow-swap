@@ -19,8 +19,12 @@
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
+// fileURLToPath, not URL#pathname: on Windows pathname is "/C:/..." and path.resolve
+// would turn that into a non-existent "C:\C:\..." cwd, making every git spawn fail with
+// ENOENT. (This gate only ever ran on Linux CI before.)
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const requireDist = process.argv.includes('--dist');
 const findings = [];
 
